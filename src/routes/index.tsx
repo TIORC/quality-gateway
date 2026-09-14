@@ -1,24 +1,119 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import logoWhite from "@/assets/logo-white.png.asset.json";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "Gestão da Qualidade | Acesso" },
+      {
+        name: "description",
+        content:
+          "Acesse o sistema de Gestão da Qualidade com seu e-mail corporativo e senha.",
+      },
+      { property: "og:title", content: "Gestão da Qualidade | Acesso" },
+      {
+        property: "og:description",
+        content:
+          "Acesse o sistema de Gestão da Qualidade com seu e-mail corporativo e senha.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: Login,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+function Login() {
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!email.includes("@")) {
+      setErro("Informe um e-mail corporativo válido.");
+      return;
+    }
+    if (senha.length < 4) {
+      setErro("Informe sua senha.");
+      return;
+    }
+    setErro("");
+  }
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <main className="bg-brand-gradient relative flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="bg-brand-glow pointer-events-none absolute inset-0" />
+      <section className="bg-surface-glass relative w-full max-w-md rounded-2xl border border-brand-line p-8 shadow-brand backdrop-blur-sm sm:p-10">
+        <div className="flex flex-col items-center text-center">
+          <img
+            src={logoWhite.url}
+            alt="Logomarca da empresa"
+            className="h-16 w-16 object-contain"
+          />
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight text-brand-foreground sm:text-3xl">
+            Gestão da Qualidade
+          </h1>
+          <p className="mt-2 text-sm text-brand-muted">
+            Entre com suas credenciais corporativas
+          </p>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-8 space-y-5">
+          <div className="space-y-2">
+            <label
+              htmlFor="email"
+              className="text-xs font-medium uppercase tracking-wider text-brand-muted"
+            >
+              E-mail corporativo
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="nome@empresa.com.br"
+              className="input-brand"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="senha"
+              className="text-xs font-medium uppercase tracking-wider text-brand-muted"
+            >
+              Senha
+            </label>
+            <input
+              id="senha"
+              type="password"
+              autoComplete="current-password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              placeholder="••••••••"
+              className="input-brand"
+            />
+          </div>
+
+          {erro ? (
+            <p className="text-sm text-destructive" role="alert">
+              {erro}
+            </p>
+          ) : null}
+
+          <button type="submit" className="btn-brand">
+            Entrar
+          </button>
+
+          <div className="text-center">
+            <a href="#" className="text-sm text-brand-muted hover:text-brand-foreground">
+              Esqueci minha senha
+            </a>
+          </div>
+        </form>
+      </section>
+    </main>
   );
 }
