@@ -132,6 +132,91 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+:root {
+  --brand-deep: oklch(0.23 0.09 265);
+  --brand-night: oklch(0.12 0.05 265);
+  --brand-black: oklch(0.09 0.01 265);
+  --brand-foreground: oklch(0.98 0.005 250);
+  --brand-muted: oklch(0.75 0.03 255);
+  --brand-line: oklch(1 0 0 / 12%);
+  --gradient-brand: linear-gradient(
+    160deg,
+    var(--brand-deep) 0%,
+    var(--brand-night) 55%,
+    var(--brand-black) 100%
+  );
+  --shadow-brand: 0 30px 60px -25px oklch(0 0 0 / 70%);
+}
+
+@theme inline {
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-line: var(--brand-line);
+  --shadow-brand: var(--shadow-brand);
+}
+
+@utility bg-brand-gradient {
+  background-image: var(--gradient-brand);
+}
+
+@utility bg-brand-glow {
+  background-image: radial-gradient(
+    ellipse at 50% 0%,
+    oklch(0.45 0.15 265 / 35%) 0%,
+    transparent 60%
+  );
+}
+
+@utility bg-surface-glass {
+  background-color: oklch(1 0 0 / 6%);
+}
+
+@utility input-brand {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--brand-line);
+  background-color: oklch(0 0 0 / 25%);
+  padding: 0.75rem 1rem;
+  font-size: 0.925rem;
+  color: var(--brand-foreground);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &::placeholder {
+    color: oklch(0.65 0.03 255);
+  }
+
+  &:focus {
+    border-color: oklch(0.7 0.12 260);
+    box-shadow: 0 0 0 3px oklch(0.55 0.15 265 / 30%);
+  }
+}
+
+@utility btn-brand {
+  width: 100%;
+  border-radius: var(--radius);
+  background-image: linear-gradient(
+    100deg,
+    oklch(0.45 0.16 265),
+    oklch(0.32 0.13 265)
+  );
+  padding: 0.75rem 1rem;
+  font-size: 0.925rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--brand-foreground);
+  box-shadow: var(--shadow-brand);
+  transition: filter 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    filter: brightness(1.12);
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
