@@ -10,33 +10,193 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AtasDeReuniaoRouteImport } from './routes/atas-de-reuniao'
+import { Route as AuditoriasRouteImport } from './routes/auditorias'
+import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as DisparoDeCobrancasRouteImport } from './routes/disparo-de-cobrancas'
+import { Route as IndicadoresRouteImport } from './routes/indicadores'
+import { Route as LoadingRouteImport } from './routes/loading'
+import { Route as OcorrenciasRouteImport } from './routes/ocorrencias'
+import { Route as PainelRouteImport } from './routes/painel'
+import { Route as PlanosDeAcaoRouteImport } from './routes/planos-de-acao'
+import { Route as PoliticasRouteImport } from './routes/politicas'
+import { Route as PopsRouteImport } from './routes/pops'
+import { Route as ProjetosEEstrategiasRouteImport } from './routes/projetos-e-estrategias'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AtasDeReuniaoRoute = AtasDeReuniaoRouteImport.update({
+  id: '/atas-de-reuniao',
+  path: '/atas-de-reuniao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditoriasRoute = AuditoriasRouteImport.update({
+  id: '/auditorias',
+  path: '/auditorias',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DisparoDeCobrancasRoute = DisparoDeCobrancasRouteImport.update({
+  id: '/disparo-de-cobrancas',
+  path: '/disparo-de-cobrancas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndicadoresRoute = IndicadoresRouteImport.update({
+  id: '/indicadores',
+  path: '/indicadores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoadingRoute = LoadingRouteImport.update({
+  id: '/loading',
+  path: '/loading',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OcorrenciasRoute = OcorrenciasRouteImport.update({
+  id: '/ocorrencias',
+  path: '/ocorrencias',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PainelRoute = PainelRouteImport.update({
+  id: '/painel',
+  path: '/painel',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlanosDeAcaoRoute = PlanosDeAcaoRouteImport.update({
+  id: '/planos-de-acao',
+  path: '/planos-de-acao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliticasRoute = PoliticasRouteImport.update({
+  id: '/politicas',
+  path: '/politicas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PopsRoute = PopsRouteImport.update({
+  id: '/pops',
+  path: '/pops',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjetosEEstrategiasRoute = ProjetosEEstrategiasRouteImport.update({
+  id: '/projetos-e-estrategias',
+  path: '/projetos-e-estrategias',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/atas-de-reuniao': typeof AtasDeReuniaoRoute
+  '/auditorias': typeof AuditoriasRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
+  '/indicadores': typeof IndicadoresRoute
+  '/loading': typeof LoadingRoute
+  '/ocorrencias': typeof OcorrenciasRoute
+  '/painel': typeof PainelRoute
+  '/planos-de-acao': typeof PlanosDeAcaoRoute
+  '/politicas': typeof PoliticasRoute
+  '/pops': typeof PopsRoute
+  '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/atas-de-reuniao': typeof AtasDeReuniaoRoute
+  '/auditorias': typeof AuditoriasRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
+  '/indicadores': typeof IndicadoresRoute
+  '/loading': typeof LoadingRoute
+  '/ocorrencias': typeof OcorrenciasRoute
+  '/painel': typeof PainelRoute
+  '/planos-de-acao': typeof PlanosDeAcaoRoute
+  '/politicas': typeof PoliticasRoute
+  '/pops': typeof PopsRoute
+  '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/atas-de-reuniao': typeof AtasDeReuniaoRoute
+  '/auditorias': typeof AuditoriasRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
+  '/indicadores': typeof IndicadoresRoute
+  '/loading': typeof LoadingRoute
+  '/ocorrencias': typeof OcorrenciasRoute
+  '/painel': typeof PainelRoute
+  '/planos-de-acao': typeof PlanosDeAcaoRoute
+  '/politicas': typeof PoliticasRoute
+  '/pops': typeof PopsRoute
+  '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/atas-de-reuniao'
+    | '/auditorias'
+    | '/configuracoes'
+    | '/disparo-de-cobrancas'
+    | '/indicadores'
+    | '/loading'
+    | '/ocorrencias'
+    | '/painel'
+    | '/planos-de-acao'
+    | '/politicas'
+    | '/pops'
+    | '/projetos-e-estrategias'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/atas-de-reuniao'
+    | '/auditorias'
+    | '/configuracoes'
+    | '/disparo-de-cobrancas'
+    | '/indicadores'
+    | '/loading'
+    | '/ocorrencias'
+    | '/painel'
+    | '/planos-de-acao'
+    | '/politicas'
+    | '/pops'
+    | '/projetos-e-estrategias'
+  id:
+    | '__root__'
+    | '/'
+    | '/atas-de-reuniao'
+    | '/auditorias'
+    | '/configuracoes'
+    | '/disparo-de-cobrancas'
+    | '/indicadores'
+    | '/loading'
+    | '/ocorrencias'
+    | '/painel'
+    | '/planos-de-acao'
+    | '/politicas'
+    | '/pops'
+    | '/projetos-e-estrategias'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AtasDeReuniaoRoute: typeof AtasDeReuniaoRoute
+  AuditoriasRoute: typeof AuditoriasRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRoute
+  DisparoDeCobrancasRoute: typeof DisparoDeCobrancasRoute
+  IndicadoresRoute: typeof IndicadoresRoute
+  LoadingRoute: typeof LoadingRoute
+  OcorrenciasRoute: typeof OcorrenciasRoute
+  PainelRoute: typeof PainelRoute
+  PlanosDeAcaoRoute: typeof PlanosDeAcaoRoute
+  PoliticasRoute: typeof PoliticasRoute
+  PopsRoute: typeof PopsRoute
+  ProjetosEEstrategiasRoute: typeof ProjetosEEstrategiasRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +208,107 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/atas-de-reuniao': {
+      id: '/atas-de-reuniao'
+      path: '/atas-de-reuniao'
+      fullPath: '/atas-de-reuniao'
+      preLoaderRoute: typeof AtasDeReuniaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auditorias': {
+      id: '/auditorias'
+      path: '/auditorias'
+      fullPath: '/auditorias'
+      preLoaderRoute: typeof AuditoriasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/configuracoes': {
+      id: '/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/disparo-de-cobrancas': {
+      id: '/disparo-de-cobrancas'
+      path: '/disparo-de-cobrancas'
+      fullPath: '/disparo-de-cobrancas'
+      preLoaderRoute: typeof DisparoDeCobrancasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/indicadores': {
+      id: '/indicadores'
+      path: '/indicadores'
+      fullPath: '/indicadores'
+      preLoaderRoute: typeof IndicadoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/loading': {
+      id: '/loading'
+      path: '/loading'
+      fullPath: '/loading'
+      preLoaderRoute: typeof LoadingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ocorrencias': {
+      id: '/ocorrencias'
+      path: '/ocorrencias'
+      fullPath: '/ocorrencias'
+      preLoaderRoute: typeof OcorrenciasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/painel': {
+      id: '/painel'
+      path: '/painel'
+      fullPath: '/painel'
+      preLoaderRoute: typeof PainelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/planos-de-acao': {
+      id: '/planos-de-acao'
+      path: '/planos-de-acao'
+      fullPath: '/planos-de-acao'
+      preLoaderRoute: typeof PlanosDeAcaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/politicas': {
+      id: '/politicas'
+      path: '/politicas'
+      fullPath: '/politicas'
+      preLoaderRoute: typeof PoliticasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pops': {
+      id: '/pops'
+      path: '/pops'
+      fullPath: '/pops'
+      preLoaderRoute: typeof PopsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projetos-e-estrategias': {
+      id: '/projetos-e-estrategias'
+      path: '/projetos-e-estrategias'
+      fullPath: '/projetos-e-estrategias'
+      preLoaderRoute: typeof ProjetosEEstrategiasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AtasDeReuniaoRoute: AtasDeReuniaoRoute,
+  AuditoriasRoute: AuditoriasRoute,
+  ConfiguracoesRoute: ConfiguracoesRoute,
+  DisparoDeCobrancasRoute: DisparoDeCobrancasRoute,
+  IndicadoresRoute: IndicadoresRoute,
+  LoadingRoute: LoadingRoute,
+  OcorrenciasRoute: OcorrenciasRoute,
+  PainelRoute: PainelRoute,
+  PlanosDeAcaoRoute: PlanosDeAcaoRoute,
+  PoliticasRoute: PoliticasRoute,
+  PopsRoute: PopsRoute,
+  ProjetosEEstrategiasRoute: ProjetosEEstrategiasRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

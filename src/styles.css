@@ -217,6 +217,56 @@
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Tela de loading                                                     */
+/* ------------------------------------------------------------------ */
+
+@keyframes brand-phrase-cycle {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@utility animate-brand-phrase {
+  animation: brand-phrase-cycle 5s ease-in-out both;
+}
+
+@keyframes brand-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@utility animate-brand-float {
+  animation: brand-float 3s ease-in-out infinite;
+}
+
+@keyframes brand-progress {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
