@@ -168,6 +168,41 @@ export type Database = {
         };
         Relationships: [];
       };
+      pop_anotacoes: {
+        Row: {
+          id: string;
+          pop_id: string;
+          autor_nome: string;
+          autor_email: string;
+          mensagem: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          pop_id: string;
+          autor_nome?: string;
+          autor_email?: string;
+          mensagem?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          pop_id?: string;
+          autor_nome?: string;
+          autor_email?: string;
+          mensagem?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pop_anotacoes_pop_id_fkey";
+            columns: ["pop_id"];
+            isOneToOne: false;
+            referencedRelation: "pops";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -180,6 +215,9 @@ export type PopSetorRow = Database["public"]["Tables"]["pop_setores"]["Row"];
 export type PopRow = Database["public"]["Tables"]["pops"]["Row"];
 export type PopInsert = Database["public"]["Tables"]["pops"]["Insert"];
 export type PopUpdate = Database["public"]["Tables"]["pops"]["Update"];
+export type PopAnotacaoRow = Database["public"]["Tables"]["pop_anotacoes"]["Row"];
+export type PopAnotacaoInsert = Database["public"]["Tables"]["pop_anotacoes"]["Insert"];
+export type PopAnotacaoUpdate = Database["public"]["Tables"]["pop_anotacoes"]["Update"];
 export type PlanoDeAcaoRow = Database["public"]["Tables"]["planos_de_acao"]["Row"];
 export type PlanoDeAcaoInsert = Database["public"]["Tables"]["planos_de_acao"]["Insert"];
 export type PlanoDeAcaoUpdate = Database["public"]["Tables"]["planos_de_acao"]["Update"];

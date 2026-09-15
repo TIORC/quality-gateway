@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { Bell, ChevronDown, LogOut } from "lucide-react";
+import { Bell, ChevronDown, LogOut, User } from "lucide-react";
 import { useState, useEffect, type ReactNode } from "react";
 import {
   PieChart,
@@ -18,7 +18,7 @@ import {
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { supabase, lovableCloudConfigurado } from "@/integrations/supabase/client";
 import type { PlanoDeAcaoRow } from "@/integrations/supabase/types";
-import { logout } from "@/lib/auth";
+import { logout, getSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/painel")({
@@ -298,14 +298,17 @@ function GraficoSetor({ planos }: { planos: PlanoDeAcaoRow[] }) {
 
 function Painel() {
   const router = useRouter();
-  const session = usePanelSession();
+  const sessionFromCtx = usePanelSession();
   const [menuAberto, setMenuAberto] = useState(false);
   const [planos, setPlanos] = useState<PlanoDeAcaoRow[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  const nomeUsuario = session?.nome ?? "Usuário";
-  const cargoUsuario = session?.cargo ?? "";
-  const setorUsuario = session?.setor ?? "";
+  // Resolve o perfil completo do localStorage + USERS para garantir dados atualizados.
+  const perfil = getSession();
+  const session = perfil ?? sessionFromCtx;
+  const nomeUsuario = perfil?.nome ?? session?.nome ?? "Usuário";
+  const cargoUsuario = perfil?.cargo ?? session?.cargo ?? "";
+  const setorUsuario = perfil?.setor ?? session?.setor ?? "";
   const iniciais = nomeUsuario
     .split(" ")
     .filter(Boolean)
@@ -406,10 +409,19 @@ function Painel() {
                 <div className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-[#D9E0EA] bg-white p-1.5 shadow-lg">
                   <div className="px-3 py-2.5">
                     <p className="text-[13px] font-semibold text-[#1F2937]">{nomeUsuario}</p>
-                    <p className="text-xs text-[#64748B]">{cargoUsuario}</p>
+                    <p className="mt-0.5 text-xs text-[#64748B]">{cargoUsuario}</p>
+                    <p className="text-xs text-[#94A3B8]">{setorUsuario}</p>
                     <p className="mt-1 truncate text-[11px] text-[#94A3B8]">{session?.email}</p>
                   </div>
                   <div className="mx-2 my-1 h-px bg-[#E9EEF5]" />
+                  <button
+                    type="button"
+                    onClick={() => setMenuAberto(false)}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#1F2937]"
+                  >
+                    <User className="h-4 w-4" />
+                    Meu Perfil
+                  </button>
                   <button
                     type="button"
                     onClick={handleLogout}

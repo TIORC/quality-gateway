@@ -88,7 +88,21 @@ function readSession(): UserSession | null {
 }
 
 export function getSession(): UserSession | null {
-  return readSession();
+  const atual = readSession();
+  if (!atual) return null;
+
+  // Resolve o perfil completo do usuário pelo e-mail, para que sessões antigas
+  // (salvas sem nome/cargo/setor) sejam enriquecidas com os dados corretos.
+  const usuario = USERS.find((u) => u.email.toLowerCase() === atual.email.toLowerCase());
+  if (!usuario || !usuario.ativo) return atual;
+
+  return {
+    ...atual,
+    nome: usuario.nome,
+    cargo: usuario.cargo,
+    setor: usuario.setor,
+    role: usuario.role,
+  };
 }
 
 export function isAuthenticated(): boolean {

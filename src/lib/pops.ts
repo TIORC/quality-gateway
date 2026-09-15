@@ -9,7 +9,13 @@
  */
 
 import { exigirCloud, lovableCloudConfigurado, supabase } from "@/integrations/supabase/client";
-import type { PopInsert, PopRow, PopSetorRow } from "@/integrations/supabase/types";
+import type {
+  PopAnotacaoInsert,
+  PopAnotacaoRow,
+  PopInsert,
+  PopRow,
+  PopSetorRow,
+} from "@/integrations/supabase/types";
 
 /* -------------------------------------------------------------------------- */
 /* Domínio                                                                    */
@@ -47,6 +53,16 @@ export interface Pop {
   favoritos: number;
   anotacoes: number;
   arquivo: string | null;
+}
+
+/** Anotação/comentário registrado em um POP. */
+export interface PopAnotacao {
+  id: string;
+  popId: string;
+  autorNome: string;
+  autorEmail: string;
+  mensagem: string;
+  createdAt: string;
 }
 
 /** Dados editáveis de um POP (contadores entram com zero no cadastro). */
@@ -255,6 +271,31 @@ function setorDoRow(row: PopSetorRow): SetorPop {
   };
 }
 
+function anotacaoDoRow(row: PopAnotacaoRow): PopAnotacao {
+  return {
+    id: row.id,
+    popId: row.pop_id,
+    autorNome: row.autor_nome,
+    autorEmail: row.autor_email,
+    mensagem: row.mensagem,
+    createdAt: row.created_at,
+  };
+}
+
+function anotacaoParaInsercao(dados: {
+  popId: string;
+  autorNome: string;
+  autorEmail: string;
+  mensagem: string;
+}): PopAnotacaoInsert {
+  return {
+    pop_id: dados.popId,
+    autor_nome: dados.autorNome,
+    autor_email: dados.autorEmail,
+    mensagem: dados.mensagem,
+  };
+}
+
 function popParaInsercao(entrada: EntradaPop): PopInsert {
   return {
     setor_id: entrada.setorId,
@@ -430,4 +471,127 @@ export async function duplicarPop(origem: Pop): Promise<Pop> {
     arquivo: origem.arquivo,
   };
   return criarPop(entrada);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Anotações / discussão dos POPs                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Mapa de anotações por POP (só usado no modo demonstração). */
+const anotacoesDemo = new Map<string, PopAnotacao[]>();
+
+async function listarAnotacoesCloud(popId: string): Promise<PopAnotacao[]> {
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("pop_anotacoes")
+    .select("*")
+    .eq("pop_id", popId)
+    .order("created_at", { ascending: true });
+  if (error) throw traduzErro(error);
+  return (data ?? []).map(anotacaoDoRow);
+}
+
+function listarAnotacoesDemo(popId: string): PopAnotacao[] {
+  return anotacoesDemo.get(popId) ?? [];
+}
+
+async function criarAnotacaoCloud(
+  popId: string,
+  dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
+): Promise<PopAnotacao> {
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("pop_anotacoes")
+    .insert(anotacaoParaInsercao({ popId, ...dados }))
+    .select()
+    .single();
+  if (error) throw traduzErro(error);
+  if (!data) throw new Error("Não foi possível registrar a anotação.");
+  const anotacao = anotacaoDoRow(data);
+  await incrementarAnotacoesCloud(popId);
+  return anotacao;
+}
+
+async function incrementarAnotacoesCloud(popId: string): Promise<void> {
+  const client = exigirCloud();
+  const { data, error } = await client.from("pops").select("anotacoes").eq("id", popId).single();
+  if (error) throw traduzErro(error);
+  const atual = data?.anotacoes ?? 0;
+  const { error: erroUpdate } = await client
+    .from("pops")
+    .update({ anotacoes: atual + 1 })
+    .eq("id", popId);
+  if (erroUpdate) throw traduzErro(erroUpdate);
+}
+
+function criarAnotacaoDemo(
+  popId: string,
+  dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
+): PopAnotacao {
+  const anotacao: PopAnotacao = {
+    id: `anot_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    popId,
+    ...dados,
+    createdAt: new Date().toISOString(),
+  };
+  const atuais = anotacoesDemo.get(popId) ?? [];
+  anotacoesDemo.set(popId, [...atuais, anotacao]);
+  const pop = popsDemo.find((p) => p.id === popId);
+  if (pop) pop.anotacoes += 1;
+  return anotacao;
+}
+
+async function excluirAnotacaoCloud(anotacaoId: string, popId: string): Promise<void> {
+  const client = exigirCloud();
+  const { error } = await client.from("pop_anotacoes").delete().eq("id", anotacaoId);
+  if (error) throw traduzErro(error);
+  const { data, error: erroSelect } = await client
+    .from("pops")
+    .select("anotacoes")
+    .eq("id", popId)
+    .single();
+  if (erroSelect) throw traduzErro(erroSelect);
+  const atual = data?.anotacoes ?? 0;
+  const { error: erroUpdate } = await client
+    .from("pops")
+    .update({ anotacoes: Math.max(0, atual - 1) })
+    .eq("id", popId);
+  if (erroUpdate) throw traduzErro(erroUpdate);
+}
+
+function excluirAnotacaoDemo(anotacaoId: string): void {
+  for (const [popId, lista] of anotacoesDemo) {
+    const indice = lista.findIndex((a) => a.id === anotacaoId);
+    if (indice === -1) continue;
+    lista.splice(indice, 1);
+    anotacoesDemo.set(popId, lista);
+    const pop = popsDemo.find((p) => p.id === popId);
+    if (pop) pop.anotacoes = Math.max(0, pop.anotacoes - 1);
+    return;
+  }
+  throw new Error("Anotação não encontrada.");
+}
+
+/** Lista as anotações (comentários) de um POP, na fonte configurada. */
+export async function listarAnotacoes(popId: string): Promise<PopAnotacao[]> {
+  return fonteDados() === "cloud" ? listarAnotacoesCloud(popId) : listarAnotacoesDemo(popId);
+}
+
+/** Registra uma anotação no POP e atualiza o contador. */
+export async function criarAnotacao(
+  popId: string,
+  dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
+): Promise<PopAnotacao> {
+  return fonteDados() === "cloud"
+    ? criarAnotacaoCloud(popId, dados)
+    : criarAnotacaoDemo(popId, dados);
+}
+
+/** Exclui uma anotação do POP e atualiza o contador. */
+export async function excluirAnotacao(anotacao: PopAnotacao): Promise<void> {
+  if (fonteDados() === "cloud") {
+    await excluirAnotacaoCloud(anotacao.id, anotacao.popId);
+  } else {
+    excluirAnotacaoDemo(anotacao.id);
+  }
 }

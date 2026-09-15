@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { getSession } from "@/lib/auth";
 import {
   CARGOS_RESPONSAVEIS,
   CATEGORIAS,
@@ -73,14 +74,18 @@ import {
   REGIMES,
   carregarPops,
   contarPopsPorSetor,
+  criarAnotacao,
   criarPop,
   atualizarPop,
   duplicarPop,
+  excluirAnotacao,
   excluirPop,
+  listarAnotacoes,
   rotuloDoValor,
   ENTRADA_PADRAO,
   type EntradaPop,
   type Pop,
+  type PopAnotacao,
   type SetorPop,
 } from "@/lib/pops";
 import { cn } from "@/lib/utils";
@@ -283,9 +288,10 @@ interface PopCardProps {
   onEditar: (pop: Pop) => void;
   onDuplicar: (pop: Pop) => void;
   onExcluir: (pop: Pop) => void;
+  onDiscutir: (pop: Pop) => void;
 }
 
-function PopCard({ pop, onEditar, onDuplicar, onExcluir }: PopCardProps) {
+function PopCard({ pop, onEditar, onDuplicar, onExcluir, onDiscutir }: PopCardProps) {
   return (
     <li className="flex flex-col gap-4 rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm lg:flex-row lg:gap-6 lg:p-5">
       <div className="min-w-0 flex-1">
@@ -375,9 +381,15 @@ function PopCard({ pop, onEditar, onDuplicar, onExcluir }: PopCardProps) {
           <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[#1F2937]">
             <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {pop.favoritos}
           </span>
-          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[#1F2937]">
-            <MessageSquare className="h-3.5 w-3.5 text-[#64748B]" /> {pop.anotacoes}
-          </span>
+          <button
+            type="button"
+            onClick={() => onDiscutir(pop)}
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-[#1F2937] transition hover:text-[#1E3A8A]"
+            aria-label={`Abrir discussão — ${pop.anotacoes} anotações`}
+          >
+            <MessageSquare className="h-3.5 w-3.5 text-[#64748B] group-hover:text-[#1E3A8A]" />{" "}
+            {pop.anotacoes}
+          </button>
         </div>
       </aside>
     </li>
@@ -516,6 +528,7 @@ interface ListaProps {
   aoEditar: (pop: Pop) => void;
   aoDuplicar: (pop: Pop) => void;
   aoExcluir: (pop: Pop) => void;
+  aoDiscutir: (pop: Pop) => void;
 }
 
 function ListaDePops({
@@ -532,6 +545,7 @@ function ListaDePops({
   aoEditar,
   aoDuplicar,
   aoExcluir,
+  aoDiscutir,
 }: ListaProps) {
   return (
     <>
@@ -596,6 +610,7 @@ function ListaDePops({
               onEditar={aoEditar}
               onDuplicar={aoDuplicar}
               onExcluir={aoExcluir}
+              onDiscutir={aoDiscutir}
             />
           ))
         )}
@@ -931,6 +946,181 @@ function PopFormDialog({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Discussão do POP (anotações / comentários)                                 */
+/* -------------------------------------------------------------------------- */
+
+interface PopDiscussaoDialogProps {
+  aberto: boolean;
+  pop: Pop | null;
+  onFechar: () => void;
+  onAtualizado: () => void;
+}
+
+function formatarDataAnotacao(iso: string): string {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return "";
+  return data.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function PopDiscussaoDialog({ aberto, pop, onFechar, onAtualizado }: PopDiscussaoDialogProps) {
+  const sessao = getSession();
+  const [anotacoes, setAnotacoes] = useState<PopAnotacao[]>([]);
+  const [mensagem, setMensagem] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (!aberto || !pop) return;
+    let ativo = true;
+    setCarregando(true);
+    setMensagem("");
+    listarAnotacoes(pop.id)
+      .then((dados) => {
+        if (ativo) setAnotacoes(dados);
+      })
+      .catch((erro) => {
+        if (ativo)
+          toast.error(
+            erro instanceof Error ? erro.message : "Não foi possível carregar as anotações",
+          );
+      })
+      .finally(() => {
+        if (ativo) setCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [aberto, pop]);
+
+  async function enviarAnotacao() {
+    const texto = mensagem.trim();
+    if (!texto) {
+      toast.error("Escreva uma mensagem antes de enviar");
+      return;
+    }
+    const autorNome = sessao?.nome ?? "Usuário";
+    const autorEmail = sessao?.email ?? "";
+    setEnviando(true);
+    try {
+      await criarAnotacao(pop!.id, { autorNome, autorEmail, mensagem: texto });
+      const novas = await listarAnotacoes(pop!.id);
+      setAnotacoes(novas);
+      setMensagem("");
+      onAtualizado();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível enviar a anotação");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function removerAnotacao(anotacao: PopAnotacao) {
+    try {
+      await excluirAnotacao(anotacao);
+      setAnotacoes((atuais) => atuais.filter((a) => a.id !== anotacao.id));
+      onAtualizado();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível excluir a anotação");
+    }
+  }
+
+  const podeExcluir = (anotacao: PopAnotacao) =>
+    sessao?.email !== "" && (sessao?.role === "admin" || sessao?.email === anotacao.autorEmail);
+
+  return (
+    <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Discussão — {pop?.codigo ?? ""}</DialogTitle>
+          <DialogDescription>
+            {pop?.titulo ?? ""}. Compartilhe dúvidas e orientações sobre este procedimento.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex max-h-[45vh] flex-col gap-3 overflow-y-auto pr-1">
+          {carregando ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-[#64748B]">
+              <Loader2 className="h-4 w-4 animate-spin text-[#1E3A8A]" />
+              Carregando anotações…
+            </div>
+          ) : anotacoes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#D9E0EA] bg-[#F8FAFC] px-6 py-10 text-center">
+              <MessageSquare className="h-6 w-6 text-[#94A3B8]" />
+              <p className="mt-3 text-sm font-semibold text-[#1F2937]">Nenhuma anotação ainda</p>
+              <p className="mt-1 text-[13px] text-[#64748B]">
+                Seja a primeira pessoa a comentar sobre este POP.
+              </p>
+            </div>
+          ) : (
+            anotacoes.map((anotacao) => (
+              <div
+                key={anotacao.id}
+                className="rounded-xl border border-[#E9EEF5] bg-white p-3 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF2F7] text-[11px] font-bold uppercase text-[#1E3A8A]">
+                      {anotacao.autorNome.slice(0, 2)}
+                    </span>
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#1F2937]">
+                        {anotacao.autorNome}
+                      </p>
+                      <p className="text-[11px] text-[#94A3B8]">
+                        {formatarDataAnotacao(anotacao.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                  {podeExcluir(anotacao) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-[#94A3B8] hover:text-rose-600"
+                      onClick={() => void removerAnotacao(anotacao)}
+                      aria-label="Excluir anotação"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-[#475569]">
+                  {anotacao.mensagem}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Textarea
+            value={mensagem}
+            onChange={(e) => setMensagem(e.target.value)}
+            placeholder={`Anotar como ${sessao?.nome ?? "Usuário"}…`}
+            className="min-h-[70px]"
+          />
+          <div className="flex justify-end">
+            <Button onClick={() => void enviarAnotacao()} disabled={enviando}>
+              {enviando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+              Comentar
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Página                                                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -945,6 +1135,7 @@ function Pops() {
   const [formAberto, setFormAberto] = useState(false);
   const [popEmEdicao, setPopEmEdicao] = useState<Pop | null>(null);
   const [popExcluindo, setPopExcluindo] = useState<Pop | null>(null);
+  const [popEmDiscussao, setPopEmDiscussao] = useState<Pop | null>(null);
 
   useEffect(() => {
     let ativo = true;
@@ -1081,6 +1272,7 @@ function Pops() {
         aoEditar={abrirEdicao}
         aoDuplicar={(p) => void duplicar(p)}
         aoExcluir={(p) => setPopExcluindo(p)}
+        aoDiscutir={setPopEmDiscussao}
       />
     );
   }
@@ -1100,6 +1292,13 @@ function Pops() {
         setorPadrao={setorSelecionado?.id ?? setores[0]?.id ?? ENTRADA_PADRAO.setorId}
         onFechar={() => setFormAberto(false)}
         onSalvo={buscarDados}
+      />
+
+      <PopDiscussaoDialog
+        aberto={popEmDiscussao !== null}
+        pop={popEmDiscussao}
+        onFechar={() => setPopEmDiscussao(null)}
+        onAtualizado={buscarDados}
       />
 
       <AlertDialog
