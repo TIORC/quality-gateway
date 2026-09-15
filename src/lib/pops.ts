@@ -8,14 +8,23 @@
  * excluir, de modo que a tela continua utilizável em desenvolvimento.
  */
 
-import { exigirCloud, lovableCloudConfigurado, supabase } from "@/integrations/supabase/client";
-import type {
-  PopAnotacaoInsert,
-  PopAnotacaoRow,
-  PopInsert,
-  PopRow,
-  PopSetorRow,
-} from "@/integrations/supabase/types";
+import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+
+type PopRow = Tables<"pops">;
+type PopInsert = TablesInsert<"pops">;
+type PopSetorRow = Tables<"pop_setores">;
+type PopAnotacaoRow = Tables<"pop_anotacoes">;
+type PopAnotacaoInsert = TablesInsert<"pop_anotacoes">;
+
+/** O Lovable Cloud está sempre disponível neste projeto. */
+const lovableCloudConfigurado = true;
+
+/** Devolve o cliente do Cloud. */
+function exigirCloud() {
+  return supabase;
+}
+
 
 /* -------------------------------------------------------------------------- */
 /* Domínio                                                                    */
