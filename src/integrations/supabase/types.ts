@@ -14,7 +14,199 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      planos_de_acao: {
+        Row: {
+          created_at: string
+          descricao: string
+          detalhamento: string
+          id: string
+          origem: string
+          prazo: string | null
+          prioridade: string
+          responsavel_email: string
+          responsavel_nome: string
+          seguidores: string[]
+          setor: string
+          status: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string
+          detalhamento?: string
+          id?: string
+          origem?: string
+          prazo?: string | null
+          prioridade?: string
+          responsavel_email?: string
+          responsavel_nome?: string
+          seguidores?: string[]
+          setor?: string
+          status?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descricao?: string
+          detalhamento?: string
+          id?: string
+          origem?: string
+          prazo?: string | null
+          prioridade?: string
+          responsavel_email?: string
+          responsavel_nome?: string
+          seguidores?: string[]
+          setor?: string
+          status?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pop_anotacoes: {
+        Row: {
+          autor_email: string
+          autor_nome: string
+          created_at: string
+          id: string
+          mensagem: string
+          pop_id: string
+        }
+        Insert: {
+          autor_email?: string
+          autor_nome?: string
+          created_at?: string
+          id?: string
+          mensagem?: string
+          pop_id: string
+        }
+        Update: {
+          autor_email?: string
+          autor_nome?: string
+          created_at?: string
+          id?: string
+          mensagem?: string
+          pop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pop_anotacoes_pop_id_fkey"
+            columns: ["pop_id"]
+            isOneToOne: false
+            referencedRelation: "pops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pop_setores: {
+        Row: {
+          categoria: string
+          created_at: string
+          icone: string
+          id: string
+          nome: string
+          ordem: number
+          prefixo: string
+        }
+        Insert: {
+          categoria: string
+          created_at?: string
+          icone?: string
+          id: string
+          nome: string
+          ordem?: number
+          prefixo: string
+        }
+        Update: {
+          categoria?: string
+          created_at?: string
+          icone?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          prefixo?: string
+        }
+        Relationships: []
+      }
+      pops: {
+        Row: {
+          anotacoes: number
+          arquivo: string | null
+          cargo_responsavel: string
+          categoria: string
+          codigo: string
+          created_at: string
+          departamento: string
+          descricao: string
+          dia_inicio: number | null
+          dificuldade: string
+          favoritos: number
+          frequencia: string
+          id: string
+          meta_dia: number | null
+          prazo_legal: string | null
+          prazo_referencia: string
+          regime: string
+          setor_id: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          anotacoes?: number
+          arquivo?: string | null
+          cargo_responsavel?: string
+          categoria?: string
+          codigo: string
+          created_at?: string
+          departamento?: string
+          descricao?: string
+          dia_inicio?: number | null
+          dificuldade?: string
+          favoritos?: number
+          frequencia?: string
+          id?: string
+          meta_dia?: number | null
+          prazo_legal?: string | null
+          prazo_referencia?: string
+          regime?: string
+          setor_id: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          anotacoes?: number
+          arquivo?: string | null
+          cargo_responsavel?: string
+          categoria?: string
+          codigo?: string
+          created_at?: string
+          departamento?: string
+          descricao?: string
+          dia_inicio?: number | null
+          dificuldade?: string
+          favoritos?: number
+          frequencia?: string
+          id?: string
+          meta_dia?: number | null
+          prazo_legal?: string | null
+          prazo_referencia?: string
+          regime?: string
+          setor_id?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pops_setor_id_fkey"
+            columns: ["setor_id"]
+            isOneToOne: false
+            referencedRelation: "pop_setores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
