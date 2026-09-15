@@ -24,12 +24,10 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import {
-  COLABORADORES,
   NORMAS_AUDITORIA,
-  SETORES,
   TIPOS_AUDITORIA,
-  UNIDADES,
   type Colaborador,
   type TipoAuditoria,
 } from "@/lib/dados";
@@ -110,6 +108,7 @@ function SummaryCard({ label, value, footer, accent, valueClass }: SummaryCardPr
 }
 
 function Auditorias() {
+  const catalogo = useCatalogoOrganizacional();
   const [novaAuditoria, setNovaAuditoria] = useState(false);
 
   return (
@@ -181,7 +180,13 @@ function Auditorias() {
         ))}
       </Tabs>
 
-      <NovaAuditoriaDialog aberto={novaAuditoria} onFechar={() => setNovaAuditoria(false)} />
+      <NovaAuditoriaDialog
+        aberto={novaAuditoria}
+        unidades={catalogo.unidades}
+        setores={catalogo.setores}
+        colaboradores={catalogo.colaboradores}
+        onFechar={() => setNovaAuditoria(false)}
+      />
     </PanelShell>
   );
 }
@@ -222,10 +227,19 @@ function Campo({ rotulo, children }: CampoProps) {
 
 interface NovaAuditoriaDialogProps {
   aberto: boolean;
+  unidades: string[];
+  setores: string[];
+  colaboradores: Colaborador[];
   onFechar: () => void;
 }
 
-function NovaAuditoriaDialog({ aberto, onFechar }: NovaAuditoriaDialogProps) {
+function NovaAuditoriaDialog({
+  aberto,
+  unidades,
+  setores,
+  colaboradores,
+  onFechar,
+}: NovaAuditoriaDialogProps) {
   const [codigo, setCodigo] = useState("AUD-2026-05");
   const [titulo, setTitulo] = useState("");
   const [tipo, setTipo] = useState<TipoAuditoria>("Interna");
@@ -333,7 +347,7 @@ function NovaAuditoriaDialog({ aberto, onFechar }: NovaAuditoriaDialogProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {UNIDADES.map((opcao) => (
+                  {unidades.map((opcao) => (
                     <SelectItem key={opcao} value={opcao}>
                       {opcao}
                     </SelectItem>
@@ -354,7 +368,7 @@ function NovaAuditoriaDialog({ aberto, onFechar }: NovaAuditoriaDialogProps) {
 
           <Campo rotulo="Setores auditados">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {SETORES.map((setor) => (
+              {setores.map((setor) => (
                 <label
                   key={setor}
                   htmlFor={`setor-auditado-${setor}`}
@@ -382,7 +396,7 @@ function NovaAuditoriaDialog({ aberto, onFechar }: NovaAuditoriaDialogProps) {
 
           <Campo rotulo="Auditores">
             <CampoMencao
-              colaboradores={COLABORADORES}
+              colaboradores={colaboradores}
               selecionados={auditores}
               onChange={setAuditores}
               exibirAvatar
@@ -394,7 +408,7 @@ function NovaAuditoriaDialog({ aberto, onFechar }: NovaAuditoriaDialogProps) {
 
           <Campo rotulo="Auditados">
             <CampoMencao
-              colaboradores={COLABORADORES}
+              colaboradores={colaboradores}
               selecionados={auditados}
               onChange={setAuditados}
             />

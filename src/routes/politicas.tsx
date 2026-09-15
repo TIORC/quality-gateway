@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { COLABORADORES, SETORES, type Colaborador } from "@/lib/dados";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 
 export const Route = createFileRoute("/politicas")({
@@ -51,6 +52,7 @@ interface PoliticaItem {
 }
 
 function Politicas() {
+  const catalogo = useCatalogoOrganizacional();
   const [novaPolitica, setNovaPolitica] = useState(false);
   const [itens, setItens] = useState<PoliticaItem[]>([]);
 
@@ -105,6 +107,8 @@ function Politicas() {
 
       <NovaPoliticaDialog
         aberto={novaPolitica}
+        opcoesSetores={catalogo.setores}
+        colaboradores={catalogo.colaboradores}
         onFechar={() => setNovaPolitica(false)}
         onCriar={adicionarPolitica}
       />
@@ -185,11 +189,19 @@ function Campo({ rotulo, children }: CampoProps) {
 
 interface NovaPoliticaDialogProps {
   aberto: boolean;
+  opcoesSetores: string[];
+  colaboradores: Colaborador[];
   onFechar: () => void;
   onCriar: (dados: Omit<PoliticaItem, "id">) => void;
 }
 
-function NovaPoliticaDialog({ aberto, onFechar, onCriar }: NovaPoliticaDialogProps) {
+function NovaPoliticaDialog({
+  aberto,
+  opcoesSetores,
+  colaboradores,
+  onFechar,
+  onCriar,
+}: NovaPoliticaDialogProps) {
   const [codigo, setCodigo] = useState("PL-QUA-008");
   const [titulo, setTitulo] = useState("");
   const [sobreOCriterio, setSobreOCriterio] = useState("");
@@ -273,7 +285,7 @@ function NovaPoliticaDialog({ aberto, onFechar, onCriar }: NovaPoliticaDialogPro
 
           <Campo rotulo="Setores a que se aplica">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {SETORES.map((setor) => (
+              {opcoesSetores.map((setor) => (
                 <label
                   key={setor}
                   htmlFor={`setor-politica-${setor}`}
@@ -291,7 +303,7 @@ function NovaPoliticaDialog({ aberto, onFechar, onCriar }: NovaPoliticaDialogPro
           </Campo>
 
           <Campo rotulo="Comitê de aprovação">
-            <CampoMencao colaboradores={COLABORADORES} selecionados={comite} onChange={setComite} />
+            <CampoMencao colaboradores={colaboradores} selecionados={comite} onChange={setComite} />
             <p className="text-xs italic text-[#94A3B8]">
               Quem for mencionado recebe a ação por e-mail e acompanha em modo leitura.
             </p>

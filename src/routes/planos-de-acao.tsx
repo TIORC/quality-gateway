@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { COLABORADORES, ORIGENS_ACAO, PRIORIDADES, SETORES } from "@/lib/dados";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { ORIGENS_ACAO, PRIORIDADES } from "@/lib/dados";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 
@@ -55,6 +56,7 @@ const ABAS = [
 ] as const;
 
 function PlanosDeAcao() {
+  const catalogo = useCatalogoOrganizacional();
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIAIS);
   const [novoPlanoAberto, setNovoPlanoAberto] = useState(false);
 
@@ -99,6 +101,7 @@ function PlanosDeAcao() {
           <TabsContent key={aba.valor} value={aba.valor}>
             <ListaAcoes
               filtros={filtros}
+              setores={catalogo.setores}
               onFiltroChange={atualizarFiltro}
               onNovoPlano={() => setNovoPlanoAberto(true)}
             />
@@ -106,18 +109,24 @@ function PlanosDeAcao() {
         ))}
       </Tabs>
 
-      <NovoPlanoDialog aberto={novoPlanoAberto} onFechar={() => setNovoPlanoAberto(false)} />
+      <NovoPlanoDialog
+        aberto={novoPlanoAberto}
+        setores={catalogo.setores}
+        colaboradores={catalogo.colaboradores}
+        onFechar={() => setNovoPlanoAberto(false)}
+      />
     </PanelShell>
   );
 }
 
 interface ListaAcoesProps {
   filtros: Filtros;
+  setores: string[];
   onFiltroChange: (campo: keyof Filtros, valor: string) => void;
   onNovoPlano: () => void;
 }
 
-function ListaAcoes({ filtros, onFiltroChange, onNovoPlano }: ListaAcoesProps) {
+function ListaAcoes({ filtros, setores, onFiltroChange, onNovoPlano }: ListaAcoesProps) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-[#E9EEF5] p-3 lg:flex-row">
@@ -163,7 +172,7 @@ function ListaAcoes({ filtros, onFiltroChange, onNovoPlano }: ListaAcoesProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os setores</SelectItem>
-            {SETORES.map((setor) => (
+            {setores.map((setor) => (
               <SelectItem key={setor} value={setor}>
                 {setor}
               </SelectItem>
@@ -213,10 +222,12 @@ function Contador({ atual, maximo }: { atual: number; maximo: number }) {
 
 interface NovoPlanoDialogProps {
   aberto: boolean;
+  setores: string[];
+  colaboradores: Colaborador[];
   onFechar: () => void;
 }
 
-function NovoPlanoDialog({ aberto, onFechar }: NovoPlanoDialogProps) {
+function NovoPlanoDialog({ aberto, setores, colaboradores, onFechar }: NovoPlanoDialogProps) {
   const [oQueFazer, setOQueFazer] = useState("");
   const [detalhamento, setDetalhamento] = useState("");
   const [origem, setOrigem] = useState("");
@@ -316,7 +327,7 @@ function NovoPlanoDialog({ aberto, onFechar }: NovoPlanoDialogProps) {
                   <SelectValue placeholder="Selecionar setor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {SETORES.map((opcao) => (
+                  {setores.map((opcao) => (
                     <SelectItem key={opcao} value={opcao}>
                       {opcao}
                     </SelectItem>
@@ -361,7 +372,7 @@ function NovoPlanoDialog({ aberto, onFechar }: NovoPlanoDialogProps) {
 
           <Campo rotulo="Seguidores Mencionados">
             <CampoMencao
-              colaboradores={COLABORADORES}
+              colaboradores={colaboradores}
               selecionados={mencionados}
               onChange={setMencionados}
             />

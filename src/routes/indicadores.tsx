@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { COLABORADORES, SETORES } from "@/lib/dados";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import type { Colaborador } from "@/lib/dados";
 
 export const Route = createFileRoute("/indicadores")({
   head: () => ({
@@ -80,6 +81,7 @@ function SummaryCard({ label, value, valueClass, accent, footer }: SummaryCardPr
 }
 
 function Indicadores() {
+  const catalogo = useCatalogoOrganizacional();
   const [novoIndicador, setNovoIndicador] = useState(false);
 
   return (
@@ -147,7 +149,7 @@ function Indicadores() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos os setores</SelectItem>
-              {SETORES.map((setor) => (
+              {catalogo.setores.map((setor) => (
                 <SelectItem key={setor} value={setor}>
                   {setor}
                 </SelectItem>
@@ -165,7 +167,12 @@ function Indicadores() {
         </TabsContent>
       </Tabs>
 
-      <NovoIndicadorDialog aberto={novoIndicador} onFechar={() => setNovoIndicador(false)} />
+      <NovoIndicadorDialog
+        aberto={novoIndicador}
+        setores={catalogo.setores}
+        colaboradores={catalogo.colaboradores}
+        onFechar={() => setNovoIndicador(false)}
+      />
 
       <p className="mt-8 text-center text-[11px] text-[#94A3B8]">
         Desenvolvido com 💙 pelos Desenvolvedores Orcoma Contabilidade
@@ -212,10 +219,17 @@ function Campo({ rotulo, children }: CampoProps) {
 
 interface NovoIndicadorDialogProps {
   aberto: boolean;
+  setores: string[];
+  colaboradores: Colaborador[];
   onFechar: () => void;
 }
 
-function NovoIndicadorDialog({ aberto, onFechar }: NovoIndicadorDialogProps) {
+function NovoIndicadorDialog({
+  aberto,
+  setores,
+  colaboradores,
+  onFechar,
+}: NovoIndicadorDialogProps) {
   const [nome, setNome] = useState("");
   const [setor, setSetor] = useState("Qualidade");
   const [donoId, setDonoId] = useState("");
@@ -273,7 +287,7 @@ function NovoIndicadorDialog({ aberto, onFechar }: NovoIndicadorDialogProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SETORES.map((opcao) => (
+                  {setores.map((opcao) => (
                     <SelectItem key={opcao} value={opcao}>
                       {opcao}
                     </SelectItem>
@@ -288,7 +302,7 @@ function NovoIndicadorDialog({ aberto, onFechar }: NovoIndicadorDialogProps) {
                   <SelectValue placeholder="Selecionar colaborador…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {COLABORADORES.map((colaborador) => (
+                  {colaboradores.map((colaborador) => (
                     <SelectItem key={colaborador.id} value={colaborador.id}>
                       {colaborador.nome}
                     </SelectItem>

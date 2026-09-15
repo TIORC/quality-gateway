@@ -39,7 +39,7 @@ function Login() {
     }
   }, [router]);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
 
     if (!email.includes("@")) {
@@ -54,7 +54,7 @@ function Login() {
     setErro("");
     setCarregando(true);
 
-    const result = login(email, senha);
+    const result = await login(email, senha);
     if (result.ok) {
       router.navigate({ to: "/loading", replace: true });
       return;

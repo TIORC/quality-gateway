@@ -17,6 +17,7 @@ import { Route as DisparoDeCobrancasRouteImport } from './routes/disparo-de-cobr
 import { Route as FuncionariosRouteImport } from './routes/funcionarios'
 import { Route as IndicadoresRouteImport } from './routes/indicadores'
 import { Route as LoadingRouteImport } from './routes/loading'
+import { Route as MeuPerfilRouteImport } from './routes/meu-perfil'
 import { Route as OcorrenciasRouteImport } from './routes/ocorrencias'
 import { Route as PainelRouteImport } from './routes/painel'
 import { Route as PlanosDeAcaoRouteImport } from './routes/planos-de-acao'
@@ -64,6 +65,11 @@ const LoadingRoute = LoadingRouteImport.update({
   path: '/loading',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MeuPerfilRoute = MeuPerfilRouteImport.update({
+  id: '/meu-perfil',
+  path: '/meu-perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OcorrenciasRoute = OcorrenciasRouteImport.update({
   id: '/ocorrencias',
   path: '/ocorrencias',
@@ -104,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
+  '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
   '/planos-de-acao': typeof PlanosDeAcaoRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByTo {
   '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
+  '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
   '/planos-de-acao': typeof PlanosDeAcaoRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
+  '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
   '/planos-de-acao': typeof PlanosDeAcaoRoute
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/funcionarios'
     | '/indicadores'
     | '/loading'
+    | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
     | '/planos-de-acao'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
     | '/funcionarios'
     | '/indicadores'
     | '/loading'
+    | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
     | '/planos-de-acao'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/funcionarios'
     | '/indicadores'
     | '/loading'
+    | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
     | '/planos-de-acao'
@@ -204,6 +216,7 @@ export interface RootRouteChildren {
   FuncionariosRoute: typeof FuncionariosRoute
   IndicadoresRoute: typeof IndicadoresRoute
   LoadingRoute: typeof LoadingRoute
+  MeuPerfilRoute: typeof MeuPerfilRoute
   OcorrenciasRoute: typeof OcorrenciasRoute
   PainelRoute: typeof PainelRoute
   PlanosDeAcaoRoute: typeof PlanosDeAcaoRoute
@@ -270,6 +283,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoadingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/meu-perfil': {
+      id: '/meu-perfil'
+      path: '/meu-perfil'
+      fullPath: '/meu-perfil'
+      preLoaderRoute: typeof MeuPerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ocorrencias': {
       id: '/ocorrencias'
       path: '/ocorrencias'
@@ -324,6 +344,7 @@ const rootRouteChildren: RootRouteChildren = {
   FuncionariosRoute: FuncionariosRoute,
   IndicadoresRoute: IndicadoresRoute,
   LoadingRoute: LoadingRoute,
+  MeuPerfilRoute: MeuPerfilRoute,
   OcorrenciasRoute: OcorrenciasRoute,
   PainelRoute: PainelRoute,
   PlanosDeAcaoRoute: PlanosDeAcaoRoute,

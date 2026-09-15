@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Eye, FileCheck2, Search, UserX, Users } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { PanelShell } from "@/components/panel-shell";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,7 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FUNCIONARIOS, STATUS_FUNCIONARIO, type StatusFuncionario } from "@/lib/dados";
+import { STATUS_FUNCIONARIO, type Funcionario, type StatusFuncionario } from "@/lib/dados";
+import * as org from "@/lib/organizacao";
 import { formatarDataHoraBr } from "@/lib/utils";
 
 export const Route = createFileRoute("/funcionarios")({
@@ -87,15 +89,39 @@ function StatusBadge({ status }: { status: StatusFuncionario }) {
 }
 
 function Funcionarios() {
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState("todos");
   const [setor, setSetor] = useState("todos");
 
-  const setores = [...new Set(FUNCIONARIOS.map((funcionario) => funcionario.setor).filter(Boolean))]
+  useEffect(() => {
+    let ativo = true;
+    if (!org.organizacaoDisponivel()) {
+      setCarregando(false);
+      return;
+    }
+    org
+      .carregarFuncionarios()
+      .then((lista) => {
+        if (ativo) setFuncionarios(lista);
+      })
+      .catch(() => {
+        if (ativo) toast.error("Não foi possível carregar os funcionários.");
+      })
+      .finally(() => {
+        if (ativo) setCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const setores = [...new Set(funcionarios.map((funcionario) => funcionario.setor).filter(Boolean))]
     .map((nome) => nome as string)
     .sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-  const filtrados = FUNCIONARIOS.filter((funcionario) => {
+  const filtrados = funcionarios.filter((funcionario) => {
     const termo = busca.trim().toLowerCase();
     const bateBusca =
       termo === "" ||
@@ -107,9 +133,9 @@ function Funcionarios() {
     return bateBusca && bateStatus && bateSetor;
   });
 
-  const ativos = FUNCIONARIOS.filter((funcionario) => funcionario.status === "Ativo").length;
-  const inativos = FUNCIONARIOS.length - ativos;
-  const totalLidos = FUNCIONARIOS.reduce(
+  const ativos = funcionarios.filter((funcionario) => funcionario.status === "Ativo").length;
+  const inativos = funcionarios.length - ativos;
+  const totalLidos = funcionarios.reduce(
     (soma, funcionario) => soma + funcionario.processosLidos,
     0,
   );
@@ -132,7 +158,7 @@ function Funcionarios() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ResumoCard
           label="Funcionários"
-          value={String(FUNCIONARIOS.length)}
+          value={String(funcionarios.length)}
           valueClass="text-[#1F2937]"
           accent="#312E81"
           footer="Cadastrados na plataforma"
@@ -205,7 +231,11 @@ function Funcionarios() {
           </Select>
         </div>
 
-        {filtrados.length > 0 ? (
+        {carregando ? (
+          <div className="flex items-center justify-center px-6 py-12 text-sm text-[#64748B]">
+            Carregando funcionários…
+          </div>
+        ) : filtrados.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px] text-left">
               <thead>
@@ -314,7 +344,7 @@ function Funcionarios() {
       </div>
 
       <p className="mt-3 text-[12px] text-[#94A3B8]">
-        Exibindo {filtrados.length} de {FUNCIONARIOS.length} funcionário(s) cadastrado(s).
+        Exibindo {filtrados.length} de {funcionarios.length} funcionário(s) cadastrado(s).
       </p>
     </PanelShell>
   );

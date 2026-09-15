@@ -12,7 +12,8 @@ export type AppRoutePath =
   | "/pops"
   | "/funcionarios"
   | "/configuracoes"
-  | "/disparo-de-cobrancas";
+  | "/disparo-de-cobrancas"
+  | "/meu-perfil";
 
 export interface NavItem {
   label: string;
@@ -46,5 +47,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Configurações", path: "/configuracoes" },
       { label: "Disparo de Cobranças", path: "/disparo-de-cobrancas" },
     ],
+  },
+  {
+    title: "Conta",
+    items: [{ label: "Meu Perfil", path: "/meu-perfil" }],
   },
 ];

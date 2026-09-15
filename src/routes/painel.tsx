@@ -303,7 +303,7 @@ function Painel() {
   const [planos, setPlanos] = useState<PlanoDeAcaoRow[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  // Resolve o perfil completo do localStorage + USERS para garantir dados atualizados.
+  // Resolve o perfil completo guardado na sessão do navegador (dados do Lovable Cloud).
   const perfil = getSession();
   const session = perfil ?? sessionFromCtx;
   const nomeUsuario = perfil?.nome ?? session?.nome ?? "Usuário";
@@ -416,7 +416,10 @@ function Painel() {
                   <div className="mx-2 my-1 h-px bg-[#E9EEF5]" />
                   <button
                     type="button"
-                    onClick={() => setMenuAberto(false)}
+                    onClick={() => {
+                      setMenuAberto(false);
+                      void router.navigate({ to: "/meu-perfil" });
+                    }}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#1F2937]"
                   >
                     <User className="h-4 w-4" />

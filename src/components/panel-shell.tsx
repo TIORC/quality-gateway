@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Target,
+  UserCircle,
   Users,
   X,
   type LucideIcon,
@@ -37,6 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
   Funcionários: Users,
   Configurações: Settings,
   "Disparo de Cobranças": Send,
+  "Meu Perfil": UserCircle,
 };
 
 const PanelSessionContext = createContext<UserSession | null>(null);

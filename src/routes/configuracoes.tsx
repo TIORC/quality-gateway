@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,7 +33,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CARGOS_POR_SETOR, COLABORADORES, SETORES, UNIDADES, type Colaborador } from "@/lib/dados";
+import type { Colaborador } from "@/lib/dados";
+import * as org from "@/lib/organizacao";
+import type { Unidade } from "@/lib/organizacao";
 
 export const Route = createFileRoute("/configuracoes")({
   head: () => ({
@@ -127,10 +130,51 @@ interface CargoEmEdicao {
 
 function Configuracoes() {
   const gerenciador = useGerenciadorSetores();
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+  const [unidadesCarregando, setUnidadesCarregando] = useState(true);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [novoSetorAberto, setNovoSetorAberto] = useState(false);
   const [setorEmEdicao, setSetorEmEdicao] = useState<SetorConfig | null>(null);
   const [cargoEmEdicao, setCargoEmEdicao] = useState<CargoEmEdicao | null>(null);
   const [setorParaRemover, setSetorParaRemover] = useState<SetorConfig | null>(null);
+
+  useEffect(() => {
+    if (!org.organizacaoDisponivel()) {
+      setUnidadesCarregando(false);
+      return;
+    }
+    let ativo = true;
+    org
+      .carregarUnidades()
+      .then((lista) => {
+        if (ativo) setUnidades(lista);
+      })
+      .catch(() => {
+        if (ativo) toast.error("Não foi possível carregar as unidades.");
+      })
+      .finally(() => {
+        if (ativo) setUnidadesCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!org.organizacaoDisponivel()) return;
+    let ativo = true;
+    org
+      .carregarColaboradores()
+      .then((lista) => {
+        if (ativo) setColaboradores(lista);
+      })
+      .catch(() => {
+        // A aba de colaboradores carrega a própria lista; aqui apenas a contagem fica vazia.
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   function fecharDialogosDeSetor() {
     setNovoSetorAberto(false);
@@ -164,6 +208,7 @@ function Configuracoes() {
   // Ações de setores e cargos compartilhadas pelas abas "Cargos" e "Unidades e setores".
   const acoesSetores: SetoresTabProps = {
     setores: gerenciador.setores,
+    carregando: gerenciador.carregando,
     criarSetor: gerenciador.criarSetor,
     renomearSetor: gerenciador.renomearSetor,
     removerSetor: pedirConfirmacaoDeRemocao,
@@ -206,13 +251,23 @@ function Configuracoes() {
         </TabsList>
 
         <TabsContent value="colaboradores">
-          <ColaboradoresTab setores={gerenciador.setores} />
+          <ColaboradoresTab
+            setores={gerenciador.setores}
+            unidades={unidades}
+            unidadesCarregando={unidadesCarregando}
+            iniciais={colaboradores}
+          />
         </TabsContent>
         <TabsContent value="cargos">
-          <CargosTab {...acoesSetores} />
+          <CargosTab {...acoesSetores} colaboradores={colaboradores} />
         </TabsContent>
         <TabsContent value="unidades">
-          <SetoresTab {...acoesSetores} />
+          <SetoresTab
+            {...acoesSetores}
+            colaboradores={colaboradores}
+            unidades={unidades}
+            unidadesCarregando={unidadesCarregando}
+          />
         </TabsContent>
         <TabsContent value="grupos">
           <TabEmConstrucao
@@ -300,6 +355,8 @@ function TabEmConstrucao({ icone: Icone, titulo, descricao }: TabEmConstrucaoPro
 
 function CargosTab({
   setores,
+  carregando,
+  colaboradores,
   onNovoSetor,
   onEditarSetor,
   onNovoCargo,
@@ -350,7 +407,11 @@ function CargosTab({
           </div>
         </div>
 
-        {setores.length === 0 ? (
+        {carregando ? (
+          <div className="flex items-center justify-center px-6 py-12 text-sm text-[#64748B]">
+            Carregando setores e cargos…
+          </div>
+        ) : setores.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EEF2F7]">
               <Briefcase className="h-6 w-6 text-[#94A3B8]" />
@@ -404,7 +465,7 @@ function CargosTab({
                       </p>
                     ) : (
                       cargosVisiveis.map((cargo) => {
-                        const quantidade = COLABORADORES.filter(
+                        const quantidade = colaboradores.filter(
                           (colaborador) => colaborador.cargo === cargo.nome,
                         ).length;
                         return (
@@ -475,6 +536,7 @@ interface SetorConfig {
 
 interface GerenciadorSetores {
   setores: SetorConfig[];
+  carregando: boolean;
   criarSetor: (nome: string) => void;
   renomearSetor: (setorId: string, nome: string) => void;
   removerSetor: (setorId: string) => void;
@@ -484,110 +546,104 @@ interface GerenciadorSetores {
 }
 
 interface SetoresTabProps extends GerenciadorSetores {
+  carregando: boolean;
+  colaboradores: Colaborador[];
   onNovoSetor: () => void;
   onEditarSetor: (setor: SetorConfig) => void;
   onNovoCargo: (setorId: string) => void;
   onEditarCargo: (setorId: string, cargo: CargoConfig) => void;
 }
 
-function idUnico(prefixo: string): string {
-  return `${prefixo}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** Monta a estrutura inicial de setores e cargos a partir do mock de dados. */
-function criarSetoresIniciais(): SetorConfig[] {
-  return SETORES.map((nome, indice) => ({
-    id: `setor_base_${indice}`,
-    nome,
-    cargos: (CARGOS_POR_SETOR[nome] ?? []).map((cargo, posicao) => ({
-      id: `cargo_base_${indice}_${posicao}`,
-      nome: cargo,
-    })),
-  }));
-}
-
 /**
  * Estado único de setores e cargos, compartilhado pelas abas "Cargos" e
- * "Unidades e setores" da tela de Configurações.
+ * "Unidades e setores" da tela de Configurações. Os dados vêm do Lovable Cloud.
  */
 function useGerenciadorSetores(): GerenciadorSetores {
-  const [setores, setSetores] = useState<SetorConfig[]>(criarSetoresIniciais);
+  const [setores, setSetores] = useState<SetorConfig[]>([]);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!org.organizacaoDisponivel()) {
+      setCarregando(false);
+      return;
+    }
+    org
+      .carregarSetoresECargos()
+      .then((lista) => {
+        if (ativo) setSetores(lista);
+      })
+      .catch(() => {
+        if (ativo) toast.error("Não foi possível carregar os setores e cargos.");
+      })
+      .finally(() => {
+        if (ativo) setCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  function atualizarSetor(setorAtualizado: SetorConfig) {
+    setSetores((atual) => atual.map((setor) => (setor.id === setorAtualizado.id ? setorAtualizado : setor)));
+  }
+
+  function recarregar() {
+    org
+      .carregarSetoresECargos()
+      .then(setSetores)
+      .catch(() => toast.error("Não foi possível atualizar os setores e cargos."));
+  }
 
   function criarSetor(nome: string) {
-    const limpo = nome.trim();
-    if (!limpo) return;
-    setSetores((atual) => [...atual, { id: idUnico("setor"), nome: limpo, cargos: [] }]);
+    org
+      .criarSetor(nome)
+      .then((novo) => setSetores((atual) => [...atual, novo]))
+      .catch((erro: unknown) => toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o setor."));
   }
 
   function renomearSetor(setorId: string, nome: string) {
-    const limpo = nome.trim();
-    if (!limpo) return;
-    setSetores((atual) =>
-      atual.map((setor) => (setor.id === setorId ? { ...setor, nome: limpo } : setor)),
-    );
+    org
+      .renomearSetor(setorId, nome)
+      .then(() =>
+        setSetores((atual) =>
+          atual.map((setor) => (setor.id === setorId ? { ...setor, nome: nome.trim() } : setor)),
+        ),
+      )
+      .catch(() => toast.error("Não foi possível renomear o setor."));
   }
 
   function removerSetor(setorId: string) {
-    setSetores((atual) => atual.filter((setor) => setor.id !== setorId));
+    org
+      .removerSetor(setorId)
+      .then(() => setSetores((atual) => atual.filter((setor) => setor.id !== setorId)))
+      .catch(() => toast.error("Não foi possível remover o setor."));
   }
 
   function criarCargo(setorId: string, nome: string) {
-    const limpo = nome.trim();
-    if (!limpo) return;
-    setSetores((atual) =>
-      atual.map((setor) =>
-        setor.id === setorId
-          ? { ...setor, cargos: [...setor.cargos, { id: idUnico("cargo"), nome: limpo }] }
-          : setor,
-      ),
-    );
+    org
+      .criarCargo(setorId, nome)
+      .then(atualizarSetor)
+      .catch(() => toast.error("Não foi possível criar o cargo."));
   }
 
   function editarCargo(cargoId: string, setorDestinoId: string, nome: string) {
-    const limpo = nome.trim();
-    if (!limpo) return;
-    setSetores((atual) => {
-      const setorOrigem = atual.find((setor) => setor.cargos.some((cargo) => cargo.id === cargoId));
-      if (!setorOrigem) return atual;
-
-      // Mesmo setor: renomeia mantendo a posição na coluna.
-      if (setorOrigem.id === setorDestinoId) {
-        return atual.map((setor) =>
-          setor.id === setorDestinoId
-            ? {
-                ...setor,
-                cargos: setor.cargos.map((cargo) =>
-                  cargo.id === cargoId ? { ...cargo, nome: limpo } : cargo,
-                ),
-              }
-            : setor,
-        );
-      }
-
-      // Troca de setor: move o cargo para o destino preservando o id.
-      return atual.map((setor) => {
-        if (setor.id === setorOrigem.id) {
-          return { ...setor, cargos: setor.cargos.filter((cargo) => cargo.id !== cargoId) };
-        }
-        if (setor.id === setorDestinoId) {
-          return { ...setor, cargos: [...setor.cargos, { id: cargoId, nome: limpo }] };
-        }
-        return setor;
-      });
-    });
+    org
+      .editarCargo(cargoId, setorDestinoId, nome)
+      .then(recarregar)
+      .catch(() => toast.error("Não foi possível editar o cargo."));
   }
 
   function removerCargo(cargoId: string) {
-    setSetores((atual) =>
-      atual.map((setor) => ({
-        ...setor,
-        cargos: setor.cargos.filter((cargo) => cargo.id !== cargoId),
-      })),
-    );
+    org
+      .removerCargo(cargoId)
+      .then(recarregar)
+      .catch(() => toast.error("Não foi possível remover o cargo."));
   }
 
   return {
     setores,
+    carregando,
     criarSetor,
     renomearSetor,
     removerSetor,
@@ -599,13 +655,20 @@ function useGerenciadorSetores(): GerenciadorSetores {
 
 function SetoresTab({
   setores,
+  carregando,
+  colaboradores,
+  unidades,
+  unidadesCarregando,
   onNovoSetor,
   onEditarSetor,
   onNovoCargo,
   onEditarCargo,
   removerSetor,
   removerCargo,
-}: SetoresTabProps) {
+}: SetoresTabProps & {
+  unidades: Unidade[];
+  unidadesCarregando: boolean;
+}) {
   const [busca, setBusca] = useState("");
 
   const termo = busca.trim().toLowerCase();
@@ -625,19 +688,24 @@ function SetoresTab({
             Unidades em que os setores e cargos abaixo são aplicados.
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-          {UNIDADES.map((unidade) => (
-            <div
-              key={unidade}
-              className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-3"
-            >
-              <p className="text-[13px] font-semibold text-[#1F2937]">{unidade}</p>
-              <p className="text-[11px] text-[#64748B]">
-                {unidade === "Matriz" ? "Maracás/BA" : "Unidade"}
-              </p>
-            </div>
-          ))}
-        </div>
+        {unidadesCarregando ? (
+          <div className="px-4 py-8 text-center text-sm text-[#64748B]">Carregando unidades…</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            {unidades.map((unidade) => (
+              <div
+                key={unidade.id}
+                className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-3"
+              >
+                <p className="text-[13px] font-semibold text-[#1F2937]">{unidade.nome}</p>
+                <p className="text-[11px] text-[#64748B]">{unidade.cidade}</p>
+              </div>
+            ))}
+            {unidades.length === 0 ? (
+              <p className="text-sm text-[#94A3B8]">Nenhuma unidade cadastrada.</p>
+            ) : null}
+          </div>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
@@ -666,7 +734,11 @@ function SetoresTab({
           </div>
         </div>
 
-        {filtrados.length === 0 ? (
+        {carregando ? (
+          <div className="flex items-center justify-center px-6 py-12 text-sm text-[#64748B]">
+            Carregando setores e cargos…
+          </div>
+        ) : filtrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EEF2F7]">
               <Layers className="h-6 w-6 text-[#94A3B8]" />
@@ -723,7 +795,7 @@ function SetoresTab({
                     </p>
                   ) : (
                     setor.cargos.map((cargo) => {
-                      const quantidade = COLABORADORES.filter(
+                      const quantidade = colaboradores.filter(
                         (colaborador) => colaborador.cargo === cargo.nome,
                       ).length;
                       return (
@@ -795,16 +867,47 @@ function SetoresTab({
 
 interface ColaboradoresTabProps {
   setores: SetorConfig[];
+  unidades: Unidade[];
+  unidadesCarregando: boolean;
+  iniciais: Colaborador[];
 }
 
-function ColaboradoresTab({ setores }: ColaboradoresTabProps) {
+function ColaboradoresTab({
+  setores,
+  unidades,
+  unidadesCarregando,
+  iniciais,
+}: ColaboradoresTabProps) {
   const session = usePanelSession();
-  const [colaboradores, setColaboradores] = useState<Colaborador[]>(COLABORADORES);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>(iniciais);
+  const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [unidade, setUnidade] = useState("todas");
   const [setor, setSetor] = useState("todos");
   const [novoAberto, setNovoAberto] = useState(false);
   const [gerindo, setGerindo] = useState<Colaborador | null>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!org.organizacaoDisponivel()) {
+      setCarregando(false);
+      return;
+    }
+    org
+      .carregarColaboradores()
+      .then((lista) => {
+        if (ativo) setColaboradores(lista);
+      })
+      .catch(() => {
+        if (ativo) toast.error("Não foi possível carregar os colaboradores.");
+      })
+      .finally(() => {
+        if (ativo) setCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   const usuarioAtual = colaboradores.find((colaborador) => colaborador.email === session?.email);
   const podeDarAdministracao =
@@ -825,16 +928,29 @@ function ColaboradoresTab({ setores }: ColaboradoresTabProps) {
   });
 
   function adicionar(colaborador: Colaborador) {
-    setColaboradores((atual) => [colaborador, ...atual]);
+    org
+      .criarColaborador(colaborador)
+      .then(() => setColaboradores((atual) => [colaborador, ...atual]))
+      .catch((erro: unknown) =>
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o colaborador."),
+      );
     setNovoAberto(false);
   }
 
   function salvar(colaborador: Colaborador) {
-    setColaboradores((atual) =>
-      atual.map((item) => (item.id === colaborador.id ? colaborador : item)),
-    );
+    org
+      .atualizarColaborador(colaborador)
+      .then((atualizado) =>
+        setColaboradores((atual) =>
+          atual.map((item) => (item.id === atualizado.id ? atualizado : item)),
+        ),
+      )
+      .catch(() => toast.error("Não foi possível salvar o colaborador."));
     setGerindo(null);
   }
+
+  const nomesUnidades = unidades.map((unidadeListada) => unidadeListada.nome);
+  const cidadesUnidades = new Map(unidades.map((unidadeListada) => [unidadeListada.nome, unidadeListada.cidade]));
 
   return (
     <div className="mt-4">
@@ -856,7 +972,7 @@ function ColaboradoresTab({ setores }: ColaboradoresTabProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as unidades</SelectItem>
-              {UNIDADES.map((opcao) => (
+              {nomesUnidades.map((opcao) => (
                 <SelectItem key={opcao} value={opcao}>
                   {opcao}
                 </SelectItem>
@@ -884,87 +1000,93 @@ function ColaboradoresTab({ setores }: ColaboradoresTabProps) {
           </Button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left">
-            <thead>
-              <tr className="border-b border-[#E9EEF5]">
-                <Th>Colaborador</Th>
-                <Th>E-mail</Th>
-                <Th>Unidade</Th>
-                <Th>Cidade</Th>
-                <Th>Setor</Th>
-                <Th>Nível de acesso</Th>
-                <Th>Grupos</Th>
-                <Th>Exclusão</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((colaborador) => (
-                <tr key={colaborador.id} className="border-b border-[#E9EEF5] last:border-0">
-                  <td className="px-4 py-3 align-middle">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#312E81] text-[12px] font-semibold text-white">
-                        {iniciais(colaborador.nome)}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] font-semibold text-[#1F2937]">
-                          {colaborador.nome}
-                        </p>
-                        <p className="truncate text-[11px] text-[#64748B]">{colaborador.cargo}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                    {colaborador.email}
-                  </td>
-                  <td className="px-4 py-3 align-middle text-[13px] text-[#1F2937]">
-                    {colaborador.unidade}
-                  </td>
-                  <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                    {colaborador.cidade}
-                  </td>
-                  <td className="px-4 py-3 align-middle">
-                    <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
-                      {colaborador.setor}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 align-middle">
-                    <span
-                      className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${corAcesso(colaborador.nivelAcesso ?? "")}`}
-                    >
-                      {colaborador.nivelAcesso}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                    {colaborador.grupos ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 align-middle">
-                    <div className="flex items-center justify-end gap-4 whitespace-nowrap">
-                      <span
-                        className={
-                          colaborador.exclusao === "Permitido"
-                            ? "text-[13px] font-medium text-[#059669]"
-                            : "text-[13px] font-medium text-[#E11D48]"
-                        }
-                      >
-                        {colaborador.exclusao}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setGerindo(colaborador)}
-                        className="text-[13px] font-medium text-[#1E3A8A] transition hover:text-[#1E40AF]"
-                      >
-                        Gerir
-                      </button>
-                    </div>
-                  </td>
+        {carregando ? (
+          <div className="flex items-center justify-center px-6 py-12 text-sm text-[#64748B]">
+            Carregando colaboradores…
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-left">
+              <thead>
+                <tr className="border-b border-[#E9EEF5]">
+                  <Th>Colaborador</Th>
+                  <Th>E-mail</Th>
+                  <Th>Unidade</Th>
+                  <Th>Cidade</Th>
+                  <Th>Setor</Th>
+                  <Th>Nível de acesso</Th>
+                  <Th>Grupos</Th>
+                  <Th>Exclusão</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtrados.map((colaborador) => (
+                  <tr key={colaborador.id} className="border-b border-[#E9EEF5] last:border-0">
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#312E81] text-[12px] font-semibold text-white">
+                          {iniciais(colaborador.nome)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-[#1F2937]">
+                            {colaborador.nome}
+                          </p>
+                          <p className="truncate text-[11px] text-[#64748B]">{colaborador.cargo}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                      {colaborador.email}
+                    </td>
+                    <td className="px-4 py-3 align-middle text-[13px] text-[#1F2937]">
+                      {colaborador.unidade}
+                    </td>
+                    <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                      {colaborador.cidade}
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
+                        {colaborador.setor}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${corAcesso(colaborador.nivelAcesso ?? "")}`}
+                      >
+                        {colaborador.nivelAcesso}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                      {colaborador.grupos ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex items-center justify-end gap-4 whitespace-nowrap">
+                        <span
+                          className={
+                            colaborador.exclusao === "Permitido"
+                              ? "text-[13px] font-medium text-[#059669]"
+                              : "text-[13px] font-medium text-[#E11D48]"
+                          }
+                        >
+                          {colaborador.exclusao}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setGerindo(colaborador)}
+                          className="text-[13px] font-medium text-[#1E3A8A] transition hover:text-[#1E40AF]"
+                        >
+                          Gerir
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        {filtrados.length === 0 ? (
+        {!carregando && filtrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EEF2F7]">
               <UserPlus className="h-6 w-6 text-[#94A3B8]" />
@@ -995,6 +1117,9 @@ function ColaboradoresTab({ setores }: ColaboradoresTabProps) {
       <NovoColaboradorDialog
         aberto={novoAberto}
         setores={setores}
+        unidades={nomesUnidades}
+        cidadesUnidades={cidadesUnidades}
+        unidadesCarregando={unidadesCarregando}
         onFechar={() => setNovoAberto(false)}
         onCriar={adicionar}
         podeDarAdministracao={podeDarAdministracao}
@@ -1002,6 +1127,10 @@ function ColaboradoresTab({ setores }: ColaboradoresTabProps) {
       {gerindo ? (
         <GerirColaboradorDialog
           colaborador={gerindo}
+          setores={setores}
+          unidades={nomesUnidades}
+          cidadesUnidades={cidadesUnidades}
+          unidadesCarregando={unidadesCarregando}
           onFechar={() => setGerindo(null)}
           onSalvar={salvar}
           podeDarAdministracao={podeDarAdministracao}
@@ -1023,18 +1152,20 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
 interface NovoColaboradorDialogProps {
   aberto: boolean;
   setores: SetorConfig[];
+  unidades: string[];
+  cidadesUnidades: Map<string, string>;
+  unidadesCarregando: boolean;
   onFechar: () => void;
   onCriar: (colaborador: Colaborador) => void;
   podeDarAdministracao: boolean;
 }
 
-function novoId() {
-  return `col_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
 function NovoColaboradorDialog({
   aberto,
   setores,
+  unidades,
+  cidadesUnidades,
+  unidadesCarregando,
   onFechar,
   onCriar,
   podeDarAdministracao,
@@ -1043,7 +1174,7 @@ function NovoColaboradorDialog({
   const [email, setEmail] = useState("");
   const [cargo, setCargo] = useState("");
   const [setor, setSetor] = useState(() => setores[0]?.nome ?? "");
-  const [unidade, setUnidade] = useState("Matriz");
+  const [unidade, setUnidade] = useState(() => unidades[0] ?? "Matriz");
   const [nivelAcesso, setNivelAcesso] = useState("Colaborador");
   const [grupos, setGrupos] = useState<string[]>([]);
 
@@ -1071,20 +1202,20 @@ function NovoColaboradorDialog({
     setEmail("");
     setCargo("");
     setSetor(setores[0]?.nome ?? "");
-    setUnidade("Matriz");
+    setUnidade(unidades[0] ?? "Matriz");
     setNivelAcesso("Colaborador");
     setGrupos([]);
   }
 
   function enviar() {
     if (!nome.trim()) return;
+    const cidade = cidadesUnidades.get(unidade) ?? "";
     onCriar({
-      id: novoId(),
       nome: nome.trim(),
       cargo: cargo || "Sem cargo",
       email: email.trim(),
       unidade,
-      cidade: "Maracás/BA",
+      cidade,
       setor,
       nivelAcesso,
       ...(grupos.length > 0 ? { grupos: grupos.join(", ") } : {}),
@@ -1154,12 +1285,16 @@ function NovoColaboradorDialog({
             </Campo>
 
             <Campo rotulo="Unidade">
-              <Select value={unidade} onValueChange={setUnidade}>
+              <Select
+                value={unidade}
+                onValueChange={setUnidade}
+                disabled={unidadesCarregando}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {UNIDADES.map((opcao) => (
+                  {unidades.map((opcao) => (
                     <SelectItem key={opcao} value={opcao}>
                       {opcao === "Matriz" ? "Matriz — Maracás/BA" : opcao}
                     </SelectItem>
@@ -1228,6 +1363,10 @@ function NovoColaboradorDialog({
 
 interface GerirColaboradorDialogProps {
   colaborador: Colaborador | null;
+  setores: SetorConfig[];
+  unidades: string[];
+  cidadesUnidades: Map<string, string>;
+  unidadesCarregando: boolean;
   onFechar: () => void;
   onSalvar: (colaborador: Colaborador) => void;
   podeDarAdministracao: boolean;
@@ -1235,6 +1374,10 @@ interface GerirColaboradorDialogProps {
 
 function GerirColaboradorDialog({
   colaborador,
+  setores,
+  unidades,
+  cidadesUnidades,
+  unidadesCarregando,
   onFechar,
   onSalvar,
   podeDarAdministracao,
@@ -1308,9 +1451,9 @@ function GerirColaboradorDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SETORES.map((opcao) => (
-                    <SelectItem key={opcao} value={opcao}>
-                      {opcao}
+                  {setores.map((opcao) => (
+                    <SelectItem key={opcao.id} value={opcao.nome}>
+                      {opcao.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1318,14 +1461,20 @@ function GerirColaboradorDialog({
             </Campo>
 
             <Campo rotulo="Unidade">
-              <Select value={unidade} onValueChange={setUnidade}>
+              <Select
+                value={unidade}
+                onValueChange={setUnidade}
+                disabled={unidadesCarregando}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {UNIDADES.map((opcao) => (
+                  {unidades.map((opcao) => (
                     <SelectItem key={opcao} value={opcao}>
-                      {opcao === "Matriz" ? "Matriz — Maracás/BA" : opcao}
+                      {opcao === "Matriz"
+                        ? `Matriz — ${cidadesUnidades.get(opcao) ?? "Maracás/BA"}`
+                        : opcao}
                     </SelectItem>
                   ))}
                 </SelectContent>

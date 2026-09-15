@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { COLABORADORES, SETORES, type Colaborador } from "@/lib/dados";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 
 export const Route = createFileRoute("/projetos-e-estrategias")({
@@ -35,6 +36,7 @@ export const Route = createFileRoute("/projetos-e-estrategias")({
 const TIPOS_PROJETO = ["Planejamento Estratégico", "Projeto"] as const;
 
 function ProjetosEEstrategias() {
+  const catalogo = useCatalogoOrganizacional();
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
 
   return (
@@ -77,7 +79,12 @@ function ProjetosEEstrategias() {
         Desenvolvido com 💙 pelos Desenvolvedores Orcoma Contabilidade
       </p>
 
-      <NovoProjetoDialog aberto={novoProjetoAberto} onFechar={() => setNovoProjetoAberto(false)} />
+      <NovoProjetoDialog
+        aberto={novoProjetoAberto}
+        setores={catalogo.setores}
+        colaboradores={catalogo.colaboradores}
+        onFechar={() => setNovoProjetoAberto(false)}
+      />
     </PanelShell>
   );
 }
@@ -98,10 +105,12 @@ function Campo({ rotulo, children }: CampoProps) {
 
 interface NovoProjetoDialogProps {
   aberto: boolean;
+  setores: string[];
+  colaboradores: Colaborador[];
   onFechar: () => void;
 }
 
-function NovoProjetoDialog({ aberto, onFechar }: NovoProjetoDialogProps) {
+function NovoProjetoDialog({ aberto, setores, colaboradores, onFechar }: NovoProjetoDialogProps) {
   const [codigo, setCodigo] = useState("PE-2026-02");
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<string>("Planejamento Estratégico");
@@ -197,7 +206,7 @@ function NovoProjetoDialog({ aberto, onFechar }: NovoProjetoDialogProps) {
                   <SelectValue placeholder="Selecionar responsável…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {COLABORADORES.map((col) => (
+                  {colaboradores.map((col) => (
                     <SelectItem key={col.id} value={col.id}>
                       {col.nome}
                     </SelectItem>
@@ -218,7 +227,7 @@ function NovoProjetoDialog({ aberto, onFechar }: NovoProjetoDialogProps) {
 
           <Campo rotulo="Setores envolvidos">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {SETORES.map((setor) => (
+              {setores.map((setor) => (
                 <label
                   key={setor}
                   htmlFor={`setor-projeto-${setor}`}
