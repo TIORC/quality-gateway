@@ -9,7 +9,7 @@
  */
 
 import { exigirCloud, lovableCloudConfigurado, supabase } from "@/integrations/supabase/client";
-import type { PopRow, PopSetorRow } from "@/integrations/supabase/types";
+import type { PopInsert, PopRow, PopSetorRow } from "@/integrations/supabase/types";
 
 /* -------------------------------------------------------------------------- */
 /* Domínio                                                                    */
@@ -286,7 +286,7 @@ async function listarSetoresCloud(): Promise<SetorPop[]> {
   const client = exigirCloud();
   const { data, error } = await client
     .from("pop_setores")
-    .select("id,nome,prefixo,categoria,icone,ordem")
+    .select("id,nome,prefixo,categoria,icone,ordem,created_at")
     .order("ordem", { ascending: true });
   if (error) throw traduzErro(error);
   return (data ?? []).map(setorDoRow);
@@ -374,10 +374,13 @@ function atualizarPopDemo(id: string, entrada: EntradaPop): Pop {
   const indice = popsDemo.findIndex((pop) => pop.id === id);
   if (indice === -1) throw new Error("POP não encontrado.");
   const original = popsDemo[indice];
+  if (!original) throw new Error("POP não encontrado.");
   const atualizado: Pop = {
     ...original,
-    id,
     ...entrada,
+    id,
+    favoritos: original.favoritos,
+    anotacoes: original.anotacoes,
   };
   popsDemo[indice] = atualizado;
   return atualizado;

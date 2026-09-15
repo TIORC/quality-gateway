@@ -15,6 +15,7 @@ export interface User {
   senha: string;
   role: UserRole;
   cargo: string;
+  setor: string;
   ativo: boolean;
 }
 
@@ -24,6 +25,7 @@ export interface UserSession {
   email: string;
   role: UserRole;
   cargo: string;
+  setor: string;
   loginAt: string;
 }
 
@@ -48,6 +50,7 @@ const USERS: User[] = [
     senha: "Orcoma@2026",
     role: "admin",
     cargo: "Administrador do Sistema",
+    setor: "TI",
     ativo: true,
   },
 ];
@@ -61,15 +64,13 @@ function buildSession(user: User): UserSession {
     email: user.email,
     role: user.role,
     cargo: user.cargo,
+    setor: user.setor,
     loginAt: new Date().toISOString(),
   };
 }
 
 function isValidRole(role: unknown): role is UserRole {
-  return (
-    typeof role === "string" &&
-    Object.prototype.hasOwnProperty.call(ROLE_LABELS, role)
-  );
+  return typeof role === "string" && Object.prototype.hasOwnProperty.call(ROLE_LABELS, role);
 }
 
 function readSession(): UserSession | null {
@@ -80,7 +81,7 @@ function readSession(): UserSession | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<UserSession> | null;
     if (!parsed?.email || !isValidRole(parsed.role)) return null;
-    return parsed as UserSession;
+    return { ...parsed, cargo: parsed.cargo ?? "", setor: parsed.setor ?? "" } as UserSession;
   } catch {
     return null;
   }
@@ -104,9 +105,7 @@ export function login(
 ): { ok: true; session: UserSession } | { ok: false; error: string } {
   const emailNormalizado = email.trim().toLowerCase();
 
-  const user = USERS.find(
-    (u) => u.email.toLowerCase() === emailNormalizado && u.ativo,
-  );
+  const user = USERS.find((u) => u.email.toLowerCase() === emailNormalizado && u.ativo);
 
   if (!user || user.senha !== senha) {
     return {

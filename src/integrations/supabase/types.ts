@@ -117,6 +117,57 @@ export type Database = {
           },
         ];
       };
+      planos_de_acao: {
+        Row: {
+          id: string;
+          titulo: string;
+          descricao: string;
+          detalhamento: string;
+          status: string;
+          origem: string;
+          setor: string;
+          prioridade: string;
+          responsavel_nome: string;
+          responsavel_email: string;
+          seguidores: string[];
+          prazo: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          titulo: string;
+          descricao?: string;
+          detalhamento?: string;
+          status?: string;
+          origem?: string;
+          setor?: string;
+          prioridade?: string;
+          responsavel_nome?: string;
+          responsavel_email?: string;
+          seguidores?: string[];
+          prazo?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          titulo?: string;
+          descricao?: string;
+          detalhamento?: string;
+          status?: string;
+          origem?: string;
+          setor?: string;
+          prioridade?: string;
+          responsavel_nome?: string;
+          responsavel_email?: string;
+          seguidores?: string[];
+          prazo?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -129,3 +180,6 @@ export type PopSetorRow = Database["public"]["Tables"]["pop_setores"]["Row"];
 export type PopRow = Database["public"]["Tables"]["pops"]["Row"];
 export type PopInsert = Database["public"]["Tables"]["pops"]["Insert"];
 export type PopUpdate = Database["public"]["Tables"]["pops"]["Update"];
+export type PlanoDeAcaoRow = Database["public"]["Tables"]["planos_de_acao"]["Row"];
+export type PlanoDeAcaoInsert = Database["public"]["Tables"]["planos_de_acao"]["Insert"];
+export type PlanoDeAcaoUpdate = Database["public"]["Tables"]["planos_de_acao"]["Update"];
