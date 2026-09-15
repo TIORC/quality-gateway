@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import logoWhite from "@/assets/logo-white.png.asset.json";
 
 const MOTIVATIONAL_PHRASES = [
   "Beba bastante aguá!",
@@ -87,7 +86,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
 
       <div className="relative flex flex-col items-center text-center">
         <img
-          src={logoWhite.url}
+          src="/favicon.png"
           alt="Logomarca da empresa"
           className="animate-brand-float h-20 w-20 object-contain"
         />

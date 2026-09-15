@@ -13,15 +13,16 @@ import {
   Settings,
   ShieldCheck,
   Target,
+  Users,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import logoWhite from "@/assets/logo-white.png.asset.json";
 import { getSession, isAdminSession, logout, type UserSession } from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const ICONS: Record<string, LucideIcon> = {
   Painel: LayoutDashboard,
@@ -33,6 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   Indicadores: BarChart3,
   Políticas: BookOpen,
   POPs: FileCheck,
+  Funcionários: Users,
   Configurações: Settings,
   "Disparo de Cobranças": Send,
 };
@@ -90,7 +92,7 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3 px-5 pb-5 pt-6">
-        <img src={logoWhite.url} alt="Logomarca da empresa" className="h-9 w-9 object-contain" />
+        <img src="/favicon.png" alt="Logomarca da empresa" className="h-9 w-9 object-contain" />
         <div>
           <h1 className="text-sm font-semibold leading-tight text-brand-foreground">
             Gestão da Qualidade
@@ -132,9 +134,10 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
       </nav>
 
       <div className="border-t border-brand-line p-3">
+        <ThemeToggle />
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-muted transition hover:bg-white/5 hover:text-brand-foreground"
+          className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-muted transition hover:bg-white/5 hover:text-brand-foreground"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           Sair

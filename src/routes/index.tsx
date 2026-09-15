@@ -1,7 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import logoWhite from "@/assets/logo-white.png.asset.json";
 import { isAuthenticated, login } from "@/lib/auth";
 
 export const Route = createFileRoute("/")({
@@ -72,7 +71,7 @@ function Login() {
         <section className="bg-surface-glass relative w-full max-w-md rounded-2xl border border-brand-line p-8 shadow-brand backdrop-blur-sm sm:p-10">
         <div className="flex flex-col items-center text-center">
           <img
-            src={logoWhite.url}
+            src="/favicon.png"
             alt="Logomarca da empresa"
             className="h-16 w-16 object-contain"
           />

@@ -14,6 +14,7 @@ import { Route as AtasDeReuniaoRouteImport } from './routes/atas-de-reuniao'
 import { Route as AuditoriasRouteImport } from './routes/auditorias'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as DisparoDeCobrancasRouteImport } from './routes/disparo-de-cobrancas'
+import { Route as FuncionariosRouteImport } from './routes/funcionarios'
 import { Route as IndicadoresRouteImport } from './routes/indicadores'
 import { Route as LoadingRouteImport } from './routes/loading'
 import { Route as OcorrenciasRouteImport } from './routes/ocorrencias'
@@ -46,6 +47,11 @@ const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
 const DisparoDeCobrancasRoute = DisparoDeCobrancasRouteImport.update({
   id: '/disparo-de-cobrancas',
   path: '/disparo-de-cobrancas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FuncionariosRoute = FuncionariosRouteImport.update({
+  id: '/funcionarios',
+  path: '/funcionarios',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndicadoresRoute = IndicadoresRouteImport.update({
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
+  '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
   '/ocorrencias': typeof OcorrenciasRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
+  '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
   '/ocorrencias': typeof OcorrenciasRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
+  '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
   '/ocorrencias': typeof OcorrenciasRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/auditorias'
     | '/configuracoes'
     | '/disparo-de-cobrancas'
+    | '/funcionarios'
     | '/indicadores'
     | '/loading'
     | '/ocorrencias'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/auditorias'
     | '/configuracoes'
     | '/disparo-de-cobrancas'
+    | '/funcionarios'
     | '/indicadores'
     | '/loading'
     | '/ocorrencias'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/auditorias'
     | '/configuracoes'
     | '/disparo-de-cobrancas'
+    | '/funcionarios'
     | '/indicadores'
     | '/loading'
     | '/ocorrencias'
@@ -189,6 +201,7 @@ export interface RootRouteChildren {
   AuditoriasRoute: typeof AuditoriasRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   DisparoDeCobrancasRoute: typeof DisparoDeCobrancasRoute
+  FuncionariosRoute: typeof FuncionariosRoute
   IndicadoresRoute: typeof IndicadoresRoute
   LoadingRoute: typeof LoadingRoute
   OcorrenciasRoute: typeof OcorrenciasRoute
@@ -234,6 +247,13 @@ declare module '@tanstack/react-router' {
       path: '/disparo-de-cobrancas'
       fullPath: '/disparo-de-cobrancas'
       preLoaderRoute: typeof DisparoDeCobrancasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/funcionarios': {
+      id: '/funcionarios'
+      path: '/funcionarios'
+      fullPath: '/funcionarios'
+      preLoaderRoute: typeof FuncionariosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/indicadores': {
@@ -301,6 +321,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditoriasRoute: AuditoriasRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   DisparoDeCobrancasRoute: DisparoDeCobrancasRoute,
+  FuncionariosRoute: FuncionariosRoute,
   IndicadoresRoute: IndicadoresRoute,
   LoadingRoute: LoadingRoute,
   OcorrenciasRoute: OcorrenciasRoute,
