@@ -16,8 +16,11 @@ import {
   Label,
 } from "recharts";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
-import { supabase, lovableCloudConfigurado } from "@/integrations/supabase/client";
-import type { PlanoDeAcaoRow } from "@/integrations/supabase/types";
+import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
+
+type PlanoDeAcaoRow = Tables<"planos_de_acao">;
+
 import { logout, getSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
