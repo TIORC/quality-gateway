@@ -328,11 +328,8 @@ function Painel() {
 
   useEffect(() => {
     async function carregar() {
-      if (!lovableCloudConfigurado || !supabase) {
-        setCarregando(false);
-        return;
-      }
       try {
+
         const { data, error } = await supabase
           .from("planos_de_acao")
           .select("*")
