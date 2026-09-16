@@ -13,6 +13,7 @@ import {
   FileCheck,
   FileText,
   LayoutGrid,
+  Layers,
   Link2,
   Loader2,
   MessageSquare,
@@ -82,6 +83,8 @@ import {
   REGIMES,
   ROTULO_TIPO_ANEXO,
   aplicarContadores,
+  aprovarPopLiderProcesso,
+  aprovarPopLiderQualidade,
   assinarAnotacoesPop,
   assinarContadoresPops,
   assinarNotificacoes,
@@ -104,9 +107,13 @@ import {
   listarAnotacoes,
   listarLeiturasPop,
   marcarNotificacaoLida,
+  podeAprovarLiderProcesso,
+  podeAprovarLiderQualidade,
+  podeElaborarPops,
   registrarLeitura,
   registrarVisualizacao,
   rotuloDoValor,
+  STATUS_POP,
   textoDoAnexoOffice,
   urlAssinadaDoAnexo,
   ENTRADA_PADRAO,
@@ -118,6 +125,7 @@ import {
   type PopEtapa,
   type PopLeitura,
   type SetorPop,
+  type StatusPop,
 } from "@/lib/pops";
 import { cn } from "@/lib/utils";
 
@@ -149,10 +157,33 @@ const ICONES_SETOR: Record<string, LucideIcon> = {
   monitor: MonitorSmartphone,
   building: Building2,
   briefcase: CreditCard,
+  layers: Layers,
 };
 
 function iconeDoSetor(chave: string): LucideIcon {
   return ICONES_SETOR[chave] ?? LayoutGrid;
+}
+
+/** Selo colorido do status de ciclo de vida de um POP. */
+function StatusBadge({ status }: { status: StatusPop }) {
+  const classes =
+    status === STATUS_POP.VIGENTE
+      ? "bg-[#ECFDF5] text-[#059669]"
+      : status === STATUS_POP.REVISANDO || status === STATUS_POP.REVISADO
+        ? "bg-[#FEF3C7] text-[#B45309]"
+        : status === STATUS_POP.PENDENTE_LIDER_PROCESSO
+          ? "bg-[#FFF7ED] text-[#EA580C]"
+          : "bg-[#FFF1F2] text-[#E11D48]";
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wide",
+        classes,
+      )}
+    >
+      {rotuloDoValor(status)}
+    </span>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -317,6 +348,7 @@ function CardSetor({ nome, chaveIcone, contagem, aoClicar, destaque = false }: C
 interface PopCardProps {
   pop: Pop;
   favoritado: boolean;
+  podeElaborar: boolean;
   onAbrir: (pop: Pop) => void;
   onEditar: (pop: Pop) => void;
   onDuplicar: (pop: Pop) => void;
@@ -328,6 +360,7 @@ interface PopCardProps {
 function PopCard({
   pop,
   favoritado,
+  podeElaborar,
   onAbrir,
   onEditar,
   onDuplicar,
@@ -342,6 +375,7 @@ function PopCard({
           <span className="shrink-0 rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
             {pop.codigo}
           </span>
+          <StatusBadge status={pop.status} />
           <button
             type="button"
             onClick={() => onAbrir(pop)}
@@ -386,33 +420,35 @@ function PopCard({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
             Prazo e controles
           </p>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-[#64748B]"
-                aria-label="Ações do POP"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEditar(pop)}>
-                <Edit3 className="h-4 w-4" /> Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDuplicar(pop)}>
-                <Copy className="h-4 w-4" /> Duplicar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() => onExcluir(pop)}
-              >
-                <Trash2 className="h-4 w-4" /> Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {podeElaborar ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[#64748B]"
+                  aria-label="Ações do POP"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEditar(pop)}>
+                  <Edit3 className="h-4 w-4" /> Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onDuplicar(pop)}>
+                  <Copy className="h-4 w-4" /> Duplicar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => onExcluir(pop)}
+                >
+                  <Trash2 className="h-4 w-4" /> Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
 
         <div className="flex-1 space-y-2.5 px-4 py-3">
@@ -530,11 +566,19 @@ interface GradeProps {
   setores: SetorPop[];
   contagens: Record<string, number>;
   totalPops: number;
+  podeElaborar: boolean;
   aoAbrirSetor: (id: string) => void;
   aoCriar: () => void;
 }
 
-function GradeDeSetores({ setores, contagens, totalPops, aoAbrirSetor, aoCriar }: GradeProps) {
+function GradeDeSetores({
+  setores,
+  contagens,
+  totalPops,
+  podeElaborar,
+  aoAbrirSetor,
+  aoCriar,
+}: GradeProps) {
   return (
     <>
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -549,10 +593,12 @@ function GradeDeSetores({ setores, contagens, totalPops, aoAbrirSetor, aoCriar }
             Selecione um setor para navegar pelos POPs cadastrados.
           </p>
         </div>
-        <Button className="shrink-0" onClick={aoCriar}>
-          <Plus className="h-4 w-4" />
-          Novo POP
-        </Button>
+        {podeElaborar ? (
+          <Button className="shrink-0" onClick={aoCriar}>
+            <Plus className="h-4 w-4" />
+            Novo POP
+          </Button>
+        ) : null}
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -593,6 +639,7 @@ interface ListaProps {
   aoVoltar: () => void;
   aoCriar: () => void;
   onAbrir: (pop: Pop) => void;
+  podeElaborar: boolean;
   favoritos: string[];
   aoEditar: (pop: Pop) => void;
   aoDuplicar: (pop: Pop) => void;
@@ -613,6 +660,7 @@ function ListaDePops({
   aoVoltar,
   aoCriar,
   onAbrir,
+  podeElaborar,
   favoritos,
   aoEditar,
   aoDuplicar,
@@ -646,10 +694,12 @@ function ListaDePops({
             </p>
           </div>
         </div>
-        <Button className="shrink-0" onClick={aoCriar}>
-          <Plus className="h-4 w-4" />
-          Novo POP
-        </Button>
+        {podeElaborar ? (
+          <Button className="shrink-0" onClick={aoCriar}>
+            <Plus className="h-4 w-4" />
+            Novo POP
+          </Button>
+        ) : null}
       </header>
 
       <div className="relative mb-4">
@@ -681,6 +731,7 @@ function ListaDePops({
               key={pop.id}
               pop={pop}
               favoritado={favoritos.includes(pop.id)}
+              podeElaborar={podeElaborar}
               onAbrir={onAbrir}
               onEditar={aoEditar}
               onDuplicar={aoDuplicar}
@@ -819,10 +870,14 @@ function PopFormDialog({
       let popSalvo: Pop;
       if (pop) {
         popSalvo = await atualizarPop(pop.id, dados);
-        toast.success("POP atualizado com sucesso");
+        toast.success(
+          popSalvo.status === STATUS_POP.REVISANDO
+            ? "POP atualizado — entrou em revisão e precisa ser aprovado novamente"
+            : "POP atualizado com sucesso",
+        );
       } else {
         popSalvo = await criarPop(dados);
-        toast.success("POP criado com sucesso");
+        toast.success("POP criado — aguardando aprovação do líder do setor");
       }
       if (anexoNovo) {
         await enviarAnexoPop(popSalvo.id, anexoNovo);
@@ -847,6 +902,11 @@ function PopFormDialog({
               ? "Ajuste os dados do procedimento e salve as alterações."
               : "Cadastre o procedimento operacional padrão."}
           </DialogDescription>
+          {pop && (pop.status === STATUS_POP.VIGENTE || pop.status === STATUS_POP.REVISADO) ? (
+            <p className="mt-2 rounded-lg bg-[#FEF3C7] px-3 py-2 text-[12.5px] leading-relaxed text-[#92400E]">
+              {`Este POP está ${pop.status === STATUS_POP.VIGENTE ? "vigente" : "revisado"}. Ao salvar, ele passará para EM REVISÃO e precisará ser aprovado de novo (líder do setor e liderança da Qualidade) para voltar a valer.`}
+            </p>
+          ) : null}
         </DialogHeader>
 
         <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
@@ -1400,13 +1460,58 @@ function SecaoCiencia({
 
 interface PopDetalheProps {
   pop: Pop;
+  setores: SetorPop[];
   onFechar: () => void;
+  onAtualizado: () => void;
 }
 
-function PopDetalhe({ pop, onFechar }: PopDetalheProps) {
+function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
+  const [popExibido, setPopExibido] = useState(pop);
+  useEffect(() => setPopExibido(pop), [pop]);
+
   const sessao = getSession();
   const email = sessao?.email ?? "";
   const nome = sessao?.nome ?? "";
+  const [aprovando, setAprovando] = useState(false);
+  const nomeSetorDoPop = setores.find((s) => s.id === popExibido.setorId)?.nome ?? "";
+
+  const aguardaLiderProcesso =
+    popExibido.status === STATUS_POP.PENDENTE_LIDER_PROCESSO ||
+    popExibido.status === STATUS_POP.REVISANDO;
+  const aguardaLiderQualidade =
+    popExibido.status === STATUS_POP.PENDENTE_LIDER_QUALIDADE ||
+    popExibido.status === STATUS_POP.REVISADO;
+  const podeAprovarEtapa1 =
+    aguardaLiderProcesso && podeAprovarLiderProcesso(sessao, popExibido, nomeSetorDoPop);
+  const podeAprovarEtapa2 = aguardaLiderQualidade && podeAprovarLiderQualidade(sessao);
+
+  async function aprovarEtapa1() {
+    setAprovando(true);
+    try {
+      const atualizado = await aprovarPopLiderProcesso(popExibido.id);
+      setPopExibido((atual) => ({ ...atual, ...atualizado }));
+      toast.success("Aprovação do líder registrada — POP enviado à liderança da Qualidade");
+      onAtualizado();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível aprovar o POP");
+    } finally {
+      setAprovando(false);
+    }
+  }
+
+  async function aprovarEtapa2() {
+    setAprovando(true);
+    try {
+      const atualizado = await aprovarPopLiderQualidade(popExibido.id);
+      setPopExibido((atual) => ({ ...atual, ...atualizado }));
+      toast.success("POP aprovado pela Qualidade — agora está VIGENTE");
+      onAtualizado();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível aprovar o POP");
+    } finally {
+      setAprovando(false);
+    }
+  }
 
   const [leitura, setLeitura] = useState<PopLeitura | null>(null);
   const [todasLeituras, setTodasLeituras] = useState<PopLeitura[]>([]);
@@ -1418,23 +1523,23 @@ function PopDetalhe({ pop, onFechar }: PopDetalheProps) {
     setLeitura(null);
     setComposerAberto(false);
     setJustificativa("");
-  }, [pop.id]);
+  }, [popExibido.id]);
 
   useEffect(() => {
     if (!email) return;
     let ativo = true;
-    void registrarVisualizacao(pop.id, { email, nome }).catch(() => undefined);
-    void Promise.all([carregarLeiturasDoUsuario(email), listarLeiturasPop(pop.id)])
+    void registrarVisualizacao(popExibido.id, { email, nome }).catch(() => undefined);
+    void Promise.all([carregarLeiturasDoUsuario(email), listarLeiturasPop(popExibido.id)])
       .then(([minhas, todas]) => {
         if (!ativo) return;
-        setLeitura(minhas[pop.id] ?? null);
+        setLeitura(minhas[popExibido.id] ?? null);
         setTodasLeituras(todas);
       })
       .catch(() => undefined);
     return () => {
       ativo = false;
     };
-  }, [email, nome, pop.id]);
+  }, [email, nome, popExibido.id]);
 
   async function registrar(decisao: DecisaoLeitura) {
     if (!email) {
@@ -1480,9 +1585,68 @@ function PopDetalhe({ pop, onFechar }: PopDetalheProps) {
       </div>
 
       <article className="rounded-2xl border border-[#D9E0EA] bg-white p-5 shadow-sm sm:p-7">
-        <h2 className="text-lg font-bold tracking-tight text-[#1F2937] sm:text-xl">{pop.titulo}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="flex-1 text-lg font-bold tracking-tight text-[#1F2937] sm:text-xl">
+            {pop.titulo}
+          </h2>
+          <StatusBadge status={popExibido.status} />
+        </div>
         {pop.descricao ? (
           <p className="mt-2 text-[13.5px] leading-relaxed text-[#64748B]">{pop.descricao}</p>
+        ) : null}
+
+        {popExibido.status !== STATUS_POP.VIGENTE ? (
+          <div className="mt-4 space-y-2 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
+            <p className="text-[12.5px] font-semibold text-[#1F2937]">
+              Status: {rotuloDoValor(popExibido.status)}
+            </p>
+            {popExibido.criadoPorNome ? (
+              <p className="text-[12.5px] text-[#64748B]">
+                Elaborado por {popExibido.criadoPorNome}
+              </p>
+            ) : null}
+            {popExibido.aprovadoProcessoNome ? (
+              <p className="text-[12.5px] text-[#64748B]">
+                Aprovado pelo líder do processo por {popExibido.aprovadoProcessoNome}
+              </p>
+            ) : null}
+            {aguardaLiderProcesso && !podeAprovarEtapa1 ? (
+              <p className="text-[12.5px] text-[#64748B]">
+                Aguardando aprovação do líder do processo/setor.
+              </p>
+            ) : null}
+            {aguardaLiderQualidade && !podeAprovarEtapa2 ? (
+              <p className="text-[12.5px] text-[#64748B]">
+                Aguardando aprovação da liderança da Qualidade.
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {podeAprovarEtapa1 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={aprovando}
+                  onClick={() => void aprovarEtapa1()}
+                  className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                >
+                  {aprovando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Aprovar como líder do processo
+                </Button>
+              ) : null}
+              {podeAprovarEtapa2 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={aprovando}
+                  onClick={() => void aprovarEtapa2()}
+                  className="bg-[#047857] text-white hover:bg-[#059669]"
+                >
+                  {aprovando ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Aprovar como liderança da Qualidade
+                </Button>
+              ) : null}
+            </div>
+          </div>
         ) : null}
 
         <div className="mt-5 space-y-3 border-t border-[#E9EEF5] pt-5">
@@ -1768,6 +1932,7 @@ function Pops() {
   const [popAberto, setPopAberto] = useState<Pop | null>(null);
 
   const sessao = getSession();
+  const podeElaborar = podeElaborarPops(sessao);
   const emailUsuario = sessao?.email ?? "";
   const colaboradorIdUsuario = sessao?.colaboradorId ?? "";
   const [favoritosMeus, setFavoritosMeus] = useState<string[]>([]);
@@ -1966,7 +2131,14 @@ function Pops() {
 
   let conteudo: ReactNode;
   if (popAberto) {
-    conteudo = <PopDetalhe pop={popAberto} onFechar={() => setPopAberto(null)} />;
+    conteudo = (
+      <PopDetalhe
+        pop={popAberto}
+        setores={setores}
+        onFechar={() => setPopAberto(null)}
+        onAtualizado={buscarDados}
+      />
+    );
   } else if (carregando) {
     conteudo = (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
@@ -1980,6 +2152,7 @@ function Pops() {
         setores={setores}
         contagens={contagens}
         totalPops={pops.length}
+        podeElaborar={podeElaborar}
         aoAbrirSetor={navegarParaSetor}
         aoCriar={abrirCriacao}
       />
@@ -1998,6 +2171,7 @@ function Pops() {
         aoVoltar={voltarParaGrade}
         aoCriar={abrirCriacao}
         onAbrir={aoAbrirPop}
+        podeElaborar={podeElaborar}
         aoEditar={abrirEdicao}
         aoDuplicar={(p) => void duplicar(p)}
         aoExcluir={(p) => setPopExcluindo(p)}

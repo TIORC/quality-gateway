@@ -450,6 +450,12 @@ export type Database = {
       pops: {
         Row: {
           anotacoes: number;
+          aprovado_processo_em: string | null;
+          aprovado_processo_nome: string;
+          aprovado_processo_por: string;
+          aprovado_qualidade_em: string | null;
+          aprovado_qualidade_nome: string;
+          aprovado_qualidade_por: string;
           arquivo: string | null;
           arquivo_nome: string | null;
           arquivo_path: string | null;
@@ -459,6 +465,8 @@ export type Database = {
           categoria: string;
           codigo: string;
           created_at: string;
+          criado_por: string;
+          criado_por_nome: string;
           departamento: string;
           descricao: string;
           dia_inicio: number | null;
@@ -477,11 +485,18 @@ export type Database = {
           prazo_referencia: string;
           regime: string;
           setor_id: string;
+          status: string;
           titulo: string;
           updated_at: string;
         };
         Insert: {
           anotacoes?: number;
+          aprovado_processo_em?: string | null;
+          aprovado_processo_nome?: string;
+          aprovado_processo_por?: string;
+          aprovado_qualidade_em?: string | null;
+          aprovado_qualidade_nome?: string;
+          aprovado_qualidade_por?: string;
           arquivo?: string | null;
           arquivo_nome?: string | null;
           arquivo_path?: string | null;
@@ -491,6 +506,8 @@ export type Database = {
           categoria?: string;
           codigo: string;
           created_at?: string;
+          criado_por?: string;
+          criado_por_nome?: string;
           departamento?: string;
           descricao?: string;
           dia_inicio?: number | null;
@@ -509,11 +526,18 @@ export type Database = {
           prazo_referencia?: string;
           regime?: string;
           setor_id: string;
+          status?: string;
           titulo: string;
           updated_at?: string;
         };
         Update: {
           anotacoes?: number;
+          aprovado_processo_em?: string | null;
+          aprovado_processo_nome?: string;
+          aprovado_processo_por?: string;
+          aprovado_qualidade_em?: string | null;
+          aprovado_qualidade_nome?: string;
+          aprovado_qualidade_por?: string;
           arquivo?: string | null;
           arquivo_nome?: string | null;
           arquivo_path?: string | null;
@@ -523,6 +547,8 @@ export type Database = {
           categoria?: string;
           codigo?: string;
           created_at?: string;
+          criado_por?: string;
+          criado_por_nome?: string;
           departamento?: string;
           descricao?: string;
           dia_inicio?: number | null;
@@ -541,6 +567,7 @@ export type Database = {
           prazo_referencia?: string;
           regime?: string;
           setor_id?: string;
+          status?: string;
           titulo?: string;
           updated_at?: string;
         };

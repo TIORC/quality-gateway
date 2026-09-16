@@ -7,7 +7,7 @@
 
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
-import type { UserSession } from "@/lib/auth";
+import { getSession, type UserSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR } from "@/lib/niveis-acesso";
 import { veSomenteLiberados } from "@/lib/permissoes";
 
@@ -75,6 +75,22 @@ export interface Pop {
   etapas?: PopEtapa[];
   /** Anexo (WORD/PDF) guardado no bucket privado `pop-anexos`. */
   anexo?: PopAnexo | null;
+  /** Status do ciclo de vida (dupla aprovação antes de VIGENTE). */
+  status: StatusPop;
+  /** Identificação de quem criou/elaborou o POP. */
+  criadoPor: string;
+  /** Nome de quem criou/elaborou o POP. */
+  criadoPorNome: string;
+  /** Quem aprovou a 1ª etapa (líder do processo/setor). */
+  aprovadoProcessoPor: string;
+  aprovadoProcessoNome: string;
+  /** Quando a 1ª etapa foi aprovada. */
+  aprovadoProcessoEm: string | null;
+  /** Quem aprovou a 2ª etapa (liderança da Qualidade). */
+  aprovadoQualidadePor: string;
+  aprovadoQualidadeNome: string;
+  /** Quando a 2ª etapa foi aprovada. */
+  aprovadoQualidadeEm: string | null;
 }
 
 /** Um passo do procedimento. */
@@ -149,7 +165,41 @@ export interface UsuarioFavorito {
 }
 
 /** Dados editáveis de um POP (contadores entram com zero no cadastro). */
-export type EntradaPop = Omit<Pop, "id" | "favoritos" | "anotacoes">;
+export type EntradaPop = Omit<
+  Pop,
+  | "id"
+  | "favoritos"
+  | "anotacoes"
+  | "status"
+  | "criadoPor"
+  | "criadoPorNome"
+  | "aprovadoProcessoPor"
+  | "aprovadoProcessoNome"
+  | "aprovadoProcessoEm"
+  | "aprovadoQualidadePor"
+  | "aprovadoQualidadeNome"
+  | "aprovadoQualidadeEm"
+>;
+
+/* -------------------------------------------------------------------------- */
+/* Ciclo de vida do POP (dupla aprovação)                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Status do ciclo de vida do POP, gravado em `pops.status` (texto). */
+export const STATUS_POP = {
+  /** Aguardando o líder do processo/setor aprovar. */
+  PENDENTE_LIDER_PROCESSO: "PENDENTE_APROVACAO_LIDER_PROCESSO",
+  /** Aprovado pelo líder; aguardando a liderança da Qualidade. */
+  PENDENTE_LIDER_QUALIDADE: "PENDENTE_APROVACAO_LIDER_QUALIDADE",
+  /** Publicado e em vigor. */
+  VIGENTE: "VIGENTE",
+  /** POP vigente foi editado e está em revisão (aguardando o líder). */
+  REVISANDO: "REVISANDO",
+  /** Revisão aprovada pelo líder; aguardando a liderança da Qualidade. */
+  REVISADO: "REVISADO",
+} as const;
+
+export type StatusPop = (typeof STATUS_POP)[keyof typeof STATUS_POP];
 
 /* -------------------------------------------------------------------------- */
 /* Opções aceitas pelo banco                                                  */
@@ -236,6 +286,11 @@ const ROTULOS: Record<string, string> = {
   DIRECAO: "DIREÇÃO",
   GERAL: "GERAL",
   FISCAL: "FISCAL",
+  PENDENTE_APROVACAO_LIDER_PROCESSO: "PENDENTE APROVAÇÃO LIDER DO PROCESSO",
+  PENDENTE_APROVACAO_LIDER_QUALIDADE: "PENDENTE APROVAÇÃO LIDER DA QUALIDADE",
+  VIGENTE: "VIGENTE",
+  REVISANDO: "REVISANDO",
+  REVISADO: "REVISADO",
 };
 
 /** Converte o valor gravado no banco no rótulo exibido (ex.: `MES_ANTERIOR`). */
@@ -310,6 +365,15 @@ function popDoRow(row: PopRow): Pop {
           tamanho: row.arquivo_tamanho,
         }
       : null,
+    status: (row.status ?? STATUS_POP.VIGENTE) as StatusPop,
+    criadoPor: row.criado_por,
+    criadoPorNome: row.criado_por_nome,
+    aprovadoProcessoPor: row.aprovado_processo_por,
+    aprovadoProcessoNome: row.aprovado_processo_nome,
+    aprovadoProcessoEm: row.aprovado_processo_em,
+    aprovadoQualidadePor: row.aprovado_qualidade_por,
+    aprovadoQualidadeNome: row.aprovado_qualidade_nome,
+    aprovadoQualidadeEm: row.aprovado_qualidade_em,
   };
 }
 
@@ -505,11 +569,80 @@ export async function carregarPops(): Promise<{
   return { setores, pops: aplicarContadores(pops, contadores) };
 }
 
+/** Nome de setor normalizado (sem acentos, minúsculo) para comparações. */
+function normalizarSetor(nome: string | null | undefined): string {
+  return (nome ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/** Indica se o usuário pertence ao setor da Qualidade. */
+export function ehSetorQualidade(sessao: UserSession | null | undefined): boolean {
+  return normalizarSetor(sessao?.setor) === "qualidade";
+}
+
+/** Quem pode criar/editar POPs: apenas o setor da Qualidade. */
+export function podeElaborarPops(sessao: UserSession | null | undefined): boolean {
+  return ehSetorQualidade(sessao);
+}
+
+/**
+ * Liderança da Qualidade: aprova a 2ª etapa. O Auxiliar da Qualidade
+ * elabora/apura, mas não libera (não passa por aqui).
+ */
+export function podeAprovarLiderQualidade(sessao: UserSession | null | undefined): boolean {
+  if (!sessao) return false;
+  if (sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
+  return sessao.role === "gestor" || sessao.nivelAcesso === "Gestor da Qualidade";
+}
+
+/**
+ * Líder do processo/setor: aprova a 1ª etapa. Em POP setorial, precisa ser
+ * "Líder de setor" do mesmo setor do POP. Em POP geral, qualquer líder de
+ * setor (ou a liderança da Qualidade) pode aprovar.
+ */
+export function podeAprovarLiderProcesso(
+  sessao: UserSession | null | undefined,
+  pop: Pick<Pop, "setorId">,
+  nomeSetorDoPop: string | null | undefined,
+): boolean {
+  if (!sessao || sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
+  const ehLiderDeSetor = sessao.nivelAcesso === "Líder de setor";
+  if (pop.setorId === "geral") return ehLiderDeSetor || podeAprovarLiderQualidade(sessao);
+  return ehLiderDeSetor && normalizarSetor(sessao.setor) === normalizarSetor(nomeSetorDoPop);
+}
+
+/** Sessão usada como autor na criação e nas aprovações. */
+function autorDaSessao(): { id: string; nome: string } {
+  const sessao = getSession();
+  return {
+    id: sessao?.colaboradorId || sessao?.id || "",
+    nome: sessao?.nome ?? "",
+  };
+}
+
+/** Busca um POP pelo id (linha crua, sem normalização de contadores). */
+async function buscarPopCloud(id: string): Promise<Pop> {
+  const client = exigirCloud();
+  const { data, error } = await client.from("pops").select("*").eq("id", id).maybeSingle();
+  if (error) throw traduzErro(error);
+  if (!data) throw new Error("POP não encontrado.");
+  return popDoRow(data);
+}
+
 async function criarPopCloud(entrada: EntradaPop): Promise<Pop> {
+  const autor = autorDaSessao();
   const client = exigirCloud();
   const { data, error } = await client
     .from("pops")
-    .insert(popParaInsercao(entrada))
+    .insert({
+      ...popParaInsercao(entrada),
+      status: STATUS_POP.PENDENTE_LIDER_PROCESSO,
+      criado_por: autor.id,
+      criado_por_nome: autor.nome,
+    })
     .select()
     .single();
   if (error) throw traduzErro(error);
@@ -517,11 +650,86 @@ async function criarPopCloud(entrada: EntradaPop): Promise<Pop> {
   return popDoRow(data);
 }
 
+/** Status após uma edição: vigente/revisado voltam ao início da revisão. */
+function statusAposEdicao(statusAtual: StatusPop): StatusPop {
+  if (statusAtual === STATUS_POP.VIGENTE || statusAtual === STATUS_POP.REVISADO) {
+    return STATUS_POP.REVISANDO;
+  }
+  return statusAtual;
+}
+
 async function atualizarPopCloud(id: string, entrada: EntradaPop): Promise<Pop> {
+  const atual = await buscarPopCloud(id);
+  const status = statusAposEdicao(atual.status);
+  const atualizacao: PopInsert = { ...popParaInsercao(entrada), status };
+  if (status === STATUS_POP.REVISANDO) {
+    atualizacao.aprovado_processo_por = "";
+    atualizacao.aprovado_processo_nome = "";
+    atualizacao.aprovado_processo_em = null;
+    atualizacao.aprovado_qualidade_por = "";
+    atualizacao.aprovado_qualidade_nome = "";
+    atualizacao.aprovado_qualidade_em = null;
+  }
   const client = exigirCloud();
   const { data, error } = await client
     .from("pops")
-    .update(popParaInsercao(entrada))
+    .update(atualizacao)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw traduzErro(error);
+  if (!data) throw new Error("POP não encontrado.");
+  return popDoRow(data);
+}
+
+/** Aprova a 1ª etapa (líder do processo/setor). */
+export async function aprovarPopLiderProcesso(id: string): Promise<Pop> {
+  const atual = await buscarPopCloud(id);
+  let proximo: StatusPop;
+  if (atual.status === STATUS_POP.PENDENTE_LIDER_PROCESSO) {
+    proximo = STATUS_POP.PENDENTE_LIDER_QUALIDADE;
+  } else if (atual.status === STATUS_POP.REVISANDO) {
+    proximo = STATUS_POP.REVISADO;
+  } else {
+    throw new Error("Este POP não aguarda aprovação do líder do processo.");
+  }
+  const autor = autorDaSessao();
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("pops")
+    .update({
+      status: proximo,
+      aprovado_processo_por: autor.id,
+      aprovado_processo_nome: autor.nome,
+      aprovado_processo_em: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw traduzErro(error);
+  if (!data) throw new Error("POP não encontrado.");
+  return popDoRow(data);
+}
+
+/** Aprova a 2ª etapa (liderança da Qualidade) — o POP passa a VIGENTE. */
+export async function aprovarPopLiderQualidade(id: string): Promise<Pop> {
+  const atual = await buscarPopCloud(id);
+  if (
+    atual.status !== STATUS_POP.PENDENTE_LIDER_QUALIDADE &&
+    atual.status !== STATUS_POP.REVISADO
+  ) {
+    throw new Error("Este POP não aguarda aprovação da liderança da Qualidade.");
+  }
+  const autor = autorDaSessao();
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("pops")
+    .update({
+      status: STATUS_POP.VIGENTE,
+      aprovado_qualidade_por: autor.id,
+      aprovado_qualidade_nome: autor.nome,
+      aprovado_qualidade_em: new Date().toISOString(),
+    })
     .eq("id", id)
     .select()
     .single();
@@ -674,17 +882,32 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
   if (!session) return base;
 
   try {
+    // Só o setor da Qualidade e os aprovadores (líder de setor / liderança da
+    // Qualidade) enxergam POPs fora de VIGENTE; os demais veem só os vigentes.
+    const setorQualidade = ehSetorQualidade(session);
+    const vePendentes =
+      setorQualidade ||
+      session.nivelAcesso === "Líder de setor" ||
+      podeAprovarLiderQualidade(session);
+
+    let pops = base.pops.filter((pop) => vePendentes || pop.status === STATUS_POP.VIGENTE);
+
     if (veSomenteLiberados(session)) {
       if (!session.colaboradorId) return { ...base, pops: [] };
       const ids = new Set(await listarDocumentosLiberados(session.colaboradorId, "pop"));
-      return { ...base, pops: base.pops.filter((pop) => ids.has(pop.id)) };
+      return { ...base, pops: pops.filter((pop) => ids.has(pop.id)) };
     }
 
-    const filtramPorSetor = NIVEIS_FILTRAM_POR_SETOR.has(session.nivelAcesso);
-    const prefixo = filtramPorSetor ? prefixoDoSetor(session.setor ?? "") : null;
-    if (prefixo) {
-      return { ...base, pops: base.pops.filter((pop) => pop.codigo.startsWith(prefixo)) };
+    // Colaboradores e líderes seguem vendo apenas o próprio setor (e o "Geral");
+    // o setor da Qualidade vê todos os setores.
+    if (!setorQualidade) {
+      const filtramPorSetor = NIVEIS_FILTRAM_POR_SETOR.has(session.nivelAcesso);
+      const prefixo = filtramPorSetor ? prefixoDoSetor(session.setor ?? "") : null;
+      if (prefixo) {
+        pops = pops.filter((pop) => pop.codigo.startsWith(prefixo) || pop.codigo.startsWith("GER"));
+      }
     }
+    return { ...base, pops };
   } catch {
     // Sem a tabela de liberações (migration pendente): segue sem filtro extra.
   }
