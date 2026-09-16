@@ -23,7 +23,12 @@ type PlanoDeAcaoRow = Tables<"planos_de_acao">;
 
 import { logout, getSession } from "@/lib/auth";
 import { carregarEmpresaPrincipal, type Empresa } from "@/lib/organizacao";
-import { cn, formatarDataLongaBrasilia, formatarHoraBrasilia } from "@/lib/utils";
+import {
+  cn,
+  formatarDataLongaBrasilia,
+  formatarHoraBrasilia,
+  saudacaoPorHorarioBrasilia,
+} from "@/lib/utils";
 
 export const Route = createFileRoute("/painel")({
   head: () => ({
@@ -310,6 +315,10 @@ function Painel() {
   // cliente (o relógio é recalculado a cada segundo) para não divergir do HTML
   // gerado no servidor durante a hidratação.
   const [horaAtual, setHoraAtual] = useState<string | null>(null);
+  // Saudação do cabeçalho conforme o horário real. Começa em "Bom dia" e é
+  // recalculada no cliente (junto do relógio) para não divergir do HTML
+  // gerado no servidor durante a hidratação.
+  const [saudacao, setSaudacao] = useState("Bom dia");
   // Empresa (nome + filial) do cabeçalho. Fica nula enquanto não houver
   // nenhuma empresa cadastrada no banco — nesse caso nada é exibido.
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -331,9 +340,12 @@ function Painel() {
   // entre navegadores/servidores de fusos diferentes.
   const dataHoje = formatarDataLongaBrasilia();
 
-  // Relógio do cabeçalho: atualiza o horário de Brasília a cada segundo.
+  // Relógio do cabeçalho: atualiza o horário e a saudação de Brasília a cada segundo.
   useEffect(() => {
-    const atualizarHora = () => setHoraAtual(formatarHoraBrasilia());
+    const atualizarHora = () => {
+      setHoraAtual(formatarHoraBrasilia());
+      setSaudacao(saudacaoPorHorarioBrasilia());
+    };
     atualizarHora();
     const intervalo = window.setInterval(atualizarHora, 1000);
     return () => window.clearInterval(intervalo);
@@ -487,7 +499,7 @@ function Painel() {
             {setorUsuario} · {cargoUsuario}
           </p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#1F2937] sm:text-[26px]">
-            Bom dia, {nomeUsuario.split(" ")[0]}.
+            {saudacao}, {nomeUsuario.split(" ")[0]}.
           </h1>
           <p className="mt-1.5 text-sm text-[#64748B]">
             Você acompanha {abertas} planos de ação de {setoresUnicos} setores.

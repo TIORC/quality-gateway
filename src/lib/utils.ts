@@ -41,6 +41,12 @@ const formatadorHoraBr = new Intl.DateTimeFormat("pt-BR", {
   hourCycle: "h23",
 });
 
+const formatadorHoraNumericaBr = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: FUSO_BRASILIA,
+  hour: "numeric",
+  hourCycle: "h23",
+});
+
 /** Formata a data por extenso no fuso de Brasília: `quarta-feira, 16 de setembro de 2026`. */
 export function formatarDataLongaBrasilia(data: Date = new Date()): string {
   return formatadorDataLongaBr.format(data);
@@ -49,6 +55,23 @@ export function formatarDataLongaBrasilia(data: Date = new Date()): string {
 /** Formata o horário no fuso de Brasília: `14:32:07`. */
 export function formatarHoraBrasilia(data: Date = new Date()): string {
   return formatadorHoraBr.format(data);
+}
+
+/** Devolve a hora atual (0–23) no fuso de Brasília. */
+export function horaAtualBrasilia(data: Date = new Date()): number {
+  const hora = Number(formatadorHoraNumericaBr.format(data));
+  return Number.isNaN(hora) ? data.getHours() : hora;
+}
+
+/**
+ * Saudação conforme o horário real de Brasília:
+ * 05h–12h "Bom dia", 12h–18h "Boa tarde", demais horas "Boa noite".
+ */
+export function saudacaoPorHorarioBrasilia(data: Date = new Date()): string {
+  const hora = horaAtualBrasilia(data);
+  if (hora >= 5 && hora < 12) return "Bom dia";
+  if (hora >= 12 && hora < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 /** Formata uma data/hora ISO como `dd/mm/aaaa às HH:mm`. */
