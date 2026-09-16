@@ -8,6 +8,217 @@ export type Database = {
   };
   public: {
     Tables: {
+      cargos: {
+        Row: {
+          created_at: string;
+          id: string;
+          nome: string;
+          ordem: number;
+          setor_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id: string;
+          nome: string;
+          ordem?: number;
+          setor_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          nome?: string;
+          ordem?: number;
+          setor_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cargos_setor_id_fkey";
+            columns: ["setor_id"];
+            isOneToOne: false;
+            referencedRelation: "setores";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      colaboradores: {
+        Row: {
+          cargo: string;
+          cidade: string;
+          created_at: string;
+          email: string;
+          exclusao: string;
+          grupos: string;
+          id: string;
+          nivel_acesso: string;
+          nome: string;
+          processos_lidos: number;
+          processos_visualizados: number;
+          setor: string;
+          status: string;
+          ultimo_acesso: string | null;
+          unidade: string;
+          updated_at: string;
+        };
+        Insert: {
+          cargo?: string;
+          cidade?: string;
+          created_at?: string;
+          email?: string;
+          exclusao?: string;
+          grupos?: string;
+          id: string;
+          nivel_acesso?: string;
+          nome: string;
+          processos_lidos?: number;
+          processos_visualizados?: number;
+          setor?: string;
+          status?: string;
+          ultimo_acesso?: string | null;
+          unidade?: string;
+          updated_at?: string;
+        };
+        Update: {
+          cargo?: string;
+          cidade?: string;
+          created_at?: string;
+          email?: string;
+          exclusao?: string;
+          grupos?: string;
+          id?: string;
+          nivel_acesso?: string;
+          nome?: string;
+          processos_lidos?: number;
+          processos_visualizados?: number;
+          setor?: string;
+          status?: string;
+          ultimo_acesso?: string | null;
+          unidade?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      documentos_liberados: {
+        Row: {
+          colaborador_id: string;
+          created_at: string;
+          criado_por: string;
+          documento_id: string;
+          documento_tipo: string;
+          id: string;
+        };
+        Insert: {
+          colaborador_id: string;
+          created_at?: string;
+          criado_por?: string;
+          documento_id: string;
+          documento_tipo?: string;
+          id?: string;
+        };
+        Update: {
+          colaborador_id?: string;
+          created_at?: string;
+          criado_por?: string;
+          documento_id?: string;
+          documento_tipo?: string;
+          id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "documentos_liberados_colaborador_id_fkey";
+            columns: ["colaborador_id"];
+            isOneToOne: false;
+            referencedRelation: "colaboradores";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "documentos_liberados_documento_id_fkey";
+            columns: ["documento_id"];
+            isOneToOne: false;
+            referencedRelation: "pops";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      empresas: {
+        Row: {
+          created_at: string;
+          filial: string;
+          id: string;
+          nome: string;
+          ordem: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          filial?: string;
+          id: string;
+          nome: string;
+          ordem?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          filial?: string;
+          id?: string;
+          nome?: string;
+          ordem?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      notificacoes: {
+        Row: {
+          autor_email: string;
+          autor_nome: string;
+          created_at: string;
+          destinatario_email: string;
+          destinatario_nome: string;
+          id: string;
+          lida: boolean;
+          mensagem: string;
+          pop_id: string | null;
+          tipo: string;
+          titulo: string;
+        };
+        Insert: {
+          autor_email?: string;
+          autor_nome?: string;
+          created_at?: string;
+          destinatario_email: string;
+          destinatario_nome?: string;
+          id?: string;
+          lida?: boolean;
+          mensagem?: string;
+          pop_id?: string | null;
+          tipo?: string;
+          titulo: string;
+        };
+        Update: {
+          autor_email?: string;
+          autor_nome?: string;
+          created_at?: string;
+          destinatario_email?: string;
+          destinatario_nome?: string;
+          id?: string;
+          lida?: boolean;
+          mensagem?: string;
+          pop_id?: string | null;
+          tipo?: string;
+          titulo?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_pop_id_fkey";
+            columns: ["pop_id"];
+            isOneToOne: false;
+            referencedRelation: "pops";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       planos_de_acao: {
         Row: {
           created_at: string;
@@ -118,6 +329,13 @@ export type Database = {
         };
         Relationships: [
           {
+            foreignKeyName: "pop_favoritos_colaborador_id_fkey";
+            columns: ["colaborador_id"];
+            isOneToOne: false;
+            referencedRelation: "colaboradores";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "pop_favoritos_pop_id_fkey";
             columns: ["pop_id"];
             isOneToOne: false;
@@ -125,36 +343,6 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
-      };
-      pop_setores: {
-        Row: {
-          categoria: string;
-          created_at: string;
-          icone: string;
-          id: string;
-          nome: string;
-          ordem: number;
-          prefixo: string;
-        };
-        Insert: {
-          categoria: string;
-          created_at?: string;
-          icone?: string;
-          id: string;
-          nome: string;
-          ordem?: number;
-          prefixo: string;
-        };
-        Update: {
-          categoria?: string;
-          created_at?: string;
-          icone?: string;
-          id?: string;
-          nome?: string;
-          ordem?: number;
-          prefixo?: string;
-        };
-        Relationships: [];
       };
       pop_leituras: {
         Row: {
@@ -197,6 +385,36 @@ export type Database = {
           },
         ];
       };
+      pop_setores: {
+        Row: {
+          categoria: string;
+          created_at: string;
+          icone: string;
+          id: string;
+          nome: string;
+          ordem: number;
+          prefixo: string;
+        };
+        Insert: {
+          categoria: string;
+          created_at?: string;
+          icone?: string;
+          id: string;
+          nome: string;
+          ordem?: number;
+          prefixo: string;
+        };
+        Update: {
+          categoria?: string;
+          created_at?: string;
+          icone?: string;
+          id?: string;
+          nome?: string;
+          ordem?: number;
+          prefixo?: string;
+        };
+        Relationships: [];
+      };
       pop_visualizacoes: {
         Row: {
           created_at: string;
@@ -222,56 +440,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "pop_visualizacoes_pop_id_fkey";
-            columns: ["pop_id"];
-            isOneToOne: false;
-            referencedRelation: "pops";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      notificacoes: {
-        Row: {
-          autor_email: string;
-          autor_nome: string;
-          created_at: string;
-          destinatario_email: string;
-          destinatario_nome: string;
-          id: string;
-          lida: boolean;
-          mensagem: string;
-          pop_id: string | null;
-          titulo: string;
-          tipo: string;
-        };
-        Insert: {
-          autor_email?: string;
-          autor_nome?: string;
-          created_at?: string;
-          destinatario_email: string;
-          destinatario_nome?: string;
-          id?: string;
-          lida?: boolean;
-          mensagem?: string;
-          pop_id?: string | null;
-          titulo: string;
-          tipo?: string;
-        };
-        Update: {
-          autor_email?: string;
-          autor_nome?: string;
-          created_at?: string;
-          destinatario_email?: string;
-          destinatario_nome?: string;
-          id?: string;
-          lida?: boolean;
-          mensagem?: string;
-          pop_id?: string | null;
-          titulo?: string;
-          tipo?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "notificacoes_pop_id_fkey";
             columns: ["pop_id"];
             isOneToOne: false;
             referencedRelation: "pops";
@@ -386,254 +554,116 @@ export type Database = {
           },
         ];
       };
-      empresas: {
-        Row: {
-          id: string;
-          nome: string;
-          filial: string;
-          ordem: number;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id: string;
-          nome: string;
-          filial?: string;
-          ordem?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          nome?: string;
-          filial?: string;
-          ordem?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
       setores: {
         Row: {
+          created_at: string;
           id: string;
           nome: string;
           ordem: number;
-          created_at: string;
           updated_at: string;
         };
         Insert: {
+          created_at?: string;
           id: string;
           nome: string;
           ordem?: number;
-          created_at?: string;
           updated_at?: string;
         };
         Update: {
+          created_at?: string;
           id?: string;
           nome?: string;
           ordem?: number;
-          created_at?: string;
           updated_at?: string;
         };
         Relationships: [];
-      };
-      cargos: {
-        Row: {
-          id: string;
-          setor_id: string;
-          nome: string;
-          ordem: number;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id: string;
-          setor_id: string;
-          nome: string;
-          ordem?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          setor_id?: string;
-          nome?: string;
-          ordem?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "cargos_setor_id_fkey";
-            columns: ["setor_id"];
-            isOneToOne: false;
-            referencedRelation: "setores";
-            referencedColumns: ["id"];
-          },
-        ];
       };
       unidades: {
         Row: {
+          cidade: string;
+          created_at: string;
           id: string;
           nome: string;
-          cidade: string;
           ordem: number;
-          created_at: string;
           updated_at: string;
         };
         Insert: {
+          cidade?: string;
+          created_at?: string;
           id: string;
           nome: string;
-          cidade?: string;
           ordem?: number;
-          created_at?: string;
           updated_at?: string;
         };
         Update: {
+          cidade?: string;
+          created_at?: string;
           id?: string;
           nome?: string;
-          cidade?: string;
           ordem?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      colaboradores: {
-        Row: {
-          id: string;
-          nome: string;
-          email: string;
-          cargo: string;
-          unidade: string;
-          cidade: string;
-          setor: string;
-          nivel_acesso: string;
-          grupos: string;
-          exclusao: string;
-          status: string;
-          ultimo_acesso: string | null;
-          processos_visualizados: number;
-          processos_lidos: number;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id: string;
-          nome: string;
-          email?: string;
-          cargo?: string;
-          unidade?: string;
-          cidade?: string;
-          setor?: string;
-          nivel_acesso?: string;
-          grupos?: string;
-          exclusao?: string;
-          status?: string;
-          ultimo_acesso?: string | null;
-          processos_visualizados?: number;
-          processos_lidos?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          nome?: string;
-          email?: string;
-          cargo?: string;
-          unidade?: string;
-          cidade?: string;
-          setor?: string;
-          nivel_acesso?: string;
-          grupos?: string;
-          exclusao?: string;
-          status?: string;
-          ultimo_acesso?: string | null;
-          processos_visualizados?: number;
-          processos_lidos?: number;
-          created_at?: string;
           updated_at?: string;
         };
         Relationships: [];
       };
       usuarios: {
         Row: {
+          ativo: boolean;
+          cargo: string;
+          colaborador_id: string | null;
+          created_at: string;
+          email: string;
           id: string;
           nome: string;
-          email: string;
-          senha_salt: string;
-          senha_hash: string;
           role: string;
-          cargo: string;
+          senha_hash: string;
+          senha_salt: string;
           setor: string;
-          colaborador_id: string | null;
-          ativo: boolean;
-          created_at: string;
           updated_at: string;
         };
         Insert: {
+          ativo?: boolean;
+          cargo?: string;
+          colaborador_id?: string | null;
+          created_at?: string;
+          email: string;
           id: string;
           nome: string;
-          email: string;
-          senha_salt: string;
-          senha_hash: string;
           role?: string;
-          cargo?: string;
+          senha_hash: string;
+          senha_salt: string;
           setor?: string;
-          colaborador_id?: string | null;
-          ativo?: boolean;
-          created_at?: string;
           updated_at?: string;
         };
         Update: {
+          ativo?: boolean;
+          cargo?: string;
+          colaborador_id?: string | null;
+          created_at?: string;
+          email?: string;
           id?: string;
           nome?: string;
-          email?: string;
-          senha_salt?: string;
-          senha_hash?: string;
           role?: string;
-          cargo?: string;
+          senha_hash?: string;
+          senha_salt?: string;
           setor?: string;
-          colaborador_id?: string | null;
-          ativo?: boolean;
-          created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
-      };
-      documentos_liberados: {
-        Row: {
-          id: string;
-          colaborador_id: string;
-          documento_tipo: string;
-          documento_id: string;
-          criado_por: string;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          colaborador_id: string;
-          documento_tipo?: string;
-          documento_id: string;
-          criado_por?: string;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          colaborador_id?: string;
-          documento_tipo?: string;
-          documento_id?: string;
-          criado_por?: string;
-          created_at?: string;
-        };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "usuarios_colaborador_id_fkey";
+            columns: ["colaborador_id"];
+            isOneToOne: false;
+            referencedRelation: "colaboradores";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      pop_recalcular_contadores: { Args: { alvo: string }; Returns: undefined };
     };
     Enums: {
       [_ in never]: never;
@@ -760,47 +790,3 @@ export const Constants = {
     Enums: {},
   },
 } as const;
-
-export type PopSetorRow = Database["public"]["Tables"]["pop_setores"]["Row"];
-export type PopRow = Database["public"]["Tables"]["pops"]["Row"];
-export type PopInsert = Database["public"]["Tables"]["pops"]["Insert"];
-export type PopUpdate = Database["public"]["Tables"]["pops"]["Update"];
-export type PopAnotacaoRow = Database["public"]["Tables"]["pop_anotacoes"]["Row"];
-export type PopAnotacaoInsert = Database["public"]["Tables"]["pop_anotacoes"]["Insert"];
-export type PopAnotacaoUpdate = Database["public"]["Tables"]["pop_anotacoes"]["Update"];
-export type PopFavoritoRow = Database["public"]["Tables"]["pop_favoritos"]["Row"];
-export type PopFavoritoInsert = Database["public"]["Tables"]["pop_favoritos"]["Insert"];
-export type PopFavoritoUpdate = Database["public"]["Tables"]["pop_favoritos"]["Update"];
-export type PopLeituraRow = Database["public"]["Tables"]["pop_leituras"]["Row"];
-export type PopLeituraInsert = Database["public"]["Tables"]["pop_leituras"]["Insert"];
-export type PopLeituraUpdate = Database["public"]["Tables"]["pop_leituras"]["Update"];
-export type PopVisualizacaoRow = Database["public"]["Tables"]["pop_visualizacoes"]["Row"];
-export type PopVisualizacaoInsert = Database["public"]["Tables"]["pop_visualizacoes"]["Insert"];
-export type PopVisualizacaoUpdate = Database["public"]["Tables"]["pop_visualizacoes"]["Update"];
-export type NotificacaoRow = Database["public"]["Tables"]["notificacoes"]["Row"];
-export type NotificacaoInsert = Database["public"]["Tables"]["notificacoes"]["Insert"];
-export type NotificacaoUpdate = Database["public"]["Tables"]["notificacoes"]["Update"];
-export type PlanoDeAcaoRow = Database["public"]["Tables"]["planos_de_acao"]["Row"];
-export type PlanoDeAcaoInsert = Database["public"]["Tables"]["planos_de_acao"]["Insert"];
-export type PlanoDeAcaoUpdate = Database["public"]["Tables"]["planos_de_acao"]["Update"];
-export type EmpresaRow = Database["public"]["Tables"]["empresas"]["Row"];
-export type EmpresaInsert = Database["public"]["Tables"]["empresas"]["Insert"];
-export type EmpresaUpdate = Database["public"]["Tables"]["empresas"]["Update"];
-export type SetorRow = Database["public"]["Tables"]["setores"]["Row"];
-export type SetorInsert = Database["public"]["Tables"]["setores"]["Insert"];
-export type SetorUpdate = Database["public"]["Tables"]["setores"]["Update"];
-export type CargoRow = Database["public"]["Tables"]["cargos"]["Row"];
-export type CargoInsert = Database["public"]["Tables"]["cargos"]["Insert"];
-export type CargoUpdate = Database["public"]["Tables"]["cargos"]["Update"];
-export type UnidadeRow = Database["public"]["Tables"]["unidades"]["Row"];
-export type UnidadeInsert = Database["public"]["Tables"]["unidades"]["Insert"];
-export type UnidadeUpdate = Database["public"]["Tables"]["unidades"]["Update"];
-export type ColaboradorRow = Database["public"]["Tables"]["colaboradores"]["Row"];
-export type ColaboradorInsert = Database["public"]["Tables"]["colaboradores"]["Insert"];
-export type ColaboradorUpdate = Database["public"]["Tables"]["colaboradores"]["Update"];
-export type UsuarioRow = Database["public"]["Tables"]["usuarios"]["Row"];
-export type UsuarioInsert = Database["public"]["Tables"]["usuarios"]["Insert"];
-export type UsuarioUpdate = Database["public"]["Tables"]["usuarios"]["Update"];
-export type DocumentoLiberadoRow = Database["public"]["Tables"]["documentos_liberados"]["Row"];
-export type DocumentoLiberadoInsert =
-  Database["public"]["Tables"]["documentos_liberados"]["Insert"];

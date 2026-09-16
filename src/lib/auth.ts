@@ -8,7 +8,7 @@
  */
 
 import { exigirCloud, lovableCloudConfigurado } from "@/integrations/supabase/client";
-import type { ColaboradorRow, UsuarioRow } from "@/integrations/supabase/types";
+import type { ColaboradorRow, UsuarioRow } from "@/integrations/supabase/db-types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
