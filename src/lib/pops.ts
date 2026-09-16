@@ -1,11 +1,8 @@
 /**
  * POPs — tipos, constantes e acesso a dados.
  *
- * A fonte preferencial é o banco do Lovable Cloud (`public.pop_setores` e
- * `public.pops`, criados em `supabase/migrations/20260915000000_pops.sql`).
- * Quando as variáveis do Cloud não estão configuradas, o módulo usa o conjunto
- * de demonstração em memória abaixo — inclusive para criar, editar, duplicar e
- * excluir, de modo que a tela continua utilizável em desenvolvimento.
+ * Fonte: banco do Lovable Cloud (`public.pop_setores`, `public.pops`,
+ * `public.pop_anotacoes`, `public.pop_favoritos` etc.).
  */
 
 import { supabase } from "@/integrations/supabase/client";
@@ -22,9 +19,6 @@ type PopAnotacaoInsert = TablesInsert<"pop_anotacoes">;
 type PopFavoritoInsert = TablesInsert<"pop_favoritos">;
 type PopLeituraRow = Tables<"pop_leituras">;
 type NotificacaoRow = Tables<"notificacoes">;
-
-/** O Lovable Cloud está sempre disponível neste projeto. */
-const lovableCloudConfigurado = true;
 
 /** Devolve o cliente do Cloud. */
 function exigirCloud() {
@@ -157,13 +151,6 @@ export interface UsuarioFavorito {
 /** Dados editáveis de um POP (contadores entram com zero no cadastro). */
 export type EntradaPop = Omit<Pop, "id" | "favoritos" | "anotacoes">;
 
-export type FonteDados = "cloud" | "demonstracao";
-
-/** De onde os dados estão vindo agora. */
-export function fonteDados(): FonteDados {
-  return lovableCloudConfigurado ? "cloud" : "demonstracao";
-}
-
 /* -------------------------------------------------------------------------- */
 /* Opções aceitas pelo banco                                                  */
 /* -------------------------------------------------------------------------- */
@@ -256,441 +243,17 @@ export function rotuloDoValor(valor: string | null | undefined): string {
   if (!valor) return "—";
   return ROTULOS[valor] ?? valor.replace(/_/g, " ").toUpperCase();
 }
-/* -------------------------------------------------------------------------- */
-/* Dataset de demonstração (offline / sem Lovable Cloud)                      */
-/* -------------------------------------------------------------------------- */
-
-const SETORES_POP_MOCK: SetorPop[] = [
-  {
-    id: "fiscal",
-    nome: "Fiscal",
-    prefixo: "FIS",
-    categoria: "FISCAL",
-    icone: "receipt",
-    ordem: 1,
-  },
-  {
-    id: "contabil",
-    nome: "Contábil",
-    prefixo: "CTB",
-    categoria: "CONTABIL",
-    icone: "calculator",
-    ordem: 2,
-  },
-  {
-    id: "pessoal",
-    nome: "Pessoal",
-    prefixo: "RH",
-    categoria: "PESSOAL",
-    icone: "users",
-    ordem: 3,
-  },
-  {
-    id: "financeiro",
-    nome: "Financeiro",
-    prefixo: "FIN",
-    categoria: "FINANCEIRO",
-    icone: "wallet",
-    ordem: 4,
-  },
-  {
-    id: "legalizacao",
-    nome: "Legalização",
-    prefixo: "LEG",
-    categoria: "LEGALIZACAO",
-    icone: "scale",
-    ordem: 5,
-  },
-  {
-    id: "qualidade",
-    nome: "Qualidade",
-    prefixo: "QUA",
-    categoria: "QUALIDADE",
-    icone: "shield",
-    ordem: 6,
-  },
-  { id: "ti", nome: "TI", prefixo: "TI", categoria: "TI", icone: "monitor", ordem: 7 },
-  {
-    id: "direcao",
-    nome: "Direção",
-    prefixo: "DIR",
-    categoria: "DIRECAO",
-    icone: "building",
-    ordem: 8,
-  },
-];
-
-const POPS_MOCK_BASE: Pop[] = [
-  {
-    id: "m-fis-01",
-    setorId: "fiscal",
-    codigo: "FIS-01",
-    titulo: "Apuração do ICMS",
-    descricao:
-      "Conferência das notas de entrada e saída, cálculo do imposto devido e geração da guia de recolhimento estadual.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "LUCRO_PRESUMIDO",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 1,
-    metaDia: 5,
-    prazoLegal: "2026-09-15",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-02",
-    setorId: "fiscal",
-    codigo: "FIS-02",
-    titulo: "Apuração do PIS/COFINS",
-    descricao:
-      "Apuração das contribuições sobre o faturamento, conferência das retenções e envio das guias.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "LUCRO_PRESUMIDO",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 1,
-    metaDia: 6,
-    prazoLegal: "2026-09-20",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-03",
-    setorId: "fiscal",
-    codigo: "FIS-03",
-    titulo: "Escrituração do ISS",
-    descricao:
-      "Levantamento dos serviços prestados, cálculo do ISS por município e emissão das guias.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "SIMPLES_NACIONAL",
-    dificuldade: "FACIL",
-    cargoResponsavel: "AUXILIAR",
-    diaInicio: 1,
-    metaDia: 7,
-    prazoLegal: "2026-09-18",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-04",
-    setorId: "fiscal",
-    codigo: "FIS-04",
-    titulo: "Recolhimento do IRPJ/CSLL (estimativa)",
-    descricao:
-      "Cálculo da estimativa mensal com base no lucro real, controle das antecipações e diferenças a compensar.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "LUCRO_REAL",
-    dificuldade: "DIFICIL",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 1,
-    metaDia: 10,
-    prazoLegal: "2026-09-25",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-05",
-    setorId: "fiscal",
-    codigo: "FIS-05",
-    titulo: "Geração da DCTFWeb",
-    descricao:
-      "Conferência dos débitos declarados, vinculação das retenções e transmissão da declaração de débitos.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ASSISTENTE",
-    diaInicio: 5,
-    metaDia: 12,
-    prazoLegal: "2026-09-30",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-06",
-    setorId: "fiscal",
-    codigo: "FIS-06",
-    titulo: "Declaração do Simples Nacional (PGDAS-D)",
-    descricao:
-      "Importação das receitas, segregação por anexo, comparação da partilha e transmissão do PGDAS-D.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "SIMPLES_NACIONAL",
-    dificuldade: "FACIL",
-    cargoResponsavel: "ASSISTENTE",
-    diaInicio: 1,
-    metaDia: 15,
-    prazoLegal: "2026-09-30",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-07",
-    setorId: "fiscal",
-    codigo: "FIS-07",
-    titulo: "EFD-Contribuições",
-    descricao:
-      "Escrituração fiscal digital das contribuições e conferência dos débitos apurados no mês.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "AUXILIAR",
-    diaInicio: 1,
-    metaDia: 12,
-    prazoLegal: "2026-09-28",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-08",
-    setorId: "fiscal",
-    codigo: "FIS-08",
-    titulo: "ECD / ECF — escrituração fiscal",
-    descricao:
-      "Geração e assinatura digital da escrituração contábil e fiscal do exercício anterior.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "ANUAL",
-    prazoReferencia: "ANO_ANTERIOR",
-    regime: "LUCRO_PRESUMIDO",
-    dificuldade: "DIFICIL",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 1,
-    metaDia: 20,
-    prazoLegal: "2026-09-30",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fis-09",
-    setorId: "fiscal",
-    codigo: "FIS-09",
-    titulo: "Restituição e compensação de tributos",
-    descricao:
-      "Levantamento de valores pagos a maior, preparação do pedido e acompanhamento no sistema da Receita.",
-    departamento: "Fiscal",
-    categoria: "FISCAL",
-    frequencia: "EVENTUAL",
-    prazoReferencia: "MES_ATUAL",
-    regime: "TODOS",
-    dificuldade: "DIFICIL",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: null,
-    metaDia: null,
-    prazoLegal: "2026-10-10",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-ctb-01",
-    setorId: "contabil",
-    codigo: "CTB-01",
-    titulo: "Conciliação bancária mensal",
-    descricao: "Confronto dos extratos com os lançamentos contábeis e baixa dos itens pendentes.",
-    departamento: "Contábil",
-    categoria: "CONTABIL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "FACIL",
-    cargoResponsavel: "AUXILIAR",
-    diaInicio: 1,
-    metaDia: 8,
-    prazoLegal: "2026-09-20",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-ctb-02",
-    setorId: "contabil",
-    codigo: "CTB-02",
-    titulo: "Balancete mensal e conferência de saldos",
-    descricao: "Fechamento do balancete, análise das contas de resultado e ajustes de competência.",
-    departamento: "Contábil",
-    categoria: "CONTABIL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ASSISTENTE",
-    diaInicio: 3,
-    metaDia: 12,
-    prazoLegal: "2026-09-25",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-ctb-03",
-    setorId: "contabil",
-    codigo: "CTB-03",
-    titulo: "Fechamento contábil anual",
-    descricao:
-      "Consolidação das contas do exercício, provisões, depreciação e demonstrações contábeis.",
-    departamento: "Contábil",
-    categoria: "CONTABIL",
-    frequencia: "ANUAL",
-    prazoReferencia: "ANO_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "DIFICIL",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 1,
-    metaDia: 25,
-    prazoLegal: "2026-09-30",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-rh-01",
-    setorId: "pessoal",
-    codigo: "RH-01",
-    titulo: "Folha de pagamento mensal",
-    descricao:
-      "Processamento das rubricas fixas e variáveis, cálculo dos encargos e geração dos recibos.",
-    departamento: "Pessoal",
-    categoria: "PESSOAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ATUAL",
-    regime: "TODOS",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 20,
-    metaDia: 28,
-    prazoLegal: "2026-09-30",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-rh-02",
-    setorId: "pessoal",
-    codigo: "RH-02",
-    titulo: "Envio do eSocial (S-1200 / S-1299)",
-    descricao:
-      "Conferência dos eventos periódicos, correção de inconsistentes e transmissão do fechamento.",
-    departamento: "Pessoal",
-    categoria: "PESSOAL",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ASSISTENTE",
-    diaInicio: 1,
-    metaDia: 10,
-    prazoLegal: "2026-09-15",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fin-01",
-    setorId: "financeiro",
-    codigo: "FIN-01",
-    titulo: "Conciliação do fluxo de caixa",
-    descricao:
-      "Lançamento das movimentações diárias, conferência do saldo projetado e sinalização de desvios.",
-    departamento: "Financeiro",
-    categoria: "FINANCEIRO",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ATUAL",
-    regime: "TODOS",
-    dificuldade: "FACIL",
-    cargoResponsavel: "AUXILIAR",
-    diaInicio: 1,
-    metaDia: 10,
-    prazoLegal: "2026-09-25",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-fin-02",
-    setorId: "financeiro",
-    codigo: "FIN-02",
-    titulo: "Fechamento e repasse de honorários",
-    descricao:
-      "Apuração das horas e serviços do mês, emissão da nota e programação do repasse ao cliente.",
-    departamento: "Financeiro",
-    categoria: "FINANCEIRO",
-    frequencia: "MENSAL",
-    prazoReferencia: "MES_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "MEDIO",
-    cargoResponsavel: "ASSISTENTE",
-    diaInicio: 5,
-    metaDia: 15,
-    prazoLegal: "2026-09-28",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-  {
-    id: "m-qua-01",
-    setorId: "qualidade",
-    codigo: "QUA-01",
-    titulo: "Controle de revisão dos POPs",
-    descricao:
-      "Revisão anual da carteira de POPs, atualização dos prazos e registro das evidências de aprovação.",
-    departamento: "Qualidade",
-    categoria: "QUALIDADE",
-    frequencia: "ANUAL",
-    prazoReferencia: "ANO_ANTERIOR",
-    regime: "TODOS",
-    dificuldade: "FACIL",
-    cargoResponsavel: "ANALISTA",
-    diaInicio: 1,
-    metaDia: 15,
-    prazoLegal: "2026-12-20",
-    favoritos: 0,
-    anotacoes: 0,
-    arquivo: null,
-  },
-];
-
-/** Cópia mutável usada pelo modo demonstração. */
-const popsDemo = POPS_MOCK_BASE.map((pop) => ({ ...pop }));
 
 /** Estado inicial de um novo POP (campos do formulário). */
 export const ENTRADA_PADRAO: EntradaPop = {
-  setorId: "fiscal",
-  codigo: "FIS-00",
+  setorId: "",
+  codigo: "",
   titulo: "",
   descricao: "",
   departamento: "",
-  categoria: "FISCAL",
+  categoria: "",
   frequencia: "MENSAL",
-  prazoReferencia: "MES_ANTERIOR",
+  prazoReferencia: "MES_ATUAL",
   regime: "TODOS",
   dificuldade: "MEDIO",
   cargoResponsavel: "ANALISTA",
@@ -701,7 +264,7 @@ export const ENTRADA_PADRAO: EntradaPop = {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Acesso a dados — Lovable Cloud (Supabase) com fallback demonstração        */
+/* Acesso a dados — Lovable Cloud (Supabase)                                  */
 /* -------------------------------------------------------------------------- */
 
 /** Conta, por `setor_id`, quantos POPs existem. */
@@ -914,20 +477,11 @@ async function carregarContadoresCloud(): Promise<Record<string, ContadoresPop>>
   return contadores;
 }
 
-function carregarContadoresDemo(): Record<string, ContadoresPop> {
-  const contadores: Record<string, ContadoresPop> = {};
-  for (const pop of popsDemo) {
-    contadores[pop.id] = { favoritos: pop.favoritos, anotacoes: pop.anotacoes };
-  }
-  return contadores;
-}
-
 /**
- * Contadores reais de cada POP na fonte configurada. POPs sem comentário ou
- * favorito aparecem com zero.
+ * Contadores reais de cada POP. POPs sem comentário ou favorito aparecem com zero.
  */
 export async function carregarContadoresPops(): Promise<Record<string, ContadoresPop>> {
-  return fonteDados() === "cloud" ? carregarContadoresCloud() : carregarContadoresDemo();
+  return carregarContadoresCloud();
 }
 
 /** Devolve os POPs com os contadores reais aplicados (sobrescreve o cache). */
@@ -938,36 +492,17 @@ export function aplicarContadores(pops: Pop[], contadores: Record<string, Contad
   });
 }
 
-function setoresDemo(): SetorPop[] {
-  return SETORES_POP_MOCK;
-}
-
-function listarPopsDemo(setorId: string | "todos"): Pop[] {
-  return setorId === "todos"
-    ? popsDemo.slice()
-    : popsDemo.filter((pop) => pop.setorId === setorId).slice();
-}
-
-/** Carrega setores e POPs na fonte configurada (Cloud ou demonstração). */
+/** Carrega setores e POPs do banco (Lovable Cloud). */
 export async function carregarPops(): Promise<{
   setores: SetorPop[];
   pops: Pop[];
-  fonte: FonteDados;
 }> {
-  const fonte = fonteDados();
-  if (fonte === "cloud") {
-    const [setores, pops, contadores] = await Promise.all([
-      listarSetoresCloud(),
-      listarPopsCloud("todos"),
-      carregarContadoresCloud(),
-    ]);
-    return { setores, pops: aplicarContadores(pops, contadores), fonte };
-  }
-  return {
-    setores: setoresDemo(),
-    pops: aplicarContadores(listarPopsDemo("todos"), carregarContadoresDemo()),
-    fonte,
-  };
+  const [setores, pops, contadores] = await Promise.all([
+    listarSetoresCloud(),
+    listarPopsCloud("todos"),
+    carregarContadoresCloud(),
+  ]);
+  return { setores, pops: aplicarContadores(pops, contadores) };
 }
 
 async function criarPopCloud(entrada: EntradaPop): Promise<Pop> {
@@ -995,59 +530,18 @@ async function atualizarPopCloud(id: string, entrada: EntradaPop): Promise<Pop> 
   return popDoRow(data);
 }
 
-function novoId(): string {
-  return `pop_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function criarPopDemo(entrada: EntradaPop): Pop {
-  const pop: Pop = {
-    id: novoId(),
-    ...entrada,
-    favoritos: 0,
-    anotacoes: 0,
-  };
-  popsDemo.unshift(pop);
-  return pop;
-}
-
-function atualizarPopDemo(id: string, entrada: EntradaPop): Pop {
-  const indice = popsDemo.findIndex((pop) => pop.id === id);
-  if (indice === -1) throw new Error("POP não encontrado.");
-  const original = popsDemo[indice];
-  if (!original) throw new Error("POP não encontrado.");
-  const atualizado: Pop = {
-    ...original,
-    ...entrada,
-    id,
-    favoritos: original.favoritos,
-    anotacoes: original.anotacoes,
-  };
-  popsDemo[indice] = atualizado;
-  return atualizado;
-}
-
-function excluirPopDemo(id: string): void {
-  const indice = popsDemo.findIndex((pop) => pop.id === id);
-  if (indice === -1) throw new Error("POP não encontrado.");
-  popsDemo.splice(indice, 1);
-}
-
 export async function criarPop(entrada: EntradaPop): Promise<Pop> {
-  return fonteDados() === "cloud" ? criarPopCloud(entrada) : criarPopDemo(entrada);
+  return criarPopCloud(entrada);
 }
 
 export async function atualizarPop(id: string, entrada: EntradaPop): Promise<Pop> {
-  return fonteDados() === "cloud" ? atualizarPopCloud(id, entrada) : atualizarPopDemo(id, entrada);
+  return atualizarPopCloud(id, entrada);
 }
 
 export async function excluirPop(id: string): Promise<void> {
-  if (fonteDados() === "cloud") {
-    const client = exigirCloud();
-    const { error } = await client.from("pops").delete().eq("id", id);
-    if (error) throw traduzErro(error);
-  } else {
-    excluirPopDemo(id);
-  }
+  const client = exigirCloud();
+  const { error } = await client.from("pops").delete().eq("id", id);
+  if (error) throw traduzErro(error);
 }
 
 /** Duplica um POP: novo id, código com sufixo `-C` e título marcado como cópia. */
@@ -1175,7 +669,6 @@ function prefixoDoSetor(nomeSetor: string): string | null {
 export async function carregarPopsAcessiveis(session: UserSession | null): Promise<{
   setores: SetorPop[];
   pops: Pop[];
-  fonte: FonteDados;
 }> {
   const base = await carregarPops();
   if (!session) return base;
@@ -1198,9 +691,6 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
   return base;
 }
 
-/** Mapa de anotações por POP (só usado no modo demonstração). */
-const anotacoesDemo = new Map<string, PopAnotacao[]>();
-
 async function listarAnotacoesCloud(popId: string): Promise<PopAnotacao[]> {
   const client = exigirCloud();
   const { data, error } = await client
@@ -1210,10 +700,6 @@ async function listarAnotacoesCloud(popId: string): Promise<PopAnotacao[]> {
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);
   return (data ?? []).map(anotacaoDoRow);
-}
-
-function listarAnotacoesDemo(popId: string): PopAnotacao[] {
-  return anotacoesDemo.get(popId) ?? [];
 }
 
 async function criarAnotacaoCloud(
@@ -1234,45 +720,15 @@ async function criarAnotacaoCloud(
   return anotacao;
 }
 
-function criarAnotacaoDemo(
-  popId: string,
-  dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
-): PopAnotacao {
-  const anotacao: PopAnotacao = {
-    id: `anot_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-    popId,
-    ...dados,
-    createdAt: new Date().toISOString(),
-  };
-  const atuais = anotacoesDemo.get(popId) ?? [];
-  anotacoesDemo.set(popId, [...atuais, anotacao]);
-  const pop = popsDemo.find((p) => p.id === popId);
-  if (pop) pop.anotacoes += 1;
-  return anotacao;
-}
-
 async function excluirAnotacaoCloud(anotacaoId: string): Promise<void> {
   const client = exigirCloud();
   const { error } = await client.from("pop_anotacoes").delete().eq("id", anotacaoId);
   if (error) throw traduzErro(error);
 }
 
-function excluirAnotacaoDemo(anotacaoId: string): void {
-  for (const [popId, lista] of anotacoesDemo) {
-    const indice = lista.findIndex((a) => a.id === anotacaoId);
-    if (indice === -1) continue;
-    lista.splice(indice, 1);
-    anotacoesDemo.set(popId, lista);
-    const pop = popsDemo.find((p) => p.id === popId);
-    if (pop) pop.anotacoes = Math.max(0, pop.anotacoes - 1);
-    return;
-  }
-  throw new Error("Anotação não encontrada.");
-}
-
-/** Lista as anotações (comentários) de um POP, na fonte configurada. */
+/** Lista as anotações (comentários) de um POP. */
 export async function listarAnotacoes(popId: string): Promise<PopAnotacao[]> {
-  return fonteDados() === "cloud" ? listarAnotacoesCloud(popId) : listarAnotacoesDemo(popId);
+  return listarAnotacoesCloud(popId);
 }
 
 /** Registra uma anotação no POP e atualiza o contador. */
@@ -1280,47 +736,17 @@ export async function criarAnotacao(
   popId: string,
   dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
 ): Promise<PopAnotacao> {
-  return fonteDados() === "cloud"
-    ? criarAnotacaoCloud(popId, dados)
-    : criarAnotacaoDemo(popId, dados);
+  return criarAnotacaoCloud(popId, dados);
 }
 
 /** Exclui uma anotação do POP (o contador é sincronizado pelo banco). */
 export async function excluirAnotacao(anotacao: PopAnotacao): Promise<void> {
-  if (fonteDados() === "cloud") {
-    await excluirAnotacaoCloud(anotacao.id);
-  } else {
-    excluirAnotacaoDemo(anotacao.id);
-  }
+  await excluirAnotacaoCloud(anotacao.id);
 }
 
 /* -------------------------------------------------------------------------- */
 /* Favoritos dos POPs                                                         */
 /* -------------------------------------------------------------------------- */
-
-/** Favoritos por e-mail (só usado no modo demonstração). */
-const favoritosDemo = new Map<string, Set<string>>();
-
-function favoritosDemoDoUsuario(email: string): Set<string> {
-  const atual = favoritosDemo.get(email);
-  if (atual) return atual;
-  const novo = new Set<string>();
-  favoritosDemo.set(email, novo);
-  return novo;
-}
-
-function alternarFavoritoDemo(popId: string, email: string, favoritar: boolean): void {
-  const doUsuario = favoritosDemoDoUsuario(email);
-  const pop = popsDemo.find((p) => p.id === popId);
-  if (favoritar) {
-    if (doUsuario.has(popId)) return;
-    doUsuario.add(popId);
-    if (pop) pop.favoritos += 1;
-    return;
-  }
-  if (!doUsuario.delete(popId)) return;
-  if (pop) pop.favoritos = Math.max(0, pop.favoritos - 1);
-}
 
 /** Ids dos POPs que o colaborador já favoritou (0 quando não há nenhum). */
 export async function carregarFavoritosDoUsuario(
@@ -1329,7 +755,6 @@ export async function carregarFavoritosDoUsuario(
 ): Promise<string[]> {
   const emailNormalizado = email.trim().toLowerCase();
   if (!emailNormalizado) return [];
-  if (fonteDados() !== "cloud") return [...favoritosDemoDoUsuario(emailNormalizado)];
 
   const client = exigirCloud();
   if (colaboradorId) {
@@ -1371,10 +796,6 @@ export async function carregarFavoritosDoUsuario(
 export async function favoritarPop(popId: string, usuario: UsuarioFavorito): Promise<void> {
   const email = usuario.email.trim().toLowerCase();
   if (!email) throw new Error("Entre no portal para favoritar um POP.");
-  if (fonteDados() !== "cloud") {
-    alternarFavoritoDemo(popId, email, true);
-    return;
-  }
 
   const client = exigirCloud();
   const registro: PopFavoritoInsert = {
@@ -1406,10 +827,6 @@ export async function favoritarPop(popId: string, usuario: UsuarioFavorito): Pro
 export async function desfavoritarPop(popId: string, email: string): Promise<void> {
   const emailNormalizado = email.trim().toLowerCase();
   if (!emailNormalizado) return;
-  if (fonteDados() !== "cloud") {
-    alternarFavoritoDemo(popId, emailNormalizado, false);
-    return;
-  }
 
   const client = exigirCloud();
   const { error } = await client
@@ -1432,7 +849,7 @@ export type CancelarAssinatura = () => void;
 
 /** Observa novos comentários e favoritos de qualquer POP para atualizar os números. */
 export function assinarContadoresPops(aoMudar: () => void): CancelarAssinatura {
-  if (fonteDados() !== "cloud" || typeof window === "undefined") return () => {};
+  if (typeof window === "undefined") return () => {};
   const client = exigirCloud();
   const canal = client
     .channel("pop-contadores")
@@ -1450,7 +867,7 @@ export function assinarContadoresPops(aoMudar: () => void): CancelarAssinatura {
 
 /** Observa, em tempo real, os comentários de um POP específico. */
 export function assinarAnotacoesPop(popId: string, aoMudar: () => void): CancelarAssinatura {
-  if (fonteDados() !== "cloud" || typeof window === "undefined") return () => {};
+  if (typeof window === "undefined") return () => {};
   const client = exigirCloud();
   const canal = client
     .channel(`pop-anotacoes-${popId}`)
