@@ -106,6 +106,48 @@ export type Database = {
         }
         Relationships: []
       }
+      documentos_liberados: {
+        Row: {
+          colaborador_id: string
+          created_at: string
+          criado_por: string
+          documento_id: string
+          documento_tipo: string
+          id: string
+        }
+        Insert: {
+          colaborador_id: string
+          created_at?: string
+          criado_por?: string
+          documento_id: string
+          documento_tipo?: string
+          id?: string
+        }
+        Update: {
+          colaborador_id?: string
+          created_at?: string
+          criado_por?: string
+          documento_id?: string
+          documento_tipo?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_liberados_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_liberados_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "pops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           created_at: string
@@ -271,24 +313,34 @@ export type Database = {
       }
       pop_favoritos: {
         Row: {
+          colaborador_id: string | null
           created_at: string
           pop_id: string
           usuario_email: string
           usuario_nome: string
         }
         Insert: {
+          colaborador_id?: string | null
           created_at?: string
           pop_id: string
           usuario_email: string
           usuario_nome?: string
         }
         Update: {
+          colaborador_id?: string | null
           created_at?: string
           pop_id?: string
           usuario_email?: string
           usuario_nome?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "pop_favoritos_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pop_favoritos_pop_id_fkey"
             columns: ["pop_id"]
@@ -531,6 +583,7 @@ export type Database = {
         Row: {
           ativo: boolean
           cargo: string
+          colaborador_id: string | null
           created_at: string
           email: string
           id: string
@@ -544,6 +597,7 @@ export type Database = {
         Insert: {
           ativo?: boolean
           cargo?: string
+          colaborador_id?: string | null
           created_at?: string
           email: string
           id: string
@@ -557,6 +611,7 @@ export type Database = {
         Update: {
           ativo?: boolean
           cargo?: string
+          colaborador_id?: string | null
           created_at?: string
           email?: string
           id?: string
@@ -567,7 +622,15 @@ export type Database = {
           setor?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "usuarios_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
