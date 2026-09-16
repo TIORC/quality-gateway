@@ -15,7 +15,7 @@ import type {
   EmpresaRow,
   SetorRow,
   UnidadeRow,
-} from "@/integrations/supabase/types";
+} from "@/integrations/supabase/db-types";
 import type { Colaborador, Funcionario, StatusFuncionario } from "@/lib/dados";
 
 /** `true` quando o Lovable Cloud está configurado (fonte de dados da org). */
