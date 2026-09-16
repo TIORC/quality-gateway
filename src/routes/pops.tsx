@@ -107,7 +107,7 @@ import {
   registrarLeitura,
   registrarVisualizacao,
   rotuloDoValor,
-  textoDoAnexoDocx,
+  textoDoAnexoOffice,
   urlAssinadaDoAnexo,
   ENTRADA_PADRAO,
   type DecisaoLeitura,
@@ -1177,7 +1177,7 @@ function PopAnexoVisualizador({ pop }: { pop: Pop }) {
       ? urlAssinadaDoAnexo(anexo.path).then((link) => {
           if (ativo) setUrl(link);
         })
-      : textoDoAnexoDocx(anexo.path).then((conteudo) => {
+      : textoDoAnexoOffice(anexo.path).then((conteudo) => {
           if (!ativo) return;
           if (conteudo === null) setErro("Não foi possível extrair o texto deste arquivo.");
           else setTexto(conteudo);

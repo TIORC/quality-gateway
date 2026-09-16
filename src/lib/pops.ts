@@ -1137,68 +1137,90 @@ export function assinarNotificacoes(email: string, aoMudar: () => void): Cancela
   };
 }
 
-/**
- * Extrai o texto de um anexo DOCX para exibição embutida (sem download).
- * Baixa o arquivo do bucket privado, encontra a entrada `word/document.xml`
- * no ZIP e descompacta com o `DecompressionStream` nativo do navegador.
- */
-export async function textoDoAnexoDocx(caminho: string): Promise<string | null> {
-  try {
-    if (typeof DecompressionStream === "undefined") return null;
-    const client = exigirCloud();
-    const { data, error } = await client.storage.from(BUCKET_ANEXOS).download(caminho);
-    if (error || !data) return null;
+/* -------------------------------------------------------------------------- */
+/* Visualização embutida de anexos (DOCX e DOC legado)                        */
+/* -------------------------------------------------------------------------- */
 
-    const bytes = new Uint8Array(await data.arrayBuffer());
-    let fimCentral = -1;
-    for (let i = bytes.length - 22; i >= 0 && i > bytes.length - 66000; i -= 1) {
-      if (
-        bytes[i] === 0x50 &&
-        bytes[i + 1] === 0x4b &&
-        bytes[i + 2] === 0x05 &&
-        bytes[i + 3] === 0x06
-      ) {
-        fimCentral = i;
-        break;
-      }
-    }
-    if (fimCentral === -1) return null;
+function lerU16(b: Uint8Array, d: number): number {
+  return (b[d] ?? 0) | ((b[d + 1] ?? 0) << 8);
+}
 
-    const view = new DataView(bytes.buffer);
-    const total = view.getUint16(fimCentral + 10, true);
-    let cursor = fimCentral + 22;
-    for (let i = 0; i < total; i += 1) {
-      const nomeLen = view.getUint16(cursor + 28, true);
-      const extraLen = view.getUint16(cursor + 30, true);
-      const comentarioLen = view.getUint16(cursor + 32, true);
-      const offsetLocal = view.getUint32(cursor + 42, true);
-      const nome = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + nomeLen));
-      if (nome === "word/document.xml") {
-        const nomeLocalLen = view.getUint16(offsetLocal + 26, true);
-        const extraLocalLen = view.getUint16(offsetLocal + 28, true);
-        const compactado = bytes.subarray(
-          offsetLocal + 30 + nomeLocalLen + extraLocalLen,
-          offsetLocal + 30 + nomeLocalLen + extraLocalLen + view.getUint32(offsetLocal + 22, true),
-        );
-        const xml = await inflar(compactado);
-        return new TextDecoder("utf-8")
-          .decode(xml)
-          .replace(/<\/w:p>/g, "\n")
-          .replace(/<w:tab[^>]*\/>/g, "\t")
-          .replace(/<[^>]+>/g, "")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/&amp;/g, "&")
-          .replace(/\n{3,}/g, "\n\n");
-      }
-      cursor += 46 + nomeLen + extraLen + comentarioLen;
-    }
-    return null;
-  } catch {
-    return null;
+function lerU32(b: Uint8Array, d: number): number {
+  return (
+    ((b[d] ?? 0) | ((b[d + 1] ?? 0) << 8) | ((b[d + 2] ?? 0) << 16)) + (b[d + 3] ?? 0) * 0x1000000
+  );
+}
+
+/** Remove caracteres de controle, mantendo tab, quebra de linha e retorno. */
+function limparControlesDoTexto(texto: string): string {
+  let saida = "";
+  for (let i = 0; i < texto.length; i += 1) {
+    const c = texto.charCodeAt(i);
+    if (c === 0x09 || c === 0x0a || c === 0x0d || (c >= 0x20 && c !== 0x7f)) saida += texto[i];
   }
+  return saida;
+}
+
+interface EntradaZip {
+  nome: string;
+  metodo: number;
+  tamanhoCompactado: number;
+  offsetLocal: number;
+}
+
+/** Localiza a assinatura de fim de ZIP (EOCD) a partir do final do arquivo. */
+function localizarFimZip(b: Uint8Array): number {
+  for (let i = b.length - 22; i >= 0 && i >= b.length - 66000; i -= 1) {
+    if (b[i] === 0x50 && b[i + 1] === 0x4b && b[i + 2] === 0x05 && b[i + 3] === 0x06) return i;
+  }
+  return -1;
+}
+
+/** Indexa as entradas do ZIP a partir do diretório central. */
+function entradasDoZip(b: Uint8Array): EntradaZip[] {
+  const fim = localizarFimZip(b);
+  if (fim === -1) return [];
+  const total = lerU16(b, fim + 10);
+  let cursor = lerU32(b, fim + 16);
+  const entradas: EntradaZip[] = [];
+  for (let i = 0; i < total && cursor + 46 <= b.length; i += 1) {
+    if (
+      b[cursor] !== 0x50 ||
+      b[cursor + 1] !== 0x4b ||
+      b[cursor + 2] !== 0x01 ||
+      b[cursor + 3] !== 0x02
+    ) {
+      break;
+    }
+    const nomeLen = lerU16(b, cursor + 28);
+    const extraLen = lerU16(b, cursor + 30);
+    const comentarioLen = lerU16(b, cursor + 32);
+    entradas.push({
+      nome: new TextDecoder().decode(b.subarray(cursor + 46, cursor + 46 + nomeLen)),
+      metodo: lerU16(b, cursor + 10),
+      tamanhoCompactado: lerU32(b, cursor + 20),
+      offsetLocal: lerU32(b, cursor + 42),
+    });
+    cursor += 46 + nomeLen + extraLen + comentarioLen;
+  }
+  return entradas;
+}
+
+/** Conteúdo bruto de uma entrada do ZIP (método 0 = sem compressão; 8 = deflate). */
+async function dadosDaEntradaZip(b: Uint8Array, entrada: EntradaZip): Promise<Uint8Array | null> {
+  const nomeLocal = lerU16(b, entrada.offsetLocal + 26);
+  const extraLocal = lerU16(b, entrada.offsetLocal + 28);
+  const inicio = entrada.offsetLocal + 30 + nomeLocal + extraLocal;
+  const bruto = b.subarray(inicio, Math.min(inicio + entrada.tamanhoCompactado, b.length));
+  if (entrada.metodo === 0) return bruto;
+  if (entrada.metodo === 8) {
+    try {
+      return await inflar(bruto);
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 /** Descompacta um stream DEFLATE raw com a API nativa do navegador. */
@@ -1209,4 +1231,248 @@ async function inflar(dados: Uint8Array): Promise<Uint8Array> {
     .stream()
     .pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/**
+ * Extrai o texto de um anexo DOCX (ou DOC legado) para exibição embutida
+ * (sem download). DOCX é um ZIP com `word/document.xml`; DOC é um arquivo
+ * composto OLE com o fluxo `WordDocument`.
+ */
+export async function textoDoAnexoOffice(caminho: string): Promise<string | null> {
+  try {
+    const client = exigirCloud();
+    const { data, error } = await client.storage.from(BUCKET_ANEXOS).download(caminho);
+    if (error || !data) return null;
+
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    if (bytes.length < 4) return null;
+
+    const ehZip =
+      (bytes[0] === 0x50 &&
+        bytes[1] === 0x4b &&
+        (bytes[2] === 0x03 || bytes[2] === 0x05) &&
+        bytes[3] === 0x04) ||
+      localizarFimZip(bytes) !== -1;
+
+    if (!ehZip) return textoDoAnexoDoc(bytes);
+
+    const entrada = entradasDoZip(bytes).find((e) => e.nome === "word/document.xml");
+    if (!entrada) return null;
+    const xmlBytes = await dadosDaEntradaZip(bytes, entrada);
+    if (!xmlBytes) return null;
+
+    const xml = new TextDecoder("utf-8")
+      .decode(xmlBytes)
+      .replace(/<w:tab[^>]*\/>/g, "\t")
+      .replace(/<w:br\b[^>]*\/>/g, "\n")
+      .replace(/<\/w:p\b[^>]*>/g, "\n")
+      .replace(/<\/w:tc\b[^>]*>/g, "\t")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n");
+
+    const pronto = limparControlesDoTexto(xml).trim();
+    return pronto.length > 0 ? pronto : null;
+  } catch {
+    return null;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* DOC legado (Word 97-2003, arquivo composto OLE)                            */
+/* -------------------------------------------------------------------------- */
+
+const ASSINATURA_OLE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+/** Segue a cadeia de setores de um arquivo composto OLE e devolve o fluxo. */
+function fluxoPorCadeia(
+  b: Uint8Array,
+  fat: Map<number, number>,
+  setorInicial: number,
+  tamanho: number,
+  tamanhoSetor: number,
+): Uint8Array | null {
+  if (tamanho <= 0 || setorInicial === 0xfffffffe || setorInicial === 0xffffffff) return null;
+  const partes: Uint8Array[] = [];
+  let setor = setorInicial;
+  let restante = tamanho;
+  let guarda = 0;
+  while (setor !== 0xfffffffe && setor !== 0xffffffff) {
+    if (guarda++ > 100000) return null;
+    const inicio = (setor + 1) * tamanhoSetor;
+    const parte = b
+      .subarray(inicio, Math.min(inicio + tamanhoSetor, b.length))
+      .slice(0, Math.min(tamanhoSetor, restante));
+    partes.push(parte);
+    restante -= parte.length;
+    if (restante <= 0) break;
+    setor = fat.get(setor) ?? 0xfffffffe;
+  }
+  if (restante > 0) return null;
+  const total = partes.reduce((acc, p) => acc + p.length, 0);
+  const resultado = new Uint8Array(total);
+  let desloc = 0;
+  for (const p of partes) {
+    resultado.set(p, desloc);
+    desloc += p.length;
+  }
+  return resultado;
+}
+
+/** Lê o fluxo `WordDocument`, inclusive quando guardado como mini-stream. */
+function fluxoWordDocument(b: Uint8Array): Uint8Array | null {
+  if (b.length < 512) return null;
+  for (let i = 0; i < 8; i += 1) if (b[i] !== ASSINATURA_OLE[i]) return null;
+
+  const tamanhoSetor = 1 << lerU16(b, 0x1e);
+  const porSetor = Math.floor(tamanhoSetor / 4);
+  const tamanhoMini = 1 << lerU16(b, 0x20);
+  const numeroFat = lerU32(b, 0x2c);
+  const primeiroDir = lerU32(b, 0x30);
+  const corteMini = lerU32(b, 0x38) || 4096;
+  const primeiroMiniFat = lerU32(b, 0x3c);
+  const numeroMiniFat = lerU32(b, 0x40);
+
+  const difat: number[] = [];
+  for (let i = 0; i < 109; i += 1) {
+    const id = lerU32(b, 0x4c + i * 4);
+    if (id === 0xffffffff) break;
+    difat.push(id);
+  }
+
+  const fat = new Map<number, number>();
+  for (let k = 0; k < difat.length && k < numeroFat; k += 1) {
+    const setorFat = difat[k];
+    if (setorFat === undefined) break;
+    const base = (setorFat + 1) * tamanhoSetor;
+    for (let i = 0; i < porSetor; i += 1) {
+      fat.set(k * porSetor + i, lerU32(b, base + i * 4));
+    }
+  }
+
+  const numeroDir = lerU32(b, 0x28) || 1;
+  const dirBytes = fluxoPorCadeia(b, fat, primeiroDir, numeroDir * tamanhoSetor, tamanhoSetor);
+  if (!dirBytes) return null;
+
+  let setorRaiz = -1;
+  let tamanhoRaiz = 0;
+  let alvo: { setor: number; tamanho: number } | null = null;
+
+  for (let i = 0; i + 128 <= dirBytes.length; i += 128) {
+    const caracteres = lerU16(dirBytes, i + 0x40) & 0xfffe;
+    const nome = new TextDecoder("utf-16le")
+      .decode(dirBytes.subarray(i, i + caracteres))
+      .split("\u0000")
+      .join("");
+    const tipo = dirBytes[i + 0x42];
+    const setor = lerU32(dirBytes, i + 0x74);
+    const tamanho = lerU32(dirBytes, i + 0x78);
+    if (nome === "Root Entry" && tipo === 5) {
+      setorRaiz = setor;
+      tamanhoRaiz = tamanho;
+    }
+    if (nome === "WordDocument") alvo = { setor, tamanho };
+  }
+  if (!alvo) return null;
+
+  if (alvo.tamanho < corteMini && numeroMiniFat > 0 && setorRaiz !== -1) {
+    return fluxoMiniStream(
+      b,
+      fat,
+      primeiroMiniFat,
+      numeroMiniFat,
+      setorRaiz,
+      tamanhoRaiz,
+      tamanhoSetor,
+      tamanhoMini,
+      alvo.setor,
+      alvo.tamanho,
+    );
+  }
+  return fluxoPorCadeia(b, fat, alvo.setor, alvo.tamanho, tamanhoSetor);
+}
+
+/** Lê um fluxo guardado no mini-stream do arquivo OLE (arquivos pequenos). */
+function fluxoMiniStream(
+  b: Uint8Array,
+  fat: Map<number, number>,
+  primeiroMiniFat: number,
+  numeroMiniFat: number,
+  setorRaiz: number,
+  tamanhoRaiz: number,
+  tamanhoSetor: number,
+  tamanhoMini: number,
+  setorInicial: number,
+  tamanho: number,
+): Uint8Array | null {
+  const raiz = fluxoPorCadeia(b, fat, setorRaiz, tamanhoRaiz, tamanhoSetor);
+  if (!raiz) return null;
+  const porMiniFat = Math.floor(tamanhoSetor / 4);
+
+  const miniFat = new Map<number, number>();
+  let setor = primeiroMiniFat;
+  let guarda = 0;
+  for (let k = 0; k < numeroMiniFat && setor !== 0xfffffffe && setor !== 0xffffffff; k += 1) {
+    if (guarda++ > 100000) break;
+    const base = (setor + 1) * tamanhoSetor;
+    for (let i = 0; i < porMiniFat; i += 1) {
+      miniFat.set(k * porMiniFat + i, lerU32(b, base + i * 4));
+    }
+    setor = fat.get(setor) ?? 0xfffffffe;
+  }
+
+  const partes: Uint8Array[] = [];
+  let atual = setorInicial;
+  let restante = tamanho;
+  guarda = 0;
+  while (atual !== 0xfffffffe && atual !== 0xffffffff) {
+    if (guarda++ > 100000) return null;
+    if (restante <= 0) break;
+    const inicio = atual * tamanhoMini;
+    if (inicio >= raiz.length) return null;
+    const parte = raiz.subarray(
+      inicio,
+      Math.min(inicio + Math.min(tamanhoMini, restante), raiz.length),
+    );
+    partes.push(parte);
+    restante -= parte.length;
+    atual = miniFat.get(atual) ?? 0xfffffffe;
+  }
+  if (restante > 0) return null;
+  const total = partes.reduce((acc, p) => acc + p.length, 0);
+  const resultado = new Uint8Array(total);
+  let desloc = 0;
+  for (const p of partes) {
+    resultado.set(p, desloc);
+    desloc += p.length;
+  }
+  return resultado;
+}
+
+/** Extrai o texto principal de um .doc legado (Word 97-2003 / OLE). */
+function textoDoAnexoDoc(b: Uint8Array): string | null {
+  try {
+    const word = fluxoWordDocument(b);
+    if (!word || word.length < 0x1c + 4) return null;
+
+    const fcMin = lerU32(word, 0x18);
+    const fcMac = lerU32(word, 0x1c);
+    if (fcMac <= fcMin || fcMac > word.length) return null;
+
+    const limpo = limparControlesDoTexto(
+      new TextDecoder("windows-1252").decode(word.subarray(fcMin, fcMac)),
+    )
+      .replace(/\r\n?/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return limpo.length > 0 ? limpo : null;
+  } catch {
+    return null;
+  }
 }
