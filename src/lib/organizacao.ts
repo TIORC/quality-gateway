@@ -66,7 +66,7 @@ function cargoDoRow(row: CargoRow): CargoConfig {
   return { id: row.id, nome: row.nome };
 }
 
-function unidadeDoRow(row: UnidadeRow): Unidade {
+function unidadeDoRow(row: Pick<UnidadeRow, "id" | "nome" | "cidade">): Unidade {
   return { id: row.id, nome: row.nome, cidade: row.cidade };
 }
 
