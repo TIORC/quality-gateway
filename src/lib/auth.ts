@@ -278,6 +278,15 @@ export async function login(
         if (usuario.email !== colaborador.email && colaborador.email) {
           sessionBase.email = usuario.email;
         }
+        // Registra o acesso real: alimenta a coluna "Último acesso" de /funcionários.
+        try {
+          await client
+            .from("colaboradores")
+            .update({ ultimo_acesso: new Date().toISOString() })
+            .eq("id", colaborador.id);
+        } catch {
+          // Não bloqueia o login se o registro do acesso falhar.
+        }
       }
     } catch {
       // Sem vínculo: mantém a sessão com os dados do usuário (compatibilidade).

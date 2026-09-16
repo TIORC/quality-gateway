@@ -57,6 +57,25 @@ export function formatarHoraBrasilia(data: Date = new Date()): string {
   return formatadorHoraBr.format(data);
 }
 
+/** Formata data + hora sempre no fuso de Brasília: `dd/mm/aaaa às HH:mm`. */
+export function formatarDataHoraBrasilia(data: Date | string): string {
+  const instante = typeof data === "string" ? new Date(data) : data;
+  if (Number.isNaN(instante.getTime())) return "—";
+  const dataFormatada = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: FUSO_BRASILIA,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(instante);
+  const horaFormatada = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: FUSO_BRASILIA,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(instante);
+  return `${dataFormatada} às ${horaFormatada}`;
+}
+
 /** Devolve a hora atual (0–23) no fuso de Brasília. */
 export function horaAtualBrasilia(data: Date = new Date()): number {
   const hora = Number(formatadorHoraNumericaBr.format(data));

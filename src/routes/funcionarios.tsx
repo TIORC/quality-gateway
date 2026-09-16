@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { STATUS_FUNCIONARIO, type Funcionario, type StatusFuncionario } from "@/lib/dados";
 import * as org from "@/lib/organizacao";
-import { formatarDataHoraBr } from "@/lib/utils";
+import { formatarDataHoraBrasilia } from "@/lib/utils";
 
 export const Route = createFileRoute("/funcionarios")({
   head: () => ({
@@ -294,7 +294,9 @@ function Funcionarios() {
                       </td>
                       <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
                         {funcionario.ultimoAcesso ? (
-                          formatarDataHoraBr(funcionario.ultimoAcesso)
+                          <span title={funcionario.ultimoAcesso}>
+                            {formatarDataHoraBrasilia(funcionario.ultimoAcesso)}
+                          </span>
                         ) : (
                           <span className="italic text-[#94A3B8]">Nunca acessou</span>
                         )}
