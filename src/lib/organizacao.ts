@@ -15,7 +15,7 @@ import type {
   EmpresaRow,
   SetorRow,
   UnidadeRow,
-} from "@/integrations/supabase/types";
+} from "@/integrations/supabase/db-types";
 import type { Colaborador, Funcionario, StatusFuncionario } from "@/lib/dados";
 
 /** `true` quando o Lovable Cloud está configurado (fonte de dados da org). */
@@ -66,7 +66,7 @@ function cargoDoRow(row: CargoRow): CargoConfig {
   return { id: row.id, nome: row.nome };
 }
 
-function unidadeDoRow(row: UnidadeRow): Unidade {
+function unidadeDoRow(row: Pick<UnidadeRow, "id" | "nome" | "cidade">): Unidade {
   return { id: row.id, nome: row.nome, cidade: row.cidade };
 }
 
