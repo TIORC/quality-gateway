@@ -85,10 +85,6 @@ function AtasDeReuniao() {
           </Button>
         </div>
       </section>
-
-      <p className="mt-8 text-center text-[11px] text-[#94A3B8]">
-        Desenvolvido com 💙 pelos Desenvolvedores Orcoma Contabilidade
-      </p>
     </PanelShell>
   );
 }

@@ -22,7 +22,8 @@ import type { Tables } from "@/integrations/supabase/types";
 type PlanoDeAcaoRow = Tables<"planos_de_acao">;
 
 import { logout, getSession } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { carregarEmpresaPrincipal, type Empresa } from "@/lib/organizacao";
+import { cn, formatarDataLongaBrasilia, formatarHoraBrasilia } from "@/lib/utils";
 
 export const Route = createFileRoute("/painel")({
   head: () => ({
@@ -305,6 +306,13 @@ function Painel() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [planos, setPlanos] = useState<PlanoDeAcaoRow[]>([]);
   const [carregando, setCarregando] = useState(true);
+  // Horário de Brasília exibido no cabeçalho. Começa nulo e é preenchido no
+  // cliente (o relógio é recalculado a cada segundo) para não divergir do HTML
+  // gerado no servidor durante a hidratação.
+  const [horaAtual, setHoraAtual] = useState<string | null>(null);
+  // Empresa (nome + filial) do cabeçalho. Fica nula enquanto não houver
+  // nenhuma empresa cadastrada no banco — nesse caso nada é exibido.
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
 
   // Resolve o perfil completo guardado na sessão do navegador (dados do Lovable Cloud).
   const perfil = getSession();
@@ -319,17 +327,32 @@ function Painel() {
     .map((parte) => parte[0]?.toUpperCase())
     .join("");
 
-  const dataHoje = new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date());
+  // Data e hora sempre no fuso de Brasília, para o cabeçalho não divergir
+  // entre navegadores/servidores de fusos diferentes.
+  const dataHoje = formatarDataLongaBrasilia();
+
+  // Relógio do cabeçalho: atualiza o horário de Brasília a cada segundo.
+  useEffect(() => {
+    const atualizarHora = () => setHoraAtual(formatarHoraBrasilia());
+    atualizarHora();
+    const intervalo = window.setInterval(atualizarHora, 1000);
+    return () => window.clearInterval(intervalo);
+  }, []);
+
+  // Empresa (nome + filial) exibida no cabeçalho, direto do banco.
+  useEffect(() => {
+    let ativo = true;
+    void carregarEmpresaPrincipal().then((registro) => {
+      if (ativo) setEmpresa(registro);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   useEffect(() => {
     async function carregar() {
       try {
-
         const { data, error } = await supabase
           .from("planos_de_acao")
           .select("*")
@@ -360,12 +383,29 @@ function Painel() {
   return (
     <PanelShell wide>
       <header className="flex h-14 items-center justify-between border-b border-[#D9E0EA]">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#64748B]">
-          Painel
-        </span>
+        {/* Empresa (nome | filial) — vem do banco; sem empresa, não mostra nada. */}
+        <div className="min-w-0 flex-1">
+          {empresa ? (
+            <span className="block truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+              {empresa.nome}
+              {empresa.filial ? (
+                <>
+                  <span className="px-2 font-normal text-[#94A3B8]">|</span>
+                  {empresa.filial}
+                </>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
-          <span className="hidden text-[13px] text-[#64748B] lg:block">{dataHoje}</span>
+          <span className="hidden items-center gap-2.5 text-[13px] text-[#64748B] lg:flex">
+            <span>{dataHoje}</span>
+            <span className="h-3.5 w-px bg-[#D9E0EA]" />
+            <span className="tabular-nums" title="Horário de Brasília (GMT-3)">
+              {horaAtual ?? "--:--:--"}
+            </span>
+          </span>
 
           <button
             type="button"

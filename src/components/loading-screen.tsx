@@ -53,9 +53,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
 
     // Troca a frase a cada 5s.
     for (let i = 1; i < selected.length; i++) {
-      timers.push(
-        setTimeout(() => setPhraseIndex(i), i * PHRASE_DURATION_MS),
-      );
+      timers.push(setTimeout(() => setPhraseIndex(i), i * PHRASE_DURATION_MS));
     }
 
     // Após 15s: fade-out e desmontagem.
@@ -101,9 +99,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
             <div className="absolute inset-0 rounded-full border-2 border-white/10" />
             <div className="animate-spin absolute inset-0 rounded-full border-2 border-transparent border-t-brand-foreground" />
           </div>
-          <span className="text-xs uppercase tracking-[0.25em] text-brand-muted">
-            Carregando
-          </span>
+          <span className="text-xs uppercase tracking-[0.25em] text-brand-muted">Carregando</span>
         </div>
 
         <div className="mt-14 flex min-h-24 max-w-md items-center justify-center">

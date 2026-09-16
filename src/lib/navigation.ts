@@ -48,8 +48,4 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Disparo de Cobranças", path: "/disparo-de-cobrancas" },
     ],
   },
-  {
-    title: "Conta",
-    items: [{ label: "Meu Perfil", path: "/meu-perfil" }],
-  },
 ];

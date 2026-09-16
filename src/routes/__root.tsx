@@ -7,9 +7,12 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { createIsomorphicFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { THEME_KEY, THEME_COOKIE_MAX_AGE } from "@/lib/theme";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -100,14 +103,38 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Read the theme cookie in an environment-safe way: the server reads the
+// request cookie (so SSR renders the correct <html> className, avoiding a
+// hydration mismatch), while the client reads document.cookie. The
+// `.server()` branch is compiled away in client builds, which is what keeps
+// the server-only import of `getCookie` allowed here.
+const getThemeCookie = createIsomorphicFn()
+  .server(() => getCookie(THEME_KEY))
+  .client(() => {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${THEME_KEY}=([^;]*)`));
+    return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+  });
+
 function RootShell({ children }: { children: ReactNode }) {
+  // Read the persisted theme from the cookie so the server can render the
+  // correct <html> className during SSR, avoiding the hydration mismatch
+  // that occurred when only the inline script knew about the user's theme.
+  const isDark = getThemeCookie() === "dark";
+
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={isDark ? "dark" : ""}
+      // The <html> className is also managed by the inline critical script
+      // (prefers-color-scheme fallback for first-time visitors) and by the
+      // ThemeToggle client component, so suppress the hydration check here.
+      suppressHydrationWarning
+    >
       <head>
         <HeadContent />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var s=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d)){document.documentElement.classList.add('dark');}})();`,
+            __html: `(function(){var s=localStorage.getItem('${THEME_KEY}');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(!s&&d)){document.documentElement.classList.add('dark')}if(!s){document.cookie='${THEME_KEY}='+(d?'dark':'light')+';path=/;max-age=${THEME_COOKIE_MAX_AGE}'}})();`,
           }}
         />
       </head>

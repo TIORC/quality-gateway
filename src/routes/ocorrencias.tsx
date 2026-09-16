@@ -75,12 +75,6 @@ function Ocorrencias() {
             </TabsContent>
           ))}
         </Tabs>
-
-        <footer className="mt-auto pt-10 text-center">
-          <p className="text-xs text-[#94A3B8]">
-            Desenvolvido com 💙 pelos Desenvolvedores Orcoma Contabilidade - G
-          </p>
-        </footer>
       </div>
 
       <AbrirOcorrenciaDialog aberto={abrirOcorrencia} onFechar={() => setAbrirOcorrencia(false)} />

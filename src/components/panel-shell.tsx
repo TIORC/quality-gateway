@@ -13,17 +13,18 @@ import {
   Settings,
   ShieldCheck,
   Target,
-  UserCircle,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getSession, isAdminSession, logout, type UserSession } from "@/lib/auth";
+import { getSession, logout, rolePodeAcessarPainel, type UserSession } from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
+import { rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { AppFooter } from "@/components/app-footer";
 
 const ICONS: Record<string, LucideIcon> = {
   Painel: LayoutDashboard,
@@ -38,7 +39,6 @@ const ICONS: Record<string, LucideIcon> = {
   Funcionários: Users,
   Configurações: Settings,
   "Disparo de Cobranças": Send,
-  "Meu Perfil": UserCircle,
 };
 
 const PanelSessionContext = createContext<UserSession | null>(null);
@@ -60,17 +60,22 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
   const [checando, setChecando] = useState(true);
   const [menuAberto, setMenuAberto] = useState(false);
 
-  // Guarda de acesso: apenas usuários com nível administrador entram no portal.
+  // Guarda de acesso: admin, gestor e colaboradores com nível de acesso entram.
   useEffect(() => {
     const atual = getSession();
-    if (!atual || !isAdminSession(atual)) {
+    if (!atual || !rolePodeAcessarPainel(atual)) {
       logout();
       router.navigate({ to: "/", replace: true });
       return;
     }
+    // Rota fora das permissões do nível: vai para o Meu Perfil (sempre permitido).
+    if (!rotaPermitida(atual, location.pathname)) {
+      router.navigate({ to: "/meu-perfil", replace: true });
+      return;
+    }
     setSession(atual);
     setChecando(false);
-  }, [router]);
+  }, [router, location.pathname]);
 
   // Fecha o menu mobile ao navegar.
   useEffect(() => {
@@ -91,6 +96,16 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
     router.navigate({ to: "/", replace: true });
   }
 
+  // Menu filtrado pelas rotas permitidas ao nível de acesso da sessão.
+  const permitidas = rotasPermitidas(session);
+  const gruposVisiveis =
+    permitidas.size === 0
+      ? NAV_GROUPS
+      : NAV_GROUPS.map((group) => ({
+          ...group,
+          items: group.items.filter((item) => permitidas.has(item.path)),
+        })).filter((group) => group.items.length > 0);
+
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3 px-5 pb-5 pt-6">
@@ -104,7 +119,7 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-6">
-        {NAV_GROUPS.map((group) => (
+        {gruposVisiveis.map((group) => (
           <div key={group.title} className="mb-6">
             <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-muted/70">
               {group.title}
@@ -144,7 +159,6 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
           <LogOut className="h-4 w-4 shrink-0" />
           Sair
         </button>
-        <p className="mt-1 truncate px-3 text-[11px] text-brand-muted/60">{session.email}</p>
       </div>
     </>
   );
@@ -202,6 +216,7 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
           <div className={cn("mx-auto w-full px-4 py-6 sm:px-6 lg:px-8", !wide && "max-w-6xl")}>
             {children}
           </div>
+          <AppFooter />
         </div>
       </div>
     </PanelSessionContext.Provider>

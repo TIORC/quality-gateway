@@ -34,8 +34,22 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
+import { criarAcessoColaborador, listarEmailsComLogin, type UserRole } from "@/lib/auth";
+import { NIVEL_SOMENTE_LIBERADOS, NIVEIS_ACESSO } from "@/lib/niveis-acesso";
+import {
+  carregarPops,
+  listarDocumentosLiberados,
+  salvarLiberacaoDocumentos,
+  type Pop,
+} from "@/lib/pops";
 import * as org from "@/lib/organizacao";
 import type { Unidade } from "@/lib/organizacao";
+
+/** Senha de acesso + perfil de login informados nos diálogos de colaborador. */
+interface AcessoLogin {
+  senha: string;
+  perfilLogin: UserRole;
+}
 
 export const Route = createFileRoute("/configuracoes")({
   head: () => ({
@@ -53,43 +67,6 @@ const ABAS = [
   { valor: "origens", rotulo: "Origens de ação" },
   { valor: "lixeira", rotulo: "Lixeira" },
 ] as const;
-
-const NIVEIS_ACESSO = [
-  {
-    rotulo: "Administrador",
-    descricao:
-      "Acesso total e irrestrito. Gerencia usuários e concede permissões de administração a qualquer pessoa.",
-  },
-  {
-    rotulo: "Gestor da Qualidade",
-    descricao: "Acesso total. Cria e publica documentos, atas, projetos e indicadores.",
-  },
-  {
-    rotulo: "Auxiliar da Qualidade",
-    descricao: "Elabora e apura, mas não libera divulgação de POP.",
-  },
-  {
-    rotulo: "Diretoria",
-    descricao: "Enxerga tudo em leitura. Assina atas e aprova políticas.",
-  },
-  {
-    rotulo: "Líder de setor",
-    descricao: "Seu setor: ações, documentos, ocorrências e projetos.",
-  },
-  {
-    rotulo: "Desenvolvedor",
-    descricao:
-      "Acesso como colaborador: suas ações, o que segue e o que foi divulgado ao seu setor.",
-  },
-  {
-    rotulo: "Colaborador",
-    descricao: "Suas ações, o que segue e o que foi divulgado a ele.",
-  },
-  {
-    rotulo: "Colaborador de outra unidade",
-    descricao: "Somente POPs e políticas expressamente liberados.",
-  },
-];
 
 const GRUPOS_PERSONALIZADOS = [
   "Rotina de indicadores",
@@ -137,6 +114,9 @@ function Configuracoes() {
   const [setorEmEdicao, setSetorEmEdicao] = useState<SetorConfig | null>(null);
   const [cargoEmEdicao, setCargoEmEdicao] = useState<CargoEmEdicao | null>(null);
   const [setorParaRemover, setSetorParaRemover] = useState<SetorConfig | null>(null);
+  const [novaUnidadeAberta, setNovaUnidadeAberta] = useState(false);
+  const [unidadeEmEdicao, setUnidadeEmEdicao] = useState<Unidade | null>(null);
+  const [unidadeParaRemover, setUnidadeParaRemover] = useState<Unidade | null>(null);
 
   useEffect(() => {
     if (!org.organizacaoDisponivel()) {
@@ -205,9 +185,49 @@ function Configuracoes() {
     if (setor) setSetorParaRemover(setor);
   }
 
+  function fecharDialogosDeUnidade() {
+    setNovaUnidadeAberta(false);
+    setUnidadeEmEdicao(null);
+  }
+
+  function salvarUnidade(nome: string, cidade: string) {
+    if (unidadeEmEdicao) {
+      org
+        .atualizarUnidade(unidadeEmEdicao.id, nome, cidade)
+        .then(() =>
+          setUnidades((atual) =>
+            atual.map((unidade) =>
+              unidade.id === unidadeEmEdicao.id
+                ? { id: unidadeEmEdicao.id, nome: nome.trim(), cidade: cidade.trim() }
+                : unidade,
+            ),
+          ),
+        )
+        .catch(() => toast.error("Não foi possível editar a unidade."));
+    } else {
+      org
+        .criarUnidade(nome, cidade)
+        .then((nova) => setUnidades((atual) => [...atual, nova]))
+        .catch(() => toast.error("Não foi possível criar a unidade."));
+    }
+    fecharDialogosDeUnidade();
+  }
+
+  function confirmarRemocaoDeUnidade() {
+    if (!unidadeParaRemover) return;
+    org
+      .removerUnidade(unidadeParaRemover.id)
+      .then(() =>
+        setUnidades((atual) => atual.filter((unidade) => unidade.id !== unidadeParaRemover.id)),
+      )
+      .catch(() => toast.error("Não foi possível remover a unidade."));
+    setUnidadeParaRemover(null);
+  }
+
   // Ações de setores e cargos compartilhadas pelas abas "Cargos" e "Unidades e setores".
   const acoesSetores: SetoresTabProps = {
     setores: gerenciador.setores,
+    colaboradores,
     carregando: gerenciador.carregando,
     criarSetor: gerenciador.criarSetor,
     renomearSetor: gerenciador.renomearSetor,
@@ -255,7 +275,7 @@ function Configuracoes() {
             setores={gerenciador.setores}
             unidades={unidades}
             unidadesCarregando={unidadesCarregando}
-            iniciais={colaboradores}
+            colaboradores={colaboradores}
           />
         </TabsContent>
         <TabsContent value="cargos">
@@ -267,6 +287,9 @@ function Configuracoes() {
             colaboradores={colaboradores}
             unidades={unidades}
             unidadesCarregando={unidadesCarregando}
+            onNovaUnidade={() => setNovaUnidadeAberta(true)}
+            onEditarUnidade={(unidade) => setUnidadeEmEdicao(unidade)}
+            onRemoverUnidade={(unidade) => setUnidadeParaRemover(unidade)}
           />
         </TabsContent>
         <TabsContent value="grupos">
@@ -326,9 +349,24 @@ function Configuracoes() {
         }}
       />
 
-      <p className="mt-8 text-center text-[11px] text-[#94A3B8]">
-        Desenvolvido com 💙 pelos Desenvolvedores Orcoma Contabilidade
-      </p>
+      <UnidadeDialog
+        aberto={novaUnidadeAberta || unidadeEmEdicao !== null}
+        unidade={unidadeEmEdicao}
+        onFechar={fecharDialogosDeUnidade}
+        onSalvar={salvarUnidade}
+      />
+
+      <RemoverUnidadeDialog
+        unidade={unidadeParaRemover}
+        colaboradoresVinculados={
+          unidadeParaRemover
+            ? colaboradores.filter((colaborador) => colaborador.unidade === unidadeParaRemover.nome)
+                .length
+            : 0
+        }
+        onFechar={() => setUnidadeParaRemover(null)}
+        onConfirmar={confirmarRemocaoDeUnidade}
+      />
     </PanelShell>
   );
 }
@@ -585,7 +623,9 @@ function useGerenciadorSetores(): GerenciadorSetores {
   }, []);
 
   function atualizarSetor(setorAtualizado: SetorConfig) {
-    setSetores((atual) => atual.map((setor) => (setor.id === setorAtualizado.id ? setorAtualizado : setor)));
+    setSetores((atual) =>
+      atual.map((setor) => (setor.id === setorAtualizado.id ? setorAtualizado : setor)),
+    );
   }
 
   function recarregar() {
@@ -599,7 +639,9 @@ function useGerenciadorSetores(): GerenciadorSetores {
     org
       .criarSetor(nome)
       .then((novo) => setSetores((atual) => [...atual, novo]))
-      .catch((erro: unknown) => toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o setor."));
+      .catch((erro: unknown) =>
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o setor."),
+      );
   }
 
   function renomearSetor(setorId: string, nome: string) {
@@ -665,9 +707,15 @@ function SetoresTab({
   onEditarCargo,
   removerSetor,
   removerCargo,
+  onNovaUnidade,
+  onEditarUnidade,
+  onRemoverUnidade,
 }: SetoresTabProps & {
   unidades: Unidade[];
   unidadesCarregando: boolean;
+  onNovaUnidade: () => void;
+  onEditarUnidade: (unidade: Unidade) => void;
+  onRemoverUnidade: (unidade: Unidade) => void;
 }) {
   const [busca, setBusca] = useState("");
 
@@ -682,11 +730,20 @@ function SetoresTab({
   return (
     <div className="mt-4 space-y-4">
       <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
-        <div className="border-b border-[#E9EEF5] p-4">
-          <h3 className="text-[14px] font-semibold text-[#1F2937]">Unidades</h3>
-          <p className="mt-1 text-sm text-[#64748B]">
-            Unidades em que os setores e cargos abaixo são aplicados.
-          </p>
+        <div className="flex flex-col gap-3 border-b border-[#E9EEF5] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-[14px] font-semibold text-[#1F2937]">Unidades</h3>
+            <p className="mt-1 text-sm text-[#64748B]">
+              Unidades em que os setores e cargos abaixo são aplicados.
+            </p>
+          </div>
+          <Button
+            onClick={onNovaUnidade}
+            className="shrink-0 bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+          >
+            <Plus className="h-4 w-4" />
+            Nova unidade
+          </Button>
         </div>
         {unidadesCarregando ? (
           <div className="px-4 py-8 text-center text-sm text-[#64748B]">Carregando unidades…</div>
@@ -695,10 +752,32 @@ function SetoresTab({
             {unidades.map((unidade) => (
               <div
                 key={unidade.id}
-                className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-3"
+                className="group flex items-start justify-between gap-3 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-3 transition hover:border-[#D9E0EA]"
               >
-                <p className="text-[13px] font-semibold text-[#1F2937]">{unidade.nome}</p>
-                <p className="text-[11px] text-[#64748B]">{unidade.cidade}</p>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-[#1F2937]">{unidade.nome}</p>
+                  <p className="text-[11px] text-[#64748B]">{unidade.cidade || "Sem cidade"}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    title={`Editar unidade ${unidade.nome}`}
+                    aria-label={`Editar unidade ${unidade.nome}`}
+                    onClick={() => onEditarUnidade(unidade)}
+                    className="rounded-md p-1.5 text-[#64748B] transition hover:bg-white hover:text-[#1E3A8A]"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title={`Remover unidade ${unidade.nome}`}
+                    aria-label={`Remover unidade ${unidade.nome}`}
+                    onClick={() => onRemoverUnidade(unidade)}
+                    className="rounded-md p-1.5 text-[#94A3B8] transition hover:bg-[#FEF2F2] hover:text-[#E11D48]"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
             {unidades.length === 0 ? (
@@ -869,23 +948,66 @@ interface ColaboradoresTabProps {
   setores: SetorConfig[];
   unidades: Unidade[];
   unidadesCarregando: boolean;
-  iniciais: Colaborador[];
+  colaboradores: Colaborador[];
 }
 
 function ColaboradoresTab({
   setores,
   unidades,
   unidadesCarregando,
-  iniciais,
+  colaboradores,
 }: ColaboradoresTabProps) {
   const session = usePanelSession();
-  const [colaboradores, setColaboradores] = useState<Colaborador[]>(iniciais);
+  const [lista, setLista] = useState<Colaborador[]>(colaboradores);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [unidade, setUnidade] = useState("todas");
   const [setor, setSetor] = useState("todos");
   const [novoAberto, setNovoAberto] = useState(false);
   const [gerindo, setGerindo] = useState<Colaborador | null>(null);
+  const [liberadosPorColaborador, setLiberadosPorColaborador] = useState<Record<string, number>>(
+    {},
+  );
+  const [emailsComLogin, setEmailsComLogin] = useState<string[]>([]);
+
+  // Contagem de documentos liberados (POPs) por colaborador.
+  useEffect(() => {
+    let ativo = true;
+    Promise.all(
+      lista.map(async (colaborador) => {
+        if (!colaborador.id) return [colaborador.id, 0] as const;
+        try {
+          const ids = await listarDocumentosLiberados(colaborador.id, "pop");
+          return [colaborador.id, ids.length] as const;
+        } catch {
+          return [colaborador.id, 0] as const;
+        }
+      }),
+    )
+      .then((pares) => {
+        if (!ativo) return;
+        const mapa: Record<string, number> = {};
+        for (const [id, quantidade] of pares) mapa[id] = quantidade;
+        setLiberadosPorColaborador(mapa);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [lista]);
+
+  // Quem já tem acesso de login (badge "Tem login" / "Sem login").
+  useEffect(() => {
+    let ativo = true;
+    listarEmailsComLogin()
+      .then((emails) => {
+        if (ativo) setEmailsComLogin(emails);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   useEffect(() => {
     let ativo = true;
@@ -895,8 +1017,8 @@ function ColaboradoresTab({
     }
     org
       .carregarColaboradores()
-      .then((lista) => {
-        if (ativo) setColaboradores(lista);
+      .then((dados) => {
+        if (ativo) setLista(dados);
       })
       .catch(() => {
         if (ativo) toast.error("Não foi possível carregar os colaboradores.");
@@ -909,13 +1031,13 @@ function ColaboradoresTab({
     };
   }, []);
 
-  const usuarioAtual = colaboradores.find((colaborador) => colaborador.email === session?.email);
+  const usuarioAtual = lista.find((colaborador) => colaborador.email === session?.email);
   const podeDarAdministracao =
     session?.role === "admin" ||
     usuarioAtual?.nivelAcesso === "Administrador" ||
     usuarioAtual?.nivelAcesso === "Desenvolvedor";
 
-  const filtrados = colaboradores.filter((colaborador) => {
+  const filtrados = lista.filter((colaborador) => {
     const termo = busca.trim().toLowerCase();
     const bateBusca =
       termo === "" ||
@@ -927,30 +1049,109 @@ function ColaboradoresTab({
     return bateBusca && bateUnidade && bateSetor;
   });
 
-  function adicionar(colaborador: Colaborador) {
+  function adicionar(dados: Omit<Colaborador, "id">, acesso?: AcessoLogin) {
     org
-      .criarColaborador(colaborador)
-      .then(() => setColaboradores((atual) => [colaborador, ...atual]))
+      .criarColaborador({ ...dados, id: "" })
+      .then(async (criado) => {
+        setLista((atual) => [criado, ...atual]);
+        // Cria o acesso de login quando o admin preencheu uma senha.
+        if (acesso?.senha && (criado.email ?? dados.email)) {
+          try {
+            await criarAcessoColaborador(
+              criado.id,
+              criado.email ?? dados.email ?? "",
+              acesso.senha,
+              acesso.perfilLogin,
+            );
+            toast.success("Colaborador criado com acesso de login.");
+            setEmailsComLogin((atual) => [
+              ...atual,
+              (criado.email ?? dados.email ?? "").trim().toLowerCase(),
+            ]);
+          } catch (erro) {
+            toast.error(
+              erro instanceof Error ? erro.message : "Não foi possível criar o acesso de login.",
+            );
+          }
+        }
+      })
       .catch((erro: unknown) =>
         toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o colaborador."),
       );
     setNovoAberto(false);
   }
 
-  function salvar(colaborador: Colaborador) {
+  function salvar(
+    colaborador: Colaborador,
+    popIdsLiberados?: string[] | null,
+    acesso?: AcessoLogin,
+  ) {
     org
       .atualizarColaborador(colaborador)
-      .then((atualizado) =>
-        setColaboradores((atual) =>
-          atual.map((item) => (item.id === atualizado.id ? atualizado : item)),
+      .then((atualizado) => {
+        setLista((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
+        if (atualizado.email && colaborador.email !== atualizado.email) {
+          const antigo = (colaborador.email ?? "").trim().toLowerCase();
+          const novo = atualizado.email.trim().toLowerCase();
+          setEmailsComLogin((atual) =>
+            atual.includes(antigo)
+              ? atual.map((atualEmail) => (atualEmail === antigo ? novo : atualEmail))
+              : atual.includes(novo)
+                ? atual
+                : [...atual, novo],
+          );
+        }
+      })
+      .catch((erro: unknown) =>
+        toast.error(
+          erro instanceof Error ? erro.message : "Não foi possível salvar o colaborador.",
         ),
+      );
+
+    // Cria/atualiza o acesso de login quando o admin preencheu uma senha.
+    if (acesso?.senha) {
+      criarAcessoColaborador(
+        colaborador.id,
+        colaborador.email ?? "",
+        acesso.senha,
+        acesso.perfilLogin,
       )
-      .catch(() => toast.error("Não foi possível salvar o colaborador."));
+        .then(() => {
+          toast.success("Acesso de login salvo.");
+          setEmailsComLogin((atual) =>
+            atual.includes((colaborador.email ?? "").trim().toLowerCase())
+              ? atual
+              : [...atual, (colaborador.email ?? "").trim().toLowerCase()],
+          );
+        })
+        .catch((erro: unknown) =>
+          toast.error(
+            erro instanceof Error ? erro.message : "Não foi possível salvar o acesso de login.",
+          ),
+        );
+    }
+
+    // Liberação individual de documentos (quando informada pelo diálogo).
+    if (Array.isArray(popIdsLiberados) && colaborador.id) {
+      const autor = session?.nome ?? "";
+      salvarLiberacaoDocumentos(colaborador.id, popIdsLiberados, "pop", autor)
+        .then(() => {
+          setLiberadosPorColaborador((atual) => ({
+            ...atual,
+            [colaborador.id]: popIdsLiberados.length,
+          }));
+          toast.success("Liberação de documentos atualizada.");
+        })
+        .catch(() => toast.error("Não foi possível salvar a liberação de documentos."));
+    }
+
     setGerindo(null);
   }
 
   const nomesUnidades = unidades.map((unidadeListada) => unidadeListada.nome);
-  const cidadesUnidades = new Map(unidades.map((unidadeListada) => [unidadeListada.nome, unidadeListada.cidade]));
+  const cidadesUnidades = new Map(
+    unidades.map((unidadeListada) => [unidadeListada.nome, unidadeListada.cidade]),
+  );
 
   return (
     <div className="mt-4">
@@ -1016,71 +1217,93 @@ function ColaboradoresTab({
                   <Th>Setor</Th>
                   <Th>Nível de acesso</Th>
                   <Th>Grupos</Th>
-                  <Th>Exclusão</Th>
+                  <Th>Acesso</Th>
+                  <Th>Docs liberados</Th>
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map((colaborador) => (
-                  <tr key={colaborador.id} className="border-b border-[#E9EEF5] last:border-0">
-                    <td className="px-4 py-3 align-middle">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#312E81] text-[12px] font-semibold text-white">
-                          {iniciais(colaborador.nome)}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-[#1F2937]">
-                            {colaborador.nome}
-                          </p>
-                          <p className="truncate text-[11px] text-[#64748B]">{colaborador.cargo}</p>
+                {filtrados.map((colaborador) => {
+                  const temLogin = emailsComLogin.includes(
+                    (colaborador.email ?? "").trim().toLowerCase(),
+                  );
+                  return (
+                    <tr key={colaborador.id} className="border-b border-[#E9EEF5] last:border-0">
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#312E81] text-[12px] font-semibold text-white">
+                            {iniciais(colaborador.nome)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-semibold text-[#1F2937]">
+                              {colaborador.nome}
+                            </p>
+                            <p className="truncate text-[11px] text-[#64748B]">
+                              {colaborador.cargo}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                      {colaborador.email}
-                    </td>
-                    <td className="px-4 py-3 align-middle text-[13px] text-[#1F2937]">
-                      {colaborador.unidade}
-                    </td>
-                    <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                      {colaborador.cidade}
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
-                        {colaborador.setor}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      <span
-                        className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${corAcesso(colaborador.nivelAcesso ?? "")}`}
-                      >
-                        {colaborador.nivelAcesso}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                      {colaborador.grupos ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      <div className="flex items-center justify-end gap-4 whitespace-nowrap">
-                        <span
-                          className={
-                            colaborador.exclusao === "Permitido"
-                              ? "text-[13px] font-medium text-[#059669]"
-                              : "text-[13px] font-medium text-[#E11D48]"
-                          }
-                        >
-                          {colaborador.exclusao}
+                      </td>
+                      <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                        {colaborador.email}
+                      </td>
+                      <td className="px-4 py-3 align-middle text-[13px] text-[#1F2937]">
+                        {colaborador.unidade}
+                      </td>
+                      <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                        {colaborador.cidade}
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
+                          {colaborador.setor}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setGerindo(colaborador)}
-                          className="text-[13px] font-medium text-[#1E3A8A] transition hover:text-[#1E40AF]"
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${corAcesso(colaborador.nivelAcesso ?? "")}`}
                         >
-                          Gerir
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {colaborador.nivelAcesso}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                        {colaborador.grupos ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            temLogin ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#F1F5F9] text-[#64748B]"
+                          }`}
+                        >
+                          {temLogin ? "Tem login" : "Sem login"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <span className="inline-block rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#4F46E5]">
+                          {liberadosPorColaborador[colaborador.id] ?? 0}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex items-center justify-end gap-4 whitespace-nowrap">
+                          <span
+                            className={
+                              colaborador.exclusao === "Permitido"
+                                ? "text-[13px] font-medium text-[#059669]"
+                                : "text-[13px] font-medium text-[#E11D48]"
+                            }
+                          >
+                            {colaborador.exclusao}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setGerindo(colaborador)}
+                            className="text-[13px] font-medium text-[#1E3A8A] transition hover:text-[#1E40AF]"
+                          >
+                            Gerir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1123,6 +1346,7 @@ function ColaboradoresTab({
         onFechar={() => setNovoAberto(false)}
         onCriar={adicionar}
         podeDarAdministracao={podeDarAdministracao}
+        podeCriarLogin={session?.role === "admin"}
       />
       {gerindo ? (
         <GerirColaboradorDialog
@@ -1156,8 +1380,10 @@ interface NovoColaboradorDialogProps {
   cidadesUnidades: Map<string, string>;
   unidadesCarregando: boolean;
   onFechar: () => void;
-  onCriar: (colaborador: Colaborador) => void;
+  onCriar: (dados: Omit<Colaborador, "id">, acesso?: AcessoLogin) => void;
   podeDarAdministracao: boolean;
+  /** Somente admins podem criar acesso de login para novos colaboradores. */
+  podeCriarLogin: boolean;
 }
 
 function NovoColaboradorDialog({
@@ -1169,6 +1395,7 @@ function NovoColaboradorDialog({
   onFechar,
   onCriar,
   podeDarAdministracao,
+  podeCriarLogin,
 }: NovoColaboradorDialogProps) {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
@@ -1177,6 +1404,8 @@ function NovoColaboradorDialog({
   const [unidade, setUnidade] = useState(() => unidades[0] ?? "Matriz");
   const [nivelAcesso, setNivelAcesso] = useState("Colaborador");
   const [grupos, setGrupos] = useState<string[]>([]);
+  const [senhaAcesso, setSenhaAcesso] = useState("");
+  const [perfilLogin, setPerfilLogin] = useState<UserRole>("usuario");
 
   // Só aparecem no cadastro os cargos do setor escolhido.
   const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
@@ -1205,22 +1434,27 @@ function NovoColaboradorDialog({
     setUnidade(unidades[0] ?? "Matriz");
     setNivelAcesso("Colaborador");
     setGrupos([]);
+    setSenhaAcesso("");
+    setPerfilLogin("usuario");
   }
 
   function enviar() {
     if (!nome.trim()) return;
     const cidade = cidadesUnidades.get(unidade) ?? "";
-    onCriar({
-      nome: nome.trim(),
-      cargo: cargo || "Sem cargo",
-      email: email.trim(),
-      unidade,
-      cidade,
-      setor,
-      nivelAcesso,
-      ...(grupos.length > 0 ? { grupos: grupos.join(", ") } : {}),
-      exclusao: "Sem acesso",
-    });
+    onCriar(
+      {
+        nome: nome.trim(),
+        cargo: cargo || "Sem cargo",
+        email: email.trim(),
+        unidade,
+        cidade,
+        setor,
+        nivelAcesso,
+        ...(grupos.length > 0 ? { grupos: grupos.join(", ") } : {}),
+        exclusao: "Sem acesso",
+      },
+      podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso, perfilLogin } : undefined,
+    );
     limpar();
   }
 
@@ -1285,11 +1519,7 @@ function NovoColaboradorDialog({
             </Campo>
 
             <Campo rotulo="Unidade">
-              <Select
-                value={unidade}
-                onValueChange={setUnidade}
-                disabled={unidadesCarregando}
-              >
+              <Select value={unidade} onValueChange={setUnidade} disabled={unidadesCarregando}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1342,6 +1572,38 @@ function NovoColaboradorDialog({
               ))}
             </div>
           </Campo>
+
+          {podeCriarLogin ? (
+            <Campo rotulo="Acesso de login (opcional)">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Input
+                    type="password"
+                    value={senhaAcesso}
+                    onChange={(evento) => setSenhaAcesso(evento.target.value)}
+                    placeholder="Senha de acesso"
+                    autoComplete="new-password"
+                  />
+                  <p className="text-xs text-[#94A3B8]">
+                    Preencha para já criar o login deste colaborador.
+                  </p>
+                </div>
+                <Select
+                  value={perfilLogin}
+                  onValueChange={(valor) => setPerfilLogin(valor as UserRole)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="usuario">Perfil de login: usuário</SelectItem>
+                    <SelectItem value="gestor">Perfil de login: gestor</SelectItem>
+                    <SelectItem value="admin">Perfil de login: admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </Campo>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -1368,7 +1630,11 @@ interface GerirColaboradorDialogProps {
   cidadesUnidades: Map<string, string>;
   unidadesCarregando: boolean;
   onFechar: () => void;
-  onSalvar: (colaborador: Colaborador) => void;
+  onSalvar: (
+    colaborador: Colaborador,
+    popIdsLiberados?: string[] | null,
+    acesso?: AcessoLogin,
+  ) => void;
   podeDarAdministracao: boolean;
 }
 
@@ -1386,17 +1652,65 @@ function GerirColaboradorDialog({
   const [unidade, setUnidade] = useState(colaborador?.unidade ?? "Matriz");
   const [nivelAcesso, setNivelAcesso] = useState(colaborador?.nivelAcesso ?? "Colaborador");
   const [exclusao, setExclusao] = useState(colaborador?.exclusao ?? "Sem acesso");
+  const [nome, setNome] = useState(colaborador?.nome ?? "");
+  const [email, setEmail] = useState(colaborador?.email ?? "");
+  const [cargo, setCargo] = useState(colaborador?.cargo ?? "Sem cargo");
   const [grupos, setGrupos] = useState<string[]>(
     colaborador?.grupos ? colaborador.grupos.split(", ").filter(Boolean) : [],
   );
+  // Liberação individual de documentos (quando o nível exige liberação).
+  const [popsCatalogo, setPopsCatalogo] = useState<Pop[]>([]);
+  const [popIdsLiberados, setPopIdsLiberados] = useState<string[]>([]);
+  const [liberacaoCarregando, setLiberacaoCarregando] = useState(false);
+  const podeLiberar = nivelAcesso === NIVEL_SOMENTE_LIBERADOS;
+  // Criação de acesso de login: somente para sessão de admin.
+  const sessionDialog = usePanelSession();
+  const podeCriarLogin = sessionDialog?.role === "admin";
+  const [senhaAcesso, setSenhaAcesso] = useState("");
+  const [perfilLogin, setPerfilLogin] = useState<UserRole>("usuario");
+
+  useEffect(() => {
+    if (!colaborador || !podeLiberar) return;
+    let ativo = true;
+    setLiberacaoCarregando(true);
+    Promise.all([
+      carregarPops(),
+      listarDocumentosLiberados(colaborador.id, "pop").catch(() => [] as string[]),
+    ])
+      .then(([catalogo, ids]) => {
+        if (!ativo) return;
+        setPopsCatalogo([...catalogo.pops].sort((a, b) => a.codigo.localeCompare(b.codigo)));
+        setPopIdsLiberados(ids);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (ativo) setLiberacaoCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [colaborador, podeLiberar]);
+
+  function alternarLiberacao(popId: string) {
+    setPopIdsLiberados((atual) =>
+      atual.includes(popId) ? atual.filter((id) => id !== popId) : [...atual, popId],
+    );
+  }
 
   const atual = colaborador;
   if (!atual) return null;
 
+  const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
   const niveisDisponiveis = podeDarAdministracao
     ? NIVEIS_ACESSO
     : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador");
+
+  function trocarSetor(novoSetor: string) {
+    setSetor(novoSetor);
+    const cargosDoNovoSetor = setores.find((item) => item.nome === novoSetor)?.cargos ?? [];
+    setCargo(cargosDoNovoSetor[0]?.nome ?? "Sem cargo");
+  }
 
   function alternarGrupo(grupo: string) {
     setGrupos((atualLista) =>
@@ -1410,17 +1724,19 @@ function GerirColaboradorDialog({
     if (!atual) return;
     const atualizado: Colaborador = {
       id: atual.id,
-      nome: atual.nome,
-      cargo: atual.cargo,
+      nome: nome.trim() || atual.nome,
+      email: email.trim() || (atual.email ?? ""),
+      cargo: cargo.trim() || "Sem cargo",
       setor,
       unidade,
       nivelAcesso,
       exclusao,
     };
-    if (atual.email) atualizado.email = atual.email;
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
-    onSalvar(atualizado);
+    const acesso: AcessoLogin | undefined =
+      podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso, perfilLogin } : undefined;
+    onSalvar(atualizado, podeLiberar ? popIdsLiberados : null, acesso);
   }
 
   return (
@@ -1445,8 +1761,27 @@ function GerirColaboradorDialog({
 
         <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
           <div className="grid gap-4 sm:grid-cols-2">
+            <Campo rotulo="Nome completo">
+              <Input
+                value={nome}
+                onChange={(evento) => setNome(evento.target.value)}
+                placeholder="Ex.: Maria da Silva"
+              />
+            </Campo>
+
+            <Campo rotulo="E-mail corporativo">
+              <Input
+                value={email}
+                onChange={(evento) => setEmail(evento.target.value)}
+                placeholder="nome@empresa.com.br"
+                type="email"
+              />
+            </Campo>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Setor">
-              <Select value={setor} onValueChange={setSetor}>
+              <Select value={setor} onValueChange={trocarSetor}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1460,12 +1795,31 @@ function GerirColaboradorDialog({
               </Select>
             </Campo>
 
+            <Campo rotulo="Cargo">
+              <Select value={cargo} onValueChange={(valor) => setCargo(valor)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cargosDoSetor.map((opcao) => (
+                    <SelectItem key={opcao.id} value={opcao.nome}>
+                      {opcao.nome}
+                    </SelectItem>
+                  ))}
+                  {cargosDoSetor.length === 0 ? (
+                    <SelectItem value="Sem cargo">Sem cargo</SelectItem>
+                  ) : null}
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
+                Trocar o setor atualiza a lista de cargos disponíveis.
+              </p>
+            </Campo>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Unidade">
-              <Select
-                value={unidade}
-                onValueChange={setUnidade}
-                disabled={unidadesCarregando}
-              >
+              <Select value={unidade} onValueChange={setUnidade} disabled={unidadesCarregando}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1521,6 +1875,36 @@ function GerirColaboradorDialog({
             </div>
           </Campo>
 
+          <Campo rotulo="Acesso de login (opcional)">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Input
+                  type="password"
+                  value={senhaAcesso}
+                  onChange={(evento) => setSenhaAcesso(evento.target.value)}
+                  placeholder="Nova senha de acesso"
+                  autoComplete="new-password"
+                />
+                <p className="text-xs text-[#94A3B8]">
+                  Preencha para (re)criar o login deste colaborador.
+                </p>
+              </div>
+              <Select
+                value={perfilLogin}
+                onValueChange={(valor) => setPerfilLogin(valor as UserRole)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="usuario">Perfil de login: usuário</SelectItem>
+                  <SelectItem value="gestor">Perfil de login: gestor</SelectItem>
+                  <SelectItem value="admin">Perfil de login: admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </Campo>
+
           <Campo rotulo="Exclusão">
             <Select value={exclusao} onValueChange={setExclusao}>
               <SelectTrigger>
@@ -1532,6 +1916,42 @@ function GerirColaboradorDialog({
               </SelectContent>
             </Select>
           </Campo>
+
+          {podeLiberar ? (
+            <Campo rotulo="Documentos liberados (POPs)">
+              <p className="text-xs leading-relaxed text-[#64748B]">
+                Este nível enxerga somente os POPs marcados abaixo.
+              </p>
+              {liberacaoCarregando ? (
+                <p className="text-[13px] text-[#64748B]">Carregando POPs…</p>
+              ) : popsCatalogo.length === 0 ? (
+                <p className="text-[13px] text-[#94A3B8]">Nenhum POP cadastrado.</p>
+              ) : (
+                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[#E9EEF5] p-2">
+                  {popsCatalogo.map((pop) => (
+                    <label
+                      key={pop.id}
+                      htmlFor={`liberar-pop-${pop.id}`}
+                      className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-[#1F2937] transition hover:bg-[#F8FAFC]"
+                    >
+                      <Checkbox
+                        id={`liberar-pop-${pop.id}`}
+                        checked={popIdsLiberados.includes(pop.id)}
+                        onCheckedChange={() => alternarLiberacao(pop.id)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        <span className="font-medium">{pop.codigo}</span> — {pop.titulo}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <p className="text-[12px] text-[#94A3B8]">
+                {popIdsLiberados.length} documento(s) liberado(s).
+              </p>
+            </Campo>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -1708,6 +2128,114 @@ function RemoverSetorDialog({
             Cancelar
           </Button>
           <Button type="button" variant="destructive" onClick={onConfirmar}>
+            Remover
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UnidadeDialog({
+  aberto,
+  unidade,
+  onFechar,
+  onSalvar,
+}: {
+  aberto: boolean;
+  unidade: Unidade | null;
+  onFechar: () => void;
+  onSalvar: (nome: string, cidade: string) => void;
+}) {
+  const [nome, setNome] = useState(unidade?.nome ?? "");
+  const [cidade, setCidade] = useState(unidade?.cidade ?? "");
+
+  useEffect(() => {
+    setNome(unidade?.nome ?? "");
+    setCidade(unidade?.cidade ?? "");
+  }, [unidade, aberto]);
+
+  return (
+    <Dialog open={aberto} onOpenChange={(abre) => !abre && onFechar()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{unidade ? "Editar unidade" : "Nova unidade"}</DialogTitle>
+          <DialogDescription>Defina o nome e a cidade da unidade.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Nome da unidade</Label>
+            <Input
+              value={nome}
+              onChange={(evento) => setNome(evento.target.value)}
+              placeholder="Ex.: Filial 3"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Cidade</Label>
+            <Input
+              value={cidade}
+              onChange={(evento) => setCidade(evento.target.value)}
+              placeholder="Ex.: Maracás/BA"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              if (nome.trim()) onSalvar(nome, cidade);
+            }}
+            className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+          >
+            Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RemoverUnidadeDialog({
+  unidade,
+  colaboradoresVinculados,
+  onFechar,
+  onConfirmar,
+}: {
+  unidade: Unidade | null;
+  colaboradoresVinculados: number;
+  onFechar: () => void;
+  onConfirmar: () => void;
+}) {
+  return (
+    <Dialog open={unidade !== null} onOpenChange={(abre) => !abre && onFechar()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Remover unidade</DialogTitle>
+          <DialogDescription>
+            Tem certeza que deseja remover a unidade <strong>{unidade?.nome}</strong>?
+          </DialogDescription>
+        </DialogHeader>
+        {colaboradoresVinculados > 0 ? (
+          <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-[13px] leading-relaxed text-[#B91C1C]">
+            A unidade possui {colaboradoresVinculados} colaborador(es) vinculado(s). Desvincule
+            antes de excluir.
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={colaboradoresVinculados > 0}
+            onClick={onConfirmar}
+          >
             Remover
           </Button>
         </DialogFooter>

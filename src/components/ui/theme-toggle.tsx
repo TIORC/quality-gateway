@@ -3,17 +3,17 @@
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
-const THEME_KEY = "theme";
+import { THEME_KEY, type Theme, THEME_COOKIE_MAX_AGE } from "@/lib/theme";
 
-function getInitialTheme(): "light" | "dark" {
+function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem(THEME_KEY) as "light" | "dark" | null;
+  const stored = localStorage.getItem(THEME_KEY) as Theme | null;
   if (stored) return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">(() => getInitialTheme());
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
 
   useEffect(() => {
     if (theme === "dark") {
@@ -22,6 +22,9 @@ export function ThemeToggle() {
       document.documentElement.classList.remove("dark");
     }
     localStorage.setItem(THEME_KEY, theme);
+    // Persist to cookie so the server can render the correct <html> className
+    // during SSR on subsequent visits.
+    document.cookie = `${THEME_KEY}=${theme};path=/;max-age=${THEME_COOKIE_MAX_AGE}`;
   }, [theme]);
 
   return (

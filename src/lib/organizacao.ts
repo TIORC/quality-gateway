@@ -1,9 +1,10 @@
 /**
  * Acesso aos dados da estrutura organizacional no Lovable Cloud (Supabase).
  *
- * As tabelas (`setores`, `cargos`, `unidades`, `colaboradores` e `usuarios`)
- * são criadas em `supabase/migrations/20260915030000_org.sql`. Estas funções
- * substituem os antigos mocks em memória (`COLABORADORES`, `SETORES`,
+ * As tabelas (`empresas`, `setores`, `cargos`, `unidades`, `colaboradores` e
+ * `usuarios`) são criadas em `supabase/migrations/20260915030000_org.sql` e
+ * `supabase/migrations/20260916000000_empresas.sql`. Estas funções substituem
+ * os antigos mocks em memória (`COLABORADORES`, `SETORES`,
  * `CARGOS_POR_SETOR`, `UNIDADES`, `FUNCIONARIOS`).
  */
 
@@ -11,6 +12,7 @@ import { exigirCloud, lovableCloudConfigurado } from "@/integrations/supabase/cl
 import type {
   CargoRow,
   ColaboradorRow,
+  EmpresaRow,
   SetorRow,
   UnidadeRow,
 } from "@/integrations/supabase/types";
@@ -38,6 +40,13 @@ export interface Unidade {
   cidade: string;
 }
 
+/** Empresa e filial exibidas na barra superior do painel. */
+export interface Empresa {
+  id: string;
+  nome: string;
+  filial: string;
+}
+
 function traduzErro(erro: unknown): Error {
   if (erro && typeof erro === "object" && "message" in erro) {
     return new Error(String((erro as { message: unknown }).message));
@@ -61,7 +70,25 @@ function unidadeDoRow(row: UnidadeRow): Unidade {
   return { id: row.id, nome: row.nome, cidade: row.cidade };
 }
 
-function colaboradoraDoRow(row: ColaboradorRow): Colaborador {
+function empresaDoRow(row: EmpresaRow): Empresa {
+  return { id: row.id, nome: row.nome, filial: row.filial };
+}
+
+function colaboradoraDoRow(
+  row: Pick<
+    ColaboradorRow,
+    | "id"
+    | "nome"
+    | "cargo"
+    | "email"
+    | "unidade"
+    | "cidade"
+    | "setor"
+    | "nivel_acesso"
+    | "grupos"
+    | "exclusao"
+  >,
+): Colaborador {
   return {
     id: row.id,
     nome: row.nome,
@@ -145,13 +172,13 @@ export async function carregarSetoresECargos(): Promise<SetorConfig[]> {
   const client = exigirCloud();
   const { data: setores, error: erroSetores } = await client
     .from("setores")
-    .select("id,nome,ordem")
+    .select("id,nome,ordem,created_at,updated_at")
     .order("ordem", { ascending: true });
   if (erroSetores) throw traduzErro(erroSetores);
 
   const { data: cargos, error: erroCargos } = await client
     .from("cargos")
-    .select("id,setor_id,nome,ordem")
+    .select("id,setor_id,nome,ordem,created_at,updated_at")
     .order("ordem", { ascending: true });
   if (erroCargos) throw traduzErro(erroCargos);
 
@@ -173,10 +200,70 @@ export async function carregarUnidades(): Promise<Unidade[]> {
   const client = exigirCloud();
   const { data, error } = await client
     .from("unidades")
-    .select("id,nome,cidade,ordem")
+    .select("id,nome,cidade,ordem,created_at,updated_at")
     .order("ordem", { ascending: true });
   if (error) throw traduzErro(error);
   return (data ?? []).map(unidadeDoRow);
+}
+
+/** Cria uma unidade e devolve o registro persistido. */
+export async function criarUnidade(nome: string, cidade: string): Promise<Unidade> {
+  const client = exigirCloud();
+  const limpo = nome.trim();
+  if (!limpo) throw new Error("Informe o nome da unidade.");
+  const { data, error } = await client
+    .from("unidades")
+    .insert({ id: novoId("uni"), nome: limpo, cidade: cidade.trim(), ordem: 999 })
+    .select("id,nome,cidade")
+    .single();
+  if (error) throw traduzErro(error);
+  if (!data) throw new Error("Não foi possível criar a unidade.");
+  return unidadeDoRow(data);
+}
+
+/** Edita o nome e/ou a cidade de uma unidade. */
+export async function atualizarUnidade(id: string, nome: string, cidade: string): Promise<void> {
+  const client = exigirCloud();
+  const limpo = nome.trim();
+  if (!limpo) throw new Error("Informe o nome da unidade.");
+  const { error } = await client
+    .from("unidades")
+    .update({ nome: limpo, cidade: cidade.trim() })
+    .eq("id", id);
+  if (error) throw traduzErro(error);
+}
+
+/** Remove uma unidade. */
+export async function removerUnidade(id: string): Promise<void> {
+  const client = exigirCloud();
+  const { error } = await client.from("unidades").delete().eq("id", id);
+  if (error) throw traduzErro(error);
+}
+
+/**
+ * Empresa (nome + filial) exibida na barra superior do painel — a de menor
+ * `ordem` entre as cadastradas.
+ *
+ * Devolve `null` quando não há nenhuma empresa cadastrada ou quando o banco
+ * não está acessível, para o cabeçalho simplesmente não exibir nada.
+ */
+export async function carregarEmpresaPrincipal(): Promise<Empresa | null> {
+  if (!organizacaoDisponivel()) return null;
+
+  try {
+    const client = exigirCloud();
+    const { data, error } = await client
+      .from("empresas")
+      .select("id,nome,filial,ordem,created_at,updated_at")
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw traduzErro(error);
+    return data ? empresaDoRow(data) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Lista de colaboradores cadastrados no portal. */
@@ -184,7 +271,9 @@ export async function carregarColaboradores(): Promise<Colaborador[]> {
   const client = exigirCloud();
   const { data, error } = await client
     .from("colaboradores")
-    .select("id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao")
+    .select(
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,processos_visualizados,processos_lidos,created_at,updated_at",
+    )
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);
   return (data ?? []).map(colaboradoraDoRow);
@@ -196,7 +285,7 @@ export async function carregarFuncionarios(): Promise<Funcionario[]> {
   const { data, error } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,setor,status,ultimo_acesso,processos_visualizados,processos_lidos",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,processos_visualizados,processos_lidos,created_at,updated_at",
     )
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);

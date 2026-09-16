@@ -68,7 +68,7 @@ function MeuPerfil() {
   const ultimoLogin = session?.loginAt ?? "";
 
   return (
-    <PanelShell>
+    <PanelShell wide>
       <header className="mb-6">
         <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#64748B]">
           Conta

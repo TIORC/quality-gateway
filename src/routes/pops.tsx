@@ -7,9 +7,13 @@ import {
   ChevronRight,
   Copy,
   CreditCard,
+  Download,
   Edit3,
+  Eye,
   FileCheck,
+  FileText,
   LayoutGrid,
+  Link2,
   Loader2,
   MessageSquare,
   MonitorSmartphone,
@@ -18,14 +22,17 @@ import {
   ReceiptText,
   Scale,
   Search,
+  Send,
   Shield,
   Star,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Users,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PanelShell } from "@/components/panel-shell";
 import {
   AlertDialog,
@@ -65,6 +72,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { getSession } from "@/lib/auth";
+import { temAcessoTotalPops } from "@/lib/permissoes";
 import {
   CARGOS_RESPONSAVEIS,
   CATEGORIAS,
@@ -72,20 +80,42 @@ import {
   FREQUENCIAS,
   PRAZOS_REFERENCIA,
   REGIMES,
-  carregarPops,
+  ROTULO_TIPO_ANEXO,
+  aplicarContadores,
+  assinarAnotacoesPop,
+  assinarContadoresPops,
+  assinarNotificacoes,
+  atualizarPop,
+  carregarContadoresPops,
+  carregarFavoritosDoUsuario,
+  carregarLeiturasDoUsuario,
+  carregarNotificacoes,
+  carregarPopsAcessiveis,
+  contarNaoLidas,
   contarPopsPorSetor,
   criarAnotacao,
   criarPop,
-  atualizarPop,
+  desfavoritarPop,
   duplicarPop,
+  enviarAnexoPop,
   excluirAnotacao,
   excluirPop,
+  favoritarPop,
   listarAnotacoes,
+  listarLeiturasPop,
+  marcarNotificacaoLida,
+  registrarLeitura,
   rotuloDoValor,
+  textoDoAnexoDocx,
+  urlAssinadaDoAnexo,
   ENTRADA_PADRAO,
+  type DecisaoLeitura,
   type EntradaPop,
+  type Notificacao,
   type Pop,
   type PopAnotacao,
+  type PopEtapa,
+  type PopLeitura,
   type SetorPop,
 } from "@/lib/pops";
 import { cn } from "@/lib/utils";
@@ -285,13 +315,25 @@ function CardSetor({ nome, chaveIcone, contagem, aoClicar, destaque = false }: C
 
 interface PopCardProps {
   pop: Pop;
+  favoritado: boolean;
+  onAbrir: (pop: Pop) => void;
   onEditar: (pop: Pop) => void;
   onDuplicar: (pop: Pop) => void;
   onExcluir: (pop: Pop) => void;
   onDiscutir: (pop: Pop) => void;
+  onFavoritar: (pop: Pop) => void;
 }
 
-function PopCard({ pop, onEditar, onDuplicar, onExcluir, onDiscutir }: PopCardProps) {
+function PopCard({
+  pop,
+  favoritado,
+  onAbrir,
+  onEditar,
+  onDuplicar,
+  onExcluir,
+  onDiscutir,
+  onFavoritar,
+}: PopCardProps) {
   return (
     <li className="flex flex-col gap-4 rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm lg:flex-row lg:gap-6 lg:p-5">
       <div className="min-w-0 flex-1">
@@ -299,7 +341,14 @@ function PopCard({ pop, onEditar, onDuplicar, onExcluir, onDiscutir }: PopCardPr
           <span className="shrink-0 rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
             {pop.codigo}
           </span>
-          <h3 className="text-[15px] font-bold tracking-tight text-[#1F2937]">{pop.titulo}</h3>
+          <button
+            type="button"
+            onClick={() => onAbrir(pop)}
+            title="Abrir o POP"
+            className="text-left text-[15px] font-bold tracking-tight text-[#1F2937] transition hover:text-[#1E3A8A] hover:underline"
+          >
+            {pop.titulo}
+          </button>
         </div>
 
         <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-[#64748B]">
@@ -378,9 +427,26 @@ function PopCard({ pop, onEditar, onDuplicar, onExcluir, onDiscutir }: PopCardPr
         </div>
 
         <div className="flex items-center gap-4 border-t border-[#E9EEF5] px-4 py-2.5">
-          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[#1F2937]">
-            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {pop.favoritos}
-          </span>
+          {/* Contadores reais do banco: 0 enquanto ninguém favoritou/comentou. */}
+          <button
+            type="button"
+            onClick={() => onFavoritar(pop)}
+            aria-pressed={favoritado}
+            aria-label={favoritado ? "Remover dos favoritos" : "Favoritar POP"}
+            title={favoritado ? "Remover dos favoritos" : "Favoritar POP"}
+            className={cn(
+              "inline-flex items-center gap-1 text-[12px] font-medium transition",
+              favoritado ? "text-amber-600" : "text-[#1F2937] hover:text-[#1E3A8A]",
+            )}
+          >
+            <Star
+              className={cn(
+                "h-3.5 w-3.5",
+                favoritado ? "fill-amber-400 text-amber-400" : "text-[#64748B]",
+              )}
+            />
+            {pop.favoritos}
+          </button>
           <button
             type="button"
             onClick={() => onDiscutir(pop)}
@@ -525,10 +591,13 @@ interface ListaProps {
   aoMudarPagina: (pagina: number) => void;
   aoVoltar: () => void;
   aoCriar: () => void;
+  onAbrir: (pop: Pop) => void;
+  favoritos: string[];
   aoEditar: (pop: Pop) => void;
   aoDuplicar: (pop: Pop) => void;
   aoExcluir: (pop: Pop) => void;
   aoDiscutir: (pop: Pop) => void;
+  aoFavoritar: (pop: Pop) => void;
 }
 
 function ListaDePops({
@@ -542,10 +611,13 @@ function ListaDePops({
   aoMudarPagina,
   aoVoltar,
   aoCriar,
+  onAbrir,
+  favoritos,
   aoEditar,
   aoDuplicar,
   aoExcluir,
   aoDiscutir,
+  aoFavoritar,
 }: ListaProps) {
   return (
     <>
@@ -607,10 +679,13 @@ function ListaDePops({
             <PopCard
               key={pop.id}
               pop={pop}
+              favoritado={favoritos.includes(pop.id)}
+              onAbrir={onAbrir}
               onEditar={aoEditar}
               onDuplicar={aoDuplicar}
               onExcluir={aoExcluir}
               onDiscutir={aoDiscutir}
+              onFavoritar={aoFavoritar}
             />
           ))
         )}
@@ -662,7 +737,29 @@ function camposDoPop(pop: Pop): EntradaPop {
     metaDia: pop.metaDia,
     prazoLegal: pop.prazoLegal,
     arquivo: pop.arquivo,
+    objetivo: pop.objetivo ?? "",
+    materiaisSistemas: pop.materiaisSistemas ?? "",
+    documentosGerados: pop.documentosGerados ?? "",
+    linksRelacionados: pop.linksRelacionados ?? [],
+    observacoes: pop.observacoes ?? "",
+    etapas: pop.etapas ?? [],
   };
+}
+
+/** Converte o texto do formulário (uma etapa por linha; 2 espaços = subnível). */
+function etapasDoTexto(texto: string): PopEtapa[] {
+  return texto
+    .split("\n")
+    .map((linha) => {
+      const recuo = linha.match(/^ */)?.[0].length ?? 0;
+      return { nivel: Math.min(4, Math.floor(recuo / 2)), texto: linha.trim() };
+    })
+    .filter((etapa) => etapa.texto !== "");
+}
+
+/** Devolve as etapas como texto do formulário (2 espaços por nível). */
+function textoDasEtapas(etapas: PopEtapa[] | undefined): string {
+  return (etapas ?? []).map((etapa) => "  ".repeat(etapa.nivel) + etapa.texto).join("\n");
 }
 
 interface PopFormDialogProps {
@@ -685,9 +782,16 @@ function PopFormDialog({
   const [entrada, setEntrada] = useState<EntradaPop>(ENTRADA_PADRAO);
   const [salvando, setSalvando] = useState(false);
 
+  const [textoEtapas, setTextoEtapas] = useState("");
+  const [textoLinks, setTextoLinks] = useState("");
+  const [anexoNovo, setAnexoNovo] = useState<File | null>(null);
+
   useEffect(() => {
     if (aberto) {
       setEntrada(pop ? camposDoPop(pop) : { ...ENTRADA_PADRAO, setorId: setorPadrao });
+      setTextoEtapas(textoDasEtapas(pop?.etapas));
+      setTextoLinks((pop?.linksRelacionados ?? []).join("\n"));
+      setAnexoNovo(null);
       setSalvando(false);
     }
   }, [aberto, pop, setorPadrao]);
@@ -703,12 +807,25 @@ function PopFormDialog({
     }
     setSalvando(true);
     try {
+      const dados: EntradaPop = {
+        ...entrada,
+        etapas: etapasDoTexto(textoEtapas),
+        linksRelacionados: textoLinks
+          .split("\n")
+          .map((link) => link.trim())
+          .filter((link) => link !== ""),
+      };
+      let popSalvo: Pop;
       if (pop) {
-        await atualizarPop(pop.id, entrada);
+        popSalvo = await atualizarPop(pop.id, dados);
         toast.success("POP atualizado com sucesso");
       } else {
-        await criarPop(entrada);
+        popSalvo = await criarPop(dados);
         toast.success("POP criado com sucesso");
+      }
+      if (anexoNovo) {
+        await enviarAnexoPop(popSalvo.id, anexoNovo);
+        toast.success("Anexo enviado");
       }
       onSalvo();
       onFechar();
@@ -910,10 +1027,77 @@ function PopFormDialog({
             />
           </Campo>
 
-          <Campo rotulo="Arquivo do procedimento" className="sm:col-span-2">
+          <Campo rotulo="Objetivo" className="sm:col-span-2">
+            <Textarea
+              value={entrada.objetivo ?? ""}
+              onChange={(e) => definir("objetivo", e.target.value)}
+              placeholder="Ex.: Realizar o lançamento da movimentação de provisões financeiras..."
+              className="min-h-[60px]"
+            />
+          </Campo>
+
+          <Campo rotulo="Materiais e Sistemas Necessários" className="sm:col-span-2">
+            <Textarea
+              value={entrada.materiaisSistemas ?? ""}
+              onChange={(e) => definir("materiaisSistemas", e.target.value)}
+              placeholder="Ex.: Software Domínio, Software de Comunicação..."
+              className="min-h-[60px]"
+            />
+          </Campo>
+
+          <Campo rotulo="Documentos Gerados" className="sm:col-span-2">
+            <Textarea
+              value={entrada.documentosGerados ?? ""}
+              onChange={(e) => definir("documentosGerados", e.target.value)}
+              placeholder="Ex.: Arquivo TXT"
+              className="min-h-[50px]"
+            />
+          </Campo>
+
+          <Campo rotulo="Links Relacionados (um por linha)" className="sm:col-span-2">
+            <Textarea
+              value={textoLinks}
+              onChange={(e) => setTextoLinks(e.target.value)}
+              placeholder={"https://youtu.be/...\nhttps://..."}
+              className="min-h-[60px]"
+            />
+          </Campo>
+
+          <Campo rotulo="Observações" className="sm:col-span-2">
+            <Textarea
+              value={entrada.observacoes ?? ""}
+              onChange={(e) => definir("observacoes", e.target.value)}
+              placeholder="Observações, boas práticas e pontos de atenção."
+              className="min-h-[100px]"
+            />
+          </Campo>
+
+          <Campo
+            rotulo="Etapas do procedimento (uma por linha; 2 espaços = subpasso)"
+            className="sm:col-span-2"
+          >
+            <Textarea
+              value={textoEtapas}
+              onChange={(e) => setTextoEtapas(e.target.value)}
+              placeholder={
+                "Receber o arquivo financeiro da empresa;\n  Caso o cliente tenha enviado: baixar os documentos;\n  Salvar na pasta;\nAnalisar o tipo do arquivo;"
+              }
+              className="min-h-[160px] font-mono text-[12px]"
+            />
+          </Campo>
+
+          <Campo
+            rotulo={
+              pop?.anexo
+                ? `Anexo atual: ${pop.anexo.nome} — escolha outro arquivo para substituir`
+                : "Anexo do procedimento (WORD ou PDF, máx. 20 MB)"
+            }
+            className="sm:col-span-2"
+          >
             <Input
               type="file"
-              onChange={(e) => definir("arquivo", e.target.files?.[0]?.name ?? null)}
+              accept=".pdf,.doc,.docx"
+              onChange={(e) => setAnexoNovo(e.target.files?.[0] ?? null)}
             />
           </Campo>
         </div>
@@ -942,6 +1126,437 @@ function PopFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Detalhe do POP (visualização no formato oficial do documento)              */
+/* -------------------------------------------------------------------------- */
+
+function RotuloDetalhe({ children }: { children: ReactNode }) {
+  return (
+    <span className="font-bold text-[#1E293B]">
+      {children}
+      {": "}
+    </span>
+  );
+}
+
+function LinhaDetalhe({ rotulo, children }: { rotulo: string; children: ReactNode }) {
+  const vazio =
+    children === null ||
+    children === undefined ||
+    (typeof children === "string" && children.trim() === "");
+  if (vazio) return null;
+  return (
+    <p className="text-[13.5px] leading-relaxed text-[#334155]">
+      <RotuloDetalhe>{rotulo}</RotuloDetalhe>
+      {children}
+    </p>
+  );
+}
+
+/** Visualizador embutido do anexo: PDF via <iframe> de URL assinada; DOCX em texto. */
+function PopAnexoVisualizador({ pop }: { pop: Pop }) {
+  const anexo = pop.anexo;
+  const [url, setUrl] = useState<string | null>(null);
+  const [texto, setTexto] = useState<string | null>(null);
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    if (!anexo) return;
+    let ativo = true;
+    setUrl(null);
+    setTexto(null);
+    setErro("");
+    setCarregando(true);
+    const ehPdf = anexo.tipo === "application/pdf" || anexo.nome.toLowerCase().endsWith(".pdf");
+    const tarefa = ehPdf
+      ? urlAssinadaDoAnexo(anexo.path).then((link) => {
+          if (ativo) setUrl(link);
+        })
+      : textoDoAnexoDocx(anexo.path).then((conteudo) => {
+          if (!ativo) return;
+          if (conteudo === null) setErro("Não foi possível extrair o texto deste arquivo.");
+          else setTexto(conteudo);
+        });
+    tarefa
+      .catch(() => {
+        if (ativo) setErro("Não foi possível abrir o anexo agora. Tente novamente.");
+      })
+      .finally(() => {
+        if (ativo) setCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [anexo]);
+
+  if (!anexo) return null;
+
+  return (
+    <div className="mt-5 overflow-hidden rounded-xl border border-[#D9E0EA]">
+      <div className="flex items-center gap-2 border-b border-[#E9EEF5] bg-[#F8FAFC] px-4 py-2.5">
+        <FileText className="h-4 w-4 text-[#1E3A8A]" />
+        <p className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#1F2937]">
+          {anexo.nome}
+          {anexo.tipo && ROTULO_TIPO_ANEXO[anexo.tipo] ? (
+            <span className="ml-2 rounded bg-[#EEF2F7] px-1.5 py-0.5 text-[10px] font-bold text-[#1E3A8A]">
+              {ROTULO_TIPO_ANEXO[anexo.tipo]}
+            </span>
+          ) : null}
+        </p>
+        <span className="text-[11px] text-[#94A3B8]">Somente leitura — download bloqueado</span>
+      </div>
+      {carregando ? (
+        <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-[#64748B]">
+          <Loader2 className="h-4 w-4 animate-spin" /> Abrindo documento…
+        </div>
+      ) : erro ? (
+        <p className="px-4 py-6 text-center text-[13px] text-destructive">{erro}</p>
+      ) : url ? (
+        <iframe
+          src={`${url}#toolbar=0&navpanes=0`}
+          title={`Visualização de ${anexo.nome}`}
+          className="h-[65vh] w-full bg-white"
+        />
+      ) : texto !== null ? (
+        <pre className="max-h-[65vh] overflow-auto whitespace-pre-wrap px-5 py-4 font-sans text-[13px] leading-relaxed text-[#334155]">
+          {texto}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
+/** Etapas numeradas, respeitando o recuo configurado no cadastro. */
+function PopEtapas({ etapas }: { etapas: PopEtapa[] }) {
+  let numero = 1;
+  return (
+    <ol className="space-y-1.5">
+      {etapas.map((etapa, indice) => (
+        <li
+          key={`etapa-${indice}`}
+          className="flex gap-2 text-[13.5px] leading-relaxed text-[#334155]"
+          style={{ paddingLeft: `${etapa.nivel * 22}px` }}
+        >
+          <span
+            className={cn(
+              "shrink-0 font-semibold",
+              etapa.nivel <= 0 ? "text-[#1E3A8A]" : "text-[#64748B]",
+            )}
+          >
+            {etapa.nivel <= 0 ? `${numero++}.` : "•"}
+          </span>
+          <span className="whitespace-pre-wrap">{etapa.texto}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ciência do POP: "Li e Concordo" / "Li e DISCORDO!"                         */
+/* -------------------------------------------------------------------------- */
+
+interface SecaoCienciaProps {
+  leitura: PopLeitura | null;
+  todasLeituras: PopLeitura[];
+  composerAberto: boolean;
+  justificativa: string;
+  enviando: boolean;
+  aoMudarJustificativa: (valor: string) => void;
+  aoAbrirComposer: () => void;
+  aoCancelarComposer: () => void;
+  aoConfirmar: (decisao: DecisaoLeitura) => void;
+}
+
+function SecaoCiencia({
+  leitura,
+  todasLeituras,
+  composerAberto,
+  justificativa,
+  enviando,
+  aoMudarJustificativa,
+  aoAbrirComposer,
+  aoCancelarComposer,
+  aoConfirmar,
+}: SecaoCienciaProps) {
+  const concordancias = todasLeituras.filter((l) => l.decisao === "concordo").length;
+  const discordancias = todasLeituras.filter((l) => l.decisao === "discordo").length;
+
+  return (
+    <section className="mt-5 border-t border-[#E9EEF5] pt-5">
+      <div className="flex flex-wrap items-center gap-3">
+        {leitura?.decisao === "concordo" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ECFDF5] px-3 py-1.5 text-[12px] font-semibold text-[#047857]">
+            <ThumbsUp className="h-3.5 w-3.5" /> Li e concordo
+          </span>
+        ) : leitura?.decisao === "discordo" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF2F2] px-3 py-1.5 text-[12px] font-semibold text-[#B91C1C]">
+            <ThumbsDown className="h-3.5 w-3.5" /> Li e discordo
+          </span>
+        ) : (
+          <span className="text-[12.5px] text-[#64748B]">
+            Após a leitura deste POP, registre sua ciência:
+          </span>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={enviando || composerAberto}
+            onClick={() => aoConfirmar("concordo")}
+            className="bg-[#047857] text-white hover:bg-[#059669]"
+          >
+            <ThumbsUp className="h-4 w-4" /> Li e Concordo
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={enviando || composerAberto}
+            onClick={aoAbrirComposer}
+            className="border-[#FCA5A5] text-[#B91C1C] hover:bg-[#FEF2F2]"
+          >
+            <ThumbsDown className="h-4 w-4" /> Li e DISCORDO!
+          </Button>
+        </div>
+
+        <span className="text-[12px] text-[#94A3B8]">
+          {concordancias} concordam · {discordancias} discordam
+        </span>
+      </div>
+
+      {composerAberto ? (
+        <div className="mt-3 rounded-xl border border-[#FCA5A5] bg-[#FEF2F2]/60 p-4">
+          <Label className="text-[13px] font-semibold text-[#7F1D1D]">
+            Justifique a sua discordância
+          </Label>
+          <Textarea
+            value={justificativa}
+            onChange={(e) => aoMudarJustificativa(e.target.value)}
+            placeholder="Descreva o ponto do POP com o qual você discorda e a sua sugestão. Esta mensagem será enviada ao Coordenador da Qualidade e ao time de Qualidade."
+            className="mt-1.5 min-h-[110px] border-[#FCA5A5] bg-white"
+          />
+          <div className="mt-2.5 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={aoCancelarComposer}
+              disabled={enviando}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={enviando}
+              onClick={() => aoConfirmar("discordo")}
+              className="bg-[#B91C1C] text-white hover:bg-[#DC2626]"
+            >
+              {enviando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Enviar discordância
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {leitura?.decisao === "discordo" && leitura.justificativa ? (
+        <p className="mt-2 rounded-lg bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#7F1D1D]">
+          <span className="font-semibold">Sua justificativa:</span> {leitura.justificativa}
+        </p>
+      ) : null}
+
+      {todasLeituras.filter((l) => l.decisao === "discordo").length > 0 ? (
+        <div className="mt-3 space-y-1.5">
+          {todasLeituras
+            .filter((l) => l.decisao === "discordo")
+            .map((l) => (
+              <div key={l.id} className="rounded-lg border border-[#FECACA] bg-white px-3 py-2">
+                <p className="text-[12px] font-semibold text-[#7F1D1D]">
+                  {l.usuarioNome || l.usuarioEmail} discordou
+                </p>
+                {l.justificativa ? (
+                  <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#334155]">
+                    {l.justificativa}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+interface PopDetalheProps {
+  pop: Pop;
+  onFechar: () => void;
+}
+
+function PopDetalhe({ pop, onFechar }: PopDetalheProps) {
+  const sessao = getSession();
+  const email = sessao?.email ?? "";
+  const nome = sessao?.nome ?? "";
+
+  const [leitura, setLeitura] = useState<PopLeitura | null>(null);
+  const [todasLeituras, setTodasLeituras] = useState<PopLeitura[]>([]);
+  const [composerAberto, setComposerAberto] = useState(false);
+  const [justificativa, setJustificativa] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    setLeitura(null);
+    setComposerAberto(false);
+    setJustificativa("");
+  }, [pop.id]);
+
+  useEffect(() => {
+    if (!email) return;
+    let ativo = true;
+    void Promise.all([carregarLeiturasDoUsuario(email), listarLeiturasPop(pop.id)])
+      .then(([minhas, todas]) => {
+        if (!ativo) return;
+        setLeitura(minhas[pop.id] ?? null);
+        setTodasLeituras(todas);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [email, pop.id]);
+
+  async function registrar(decisao: DecisaoLeitura) {
+    if (!email) {
+      toast.error("Entre no portal para registrar sua leitura");
+      return;
+    }
+    if (decisao === "discordo" && justificativa.trim() === "") {
+      toast.error("Escreva a justificativa da sua discordância");
+      return;
+    }
+    setEnviando(true);
+    try {
+      await registrarLeitura(pop.id, { email, nome }, decisao, justificativa.trim());
+      const [minhas, todas] = await Promise.all([
+        carregarLeiturasDoUsuario(email),
+        listarLeiturasPop(pop.id),
+      ]);
+      setLeitura(minhas[pop.id] ?? null);
+      setTodasLeituras(todas);
+      setComposerAberto(false);
+      setJustificativa("");
+      toast.success(
+        decisao === "concordo"
+          ? "Registro salvo: você leu e concordou com este POP"
+          : "Discordância registrada e enviada à Qualidade",
+      );
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível registrar sua leitura");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="ghost" size="sm" onClick={onFechar} className="text-[#64748B]">
+          <ArrowLeft className="h-4 w-4" /> Voltar para os POPs
+        </Button>
+        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
+          {pop.codigo}
+        </span>
+      </div>
+
+      <article className="rounded-2xl border border-[#D9E0EA] bg-white p-5 shadow-sm sm:p-7">
+        <h2 className="text-lg font-bold tracking-tight text-[#1F2937] sm:text-xl">{pop.titulo}</h2>
+        {pop.descricao ? (
+          <p className="mt-2 text-[13.5px] leading-relaxed text-[#64748B]">{pop.descricao}</p>
+        ) : null}
+
+        <div className="mt-5 space-y-3 border-t border-[#E9EEF5] pt-5">
+          <LinhaDetalhe rotulo="Objetivo">{pop.objetivo || pop.descricao}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Departamento">{pop.departamento}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Cargo Responsável">
+            {rotuloDoValor(pop.cargoResponsavel)}
+          </LinhaDetalhe>
+          <LinhaDetalhe rotulo="Periodicidade">{rotuloDoValor(pop.frequencia)}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Data Início">
+            {pop.diaInicio !== null ? String(pop.diaInicio) : "—"}
+          </LinhaDetalhe>
+          <LinhaDetalhe rotulo="Data Meta">
+            {pop.metaDia !== null ? String(pop.metaDia) : "—"}
+          </LinhaDetalhe>
+          <LinhaDetalhe rotulo="Competência">{rotuloDoValor(pop.prazoReferencia)}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Regime Tributário">{rotuloDoValor(pop.regime)}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Complexidade">{rotuloDoValor(pop.dificuldade)}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Materiais e Sistemas Necessários">
+            {pop.materiaisSistemas}
+          </LinhaDetalhe>
+          <LinhaDetalhe rotulo="Documentos Gerados">{pop.documentosGerados}</LinhaDetalhe>
+          {(pop.linksRelacionados ?? []).length > 0 ? (
+            <div className="text-[13.5px] leading-relaxed text-[#334155]">
+              <RotuloDetalhe>Links Relacionados</RotuloDetalhe>
+              <ul className="mt-1 space-y-1">
+                {(pop.linksRelacionados ?? []).map((link) => (
+                  <li key={link} className="flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5 shrink-0 text-[#1E3A8A]" />
+                    <a
+                      href={link}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="break-all text-[#1E3A8A] underline decoration-[#C7D2E4] underline-offset-2 hover:decoration-[#1E3A8A]"
+                    >
+                      {link}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <LinhaDetalhe rotulo="Observações">
+            <span className="whitespace-pre-wrap">{pop.observacoes}</span>
+          </LinhaDetalhe>
+        </div>
+
+        {pop.etapas && pop.etapas.length > 0 ? (
+          <div className="mt-5 border-t border-[#E9EEF5] pt-5">
+            <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#1E293B]">
+              Procedimento
+            </h3>
+            <div className="mt-3">
+              <PopEtapas etapas={pop.etapas} />
+            </div>
+          </div>
+        ) : null}
+
+        <PopAnexoVisualizador pop={pop} />
+
+        <SecaoCiencia
+          leitura={leitura}
+          todasLeituras={todasLeituras}
+          composerAberto={composerAberto}
+          justificativa={justificativa}
+          enviando={enviando}
+          aoMudarJustificativa={setJustificativa}
+          aoAbrirComposer={() => setComposerAberto(true)}
+          aoCancelarComposer={() => {
+            setComposerAberto(false);
+            setJustificativa("");
+          }}
+          aoConfirmar={(decisao) => void registrar(decisao)}
+        />
+      </article>
+    </div>
   );
 }
 
@@ -996,6 +1611,18 @@ function PopDiscussaoDialog({ aberto, pop, onFechar, onAtualizado }: PopDiscussa
     return () => {
       ativo = false;
     };
+  }, [aberto, pop]);
+
+  // Novos comentários (inclusive de outros usuários) aparecem na hora.
+  useEffect(() => {
+    if (!aberto || !pop) return undefined;
+    const popId = pop.id;
+    const cancelar = assinarAnotacoesPop(popId, () => {
+      void listarAnotacoes(popId)
+        .then((dados) => setAnotacoes(dados))
+        .catch(() => undefined);
+    });
+    return cancelar;
   }, [aberto, pop]);
 
   async function enviarAnotacao() {
@@ -1136,10 +1763,16 @@ function Pops() {
   const [popEmEdicao, setPopEmEdicao] = useState<Pop | null>(null);
   const [popExcluindo, setPopExcluindo] = useState<Pop | null>(null);
   const [popEmDiscussao, setPopEmDiscussao] = useState<Pop | null>(null);
+  const [popAberto, setPopAberto] = useState<Pop | null>(null);
+
+  const sessao = getSession();
+  const emailUsuario = sessao?.email ?? "";
+  const colaboradorIdUsuario = sessao?.colaboradorId ?? "";
+  const [favoritosMeus, setFavoritosMeus] = useState<string[]>([]);
 
   useEffect(() => {
     let ativo = true;
-    void carregarPops()
+    void carregarPopsAcessiveis(sessao)
       .then((dados) => {
         if (!ativo) return;
         setSetores(dados.setores);
@@ -1157,13 +1790,51 @@ function Pops() {
     };
   }, []);
 
+  // Favoritos do colaborador logado (fonte: tabela `pop_favoritos`).
+  useEffect(() => {
+    if (!emailUsuario) {
+      setFavoritosMeus([]);
+      return undefined;
+    }
+    let ativo = true;
+    void carregarFavoritosDoUsuario(emailUsuario, colaboradorIdUsuario || undefined)
+      .then((ids) => {
+        if (ativo) setFavoritosMeus(ids);
+      })
+      .catch((erro) => {
+        if (ativo)
+          toast.error(
+            erro instanceof Error ? erro.message : "Não foi possível carregar os favoritos",
+          );
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [emailUsuario, colaboradorIdUsuario]);
+
+  // Reconfirma os contadores com os números reais do banco.
+  const sincronizarContadores = useCallback(async () => {
+    try {
+      const contadores = await carregarContadoresPops();
+      setPops((atuais) => aplicarContadores(atuais, contadores));
+    } catch {
+      // silencioso: o próximo evento de tempo real tenta de novo
+    }
+  }, []);
+
+  // Tempo real: cada comentário ou favorito atualiza os números do cartão.
+  useEffect(() => {
+    const cancelar = assinarContadoresPops(() => void sincronizarContadores());
+    return cancelar;
+  }, [sincronizarContadores]);
+
   useEffect(() => {
     setPagina(0);
   }, [busca, setor]);
 
   async function buscarDados() {
     try {
-      const dados = await carregarPops();
+      const dados = await carregarPopsAcessiveis(sessao);
       setSetores(dados.setores);
       setPops([...dados.pops].sort((a, b) => a.codigo.localeCompare(b.codigo)));
     } catch (erro) {
@@ -1177,6 +1848,49 @@ function Pops() {
 
   function voltarParaGrade() {
     void router.navigate({ to: "/pops", search: {} });
+  }
+
+  async function alternarFavorito(pop: Pop) {
+    if (!emailUsuario) {
+      toast.error("Entre no portal para favoritar um POP");
+      return;
+    }
+    const jaFavoritado = favoritosMeus.includes(pop.id);
+    const passo = jaFavoritado ? -1 : 1;
+
+    // Efeito otimista: o número reage na hora e o banco confirma em seguida.
+    setFavoritosMeus((atuais) =>
+      jaFavoritado ? atuais.filter((id) => id !== pop.id) : [...atuais, pop.id],
+    );
+    setPops((atuais) =>
+      atuais.map((item) =>
+        item.id === pop.id ? { ...item, favoritos: Math.max(0, item.favoritos + passo) } : item,
+      ),
+    );
+
+    try {
+      if (jaFavoritado) {
+        await desfavoritarPop(pop.id, emailUsuario);
+      } else {
+        const favorito = colaboradorIdUsuario
+          ? { email: emailUsuario, nome: sessao?.nome ?? "", colaboradorId: colaboradorIdUsuario }
+          : { email: emailUsuario, nome: sessao?.nome ?? "" };
+        await favoritarPop(pop.id, favorito);
+      }
+    } catch (erro) {
+      setFavoritosMeus((atuais) =>
+        jaFavoritado ? [...atuais, pop.id] : atuais.filter((id) => id !== pop.id),
+      );
+      setPops((atuais) =>
+        atuais.map((item) =>
+          item.id === pop.id ? { ...item, favoritos: Math.max(0, item.favoritos - passo) } : item,
+        ),
+      );
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível atualizar os favoritos");
+      return;
+    }
+
+    await sincronizarContadores();
   }
 
   async function duplicar(pop: Pop) {
@@ -1238,8 +1952,20 @@ function Pops() {
     setFormAberto(true);
   }
 
+  // Níveis sem acesso total só abrem POPs que chegaram até eles (liberados
+  // individualmente ou do próprio setor — a grade já vem filtrada).
+  function aoAbrirPop(pop: Pop) {
+    if (!temAcessoTotalPops(sessao) && !pops.some((item) => item.id === pop.id)) {
+      toast.error("Este POP não está liberado para o seu nível de acesso.");
+      return;
+    }
+    setPopAberto(pop);
+  }
+
   let conteudo: ReactNode;
-  if (carregando) {
+  if (popAberto) {
+    conteudo = <PopDetalhe pop={popAberto} onFechar={() => setPopAberto(null)} />;
+  } else if (carregando) {
     conteudo = (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#1E3A8A]" />
@@ -1269,10 +1995,13 @@ function Pops() {
         aoMudarPagina={setPagina}
         aoVoltar={voltarParaGrade}
         aoCriar={abrirCriacao}
+        onAbrir={aoAbrirPop}
         aoEditar={abrirEdicao}
         aoDuplicar={(p) => void duplicar(p)}
         aoExcluir={(p) => setPopExcluindo(p)}
         aoDiscutir={setPopEmDiscussao}
+        favoritos={favoritosMeus}
+        aoFavoritar={(p) => void alternarFavorito(p)}
       />
     );
   }
@@ -1280,10 +2009,6 @@ function Pops() {
   return (
     <PanelShell wide>
       {conteudo}
-
-      <p className="mt-8 text-center text-[11px] text-[#94A3B8]">
-        Desenvolvido com 💙 pelos Desenvolvedores Orcoma Contabilidade
-      </p>
 
       <PopFormDialog
         aberto={formAberto}

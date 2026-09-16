@@ -100,7 +100,7 @@
 .dark {
   --background: oklch(0.129 0.042 264.695);
   --foreground: oklch(0.984 0.003 247.858);
-  --card: #1D293D;
+  --card: #1d293d;
   --card-foreground: oklch(0.984 0.003 247.858);
   --popover: oklch(0.208 0.042 265.755);
   --popover-foreground: oklch(0.984 0.003 247.858);
@@ -180,7 +180,9 @@
   font-size: 0.925rem;
   color: var(--brand-foreground);
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 
   &::placeholder {
     color: oklch(0.65 0.03 255);
@@ -195,18 +197,16 @@
 @utility btn-brand {
   width: 100%;
   border-radius: var(--radius);
-  background-image: linear-gradient(
-    100deg,
-    oklch(0.45 0.16 265),
-    oklch(0.32 0.13 265)
-  );
+  background-image: linear-gradient(100deg, oklch(0.45 0.16 265), oklch(0.32 0.13 265));
   padding: 0.75rem 1rem;
   font-size: 0.925rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--brand-foreground);
   box-shadow: var(--shadow-brand);
-  transition: filter 0.2s ease, transform 0.2s ease;
+  transition:
+    filter 0.2s ease,
+    transform 0.2s ease;
 
   &:hover {
     filter: brightness(1.12);
@@ -419,6 +419,19 @@
 
 .dark .hover\:text-\[\#1F2937\]:hover {
   color: var(--card-foreground);
+}
+
+/* Textos dentro de gráficos (SVG) ------------------------------------ */
+/*
+ * Os rótulos desenhados no próprio SVG (números, legendas internas e
+ * eixos dos gráficos do painel) usam `fill`, e não `color`. Sem estes
+ * remaps, o número central do gráfico "Distribuição por status" e o
+ * rótulo "Total" ficam escuros/preto sobre o card escuro.
+ */
+
+.dark .fill-\[\#1F2937\],
+.dark .fill-\[\#94A3B8\] {
+  fill: var(--muted-foreground);
 }
 
 .dark .hover\:text-\[\#1E3A8A\]:hover,
