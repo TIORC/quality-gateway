@@ -197,6 +197,38 @@ export type Database = {
           },
         ];
       };
+      pop_visualizacoes: {
+        Row: {
+          created_at: string;
+          pop_id: string;
+          updated_at: string;
+          usuario_email: string;
+          usuario_nome: string;
+        };
+        Insert: {
+          created_at?: string;
+          pop_id: string;
+          updated_at?: string;
+          usuario_email: string;
+          usuario_nome?: string;
+        };
+        Update: {
+          created_at?: string;
+          pop_id?: string;
+          updated_at?: string;
+          usuario_email?: string;
+          usuario_nome?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pop_visualizacoes_pop_id_fkey";
+            columns: ["pop_id"];
+            isOneToOne: false;
+            referencedRelation: "pops";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       notificacoes: {
         Row: {
           autor_email: string;
@@ -742,6 +774,9 @@ export type PopFavoritoUpdate = Database["public"]["Tables"]["pop_favoritos"]["U
 export type PopLeituraRow = Database["public"]["Tables"]["pop_leituras"]["Row"];
 export type PopLeituraInsert = Database["public"]["Tables"]["pop_leituras"]["Insert"];
 export type PopLeituraUpdate = Database["public"]["Tables"]["pop_leituras"]["Update"];
+export type PopVisualizacaoRow = Database["public"]["Tables"]["pop_visualizacoes"]["Row"];
+export type PopVisualizacaoInsert = Database["public"]["Tables"]["pop_visualizacoes"]["Insert"];
+export type PopVisualizacaoUpdate = Database["public"]["Tables"]["pop_visualizacoes"]["Update"];
 export type NotificacaoRow = Database["public"]["Tables"]["notificacoes"]["Row"];
 export type NotificacaoInsert = Database["public"]["Tables"]["notificacoes"]["Insert"];
 export type NotificacaoUpdate = Database["public"]["Tables"]["notificacoes"]["Update"];

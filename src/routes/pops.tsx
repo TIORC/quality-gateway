@@ -105,6 +105,7 @@ import {
   listarLeiturasPop,
   marcarNotificacaoLida,
   registrarLeitura,
+  registrarVisualizacao,
   rotuloDoValor,
   textoDoAnexoDocx,
   urlAssinadaDoAnexo,
@@ -1422,6 +1423,7 @@ function PopDetalhe({ pop, onFechar }: PopDetalheProps) {
   useEffect(() => {
     if (!email) return;
     let ativo = true;
+    void registrarVisualizacao(pop.id, { email, nome }).catch(() => undefined);
     void Promise.all([carregarLeiturasDoUsuario(email), listarLeiturasPop(pop.id)])
       .then(([minhas, todas]) => {
         if (!ativo) return;
@@ -1432,7 +1434,7 @@ function PopDetalhe({ pop, onFechar }: PopDetalheProps) {
     return () => {
       ativo = false;
     };
-  }, [email, pop.id]);
+  }, [email, nome, pop.id]);
 
   async function registrar(decisao: DecisaoLeitura) {
     if (!email) {

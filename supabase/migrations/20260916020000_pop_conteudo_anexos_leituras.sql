@@ -266,6 +266,7 @@ insert into public.pops (
     {"nivel": 2, "texto": "Verificar possíveis erros;"},
     {"nivel": 0, "texto": "Concluir a tarefa no Software de processos;"},
     {"nivel": 0, "texto": "Fim do processo."}]'::jsonb
+)
 on conflict (codigo) do update set
   objetivo = excluded.objetivo,
   materiais_sistemas = excluded.materiais_sistemas,

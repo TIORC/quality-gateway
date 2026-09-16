@@ -117,14 +117,14 @@ create policy "pops: escrita"
 -- Setores de exemplo --------------------------------------------------------
 -- Setores sem POP cadastrado aparecem na grade com a contagem (0).
 insert into public.pop_setores (id, nome, prefixo, categoria, icone, ordem) values
-  ('fiscal',      'Processos Fiscais',        'FIS', 'FISCAL',      'receipt',    1),
-  ('contabil',    'Processos Contábeis',      'CTB', 'CONTABIL',    'calculator', 2),
-  ('pessoal',     'Processos de Pessoal',     'RH',  'PESSOAL',     'users',      3),
-  ('financeiro',  'Processos Financeiros',    'FIN', 'FINANCEIRO',  'wallet',     4),
-  ('legalizacao', 'Processos de Legalização', 'LEG', 'LEGALIZACAO', 'scale',      5),
-  ('qualidade',   'Processos da Qualidade',   'QUA', 'QUALIDADE',   'shield',     6),
-  ('ti',          'Processos de TI',          'TI',  'TI',          'monitor',    7),
-  ('direcao',     'Processos de Direção',     'DIR', 'DIRECAO',     'building',   8)
+  ('fiscal',      'Fiscal',                   'FIS', 'FISCAL',      'receipt',    1),
+  ('contabil',    'Contábil',                 'CTB', 'CONTABIL',    'calculator', 2),
+  ('pessoal',     'Pessoal',                  'RH',  'PESSOAL',     'users',      3),
+  ('financeiro',  'Financeiro',               'FIN', 'FINANCEIRO',  'wallet',     4),
+  ('legalizacao', 'Legalização',              'LEG', 'LEGALIZACAO', 'scale',      5),
+  ('qualidade',   'Qualidade',                'QUA', 'QUALIDADE',   'shield',     6),
+  ('ti',          'TI',                       'TI',  'TI',          'monitor',    7),
+  ('direcao',     'Direção',                  'DIR', 'DIRECAO',     'building',   8)
 on conflict (id) do nothing;
 
 -- POPs de exemplo -----------------------------------------------------------

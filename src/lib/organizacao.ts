@@ -54,6 +54,33 @@ function traduzErro(erro: unknown): Error {
   return new Error("Não foi possível concluir a operação. Tente novamente.");
 }
 
+/** Indica que a tabela ainda não existe no Cloud (migration não aplicada). */
+function tabelaAusente(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  const info = erro as { code?: unknown; message?: unknown };
+  const codigo = typeof info.code === "string" ? info.code : "";
+  const mensagem = typeof info.message === "string" ? info.message : "";
+  return codigo === "42P01" || codigo === "PGRST205" || mensagem.includes("does not exist");
+}
+
+/** Conta as linhas de uma tabela de ciência/visualização por e-mail de usuário. */
+async function contarPopPorEmail(
+  tabela: "pop_leituras" | "pop_visualizacoes",
+): Promise<Map<string, number>> {
+  const client = exigirCloud();
+  const { data, error } = await client.from(tabela).select("usuario_email");
+  if (error) {
+    if (tabelaAusente(error)) return new Map();
+    throw traduzErro(error);
+  }
+  const mapa = new Map<string, number>();
+  for (const linha of data ?? []) {
+    const email = linha.usuario_email.trim().toLowerCase();
+    mapa.set(email, (mapa.get(email) ?? 0) + 1);
+  }
+  return mapa;
+}
+
 function novoId(prefixo: string): string {
   return `${prefixo}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -103,7 +130,12 @@ function colaboradoraDoRow(
   };
 }
 
-function funcionarioDoRow(row: ColaboradorRow): Funcionario {
+function funcionarioDoRow(
+  row: Pick<
+    ColaboradorRow,
+    "id" | "nome" | "email" | "cargo" | "setor" | "status" | "ultimo_acesso"
+  >,
+): Funcionario {
   return {
     id: row.id,
     nome: row.nome,
@@ -112,8 +144,8 @@ function funcionarioDoRow(row: ColaboradorRow): Funcionario {
     setor: row.setor,
     status: (row.status === "Inativo" ? "Inativo" : "Ativo") as StatusFuncionario,
     ultimoAcesso: row.ultimo_acesso,
-    processosVisualizados: row.processos_visualizados,
-    processosLidos: row.processos_lidos,
+    processosVisualizados: 0,
+    processosLidos: 0,
   };
 }
 
@@ -272,24 +304,44 @@ export async function carregarColaboradores(): Promise<Colaborador[]> {
   const { data, error } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,processos_visualizados,processos_lidos,created_at,updated_at",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,created_at,updated_at",
     )
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);
   return (data ?? []).map(colaboradoraDoRow);
 }
 
-/** Lista de funcionários com situação de acesso e leitura de processos. */
+/**
+ * Lista de funcionários com situação de acesso e leitura de processos.
+ *
+ * Os contadores são calculados da origem real do sistema: visualizados =
+ * `public.pop_visualizacoes` (aberturas) e lidos = `public.pop_leituras`
+ * (ciência registrada), somados por e-mail do colaborador.
+ */
 export async function carregarFuncionarios(): Promise<Funcionario[]> {
   const client = exigirCloud();
   const { data, error } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,processos_visualizados,processos_lidos,created_at,updated_at",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,created_at,updated_at",
     )
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);
-  return (data ?? []).map(funcionarioDoRow);
+
+  const [visualizadosPorEmail, lidosPorEmail] = await Promise.all([
+    contarPopPorEmail("pop_visualizacoes"),
+    contarPopPorEmail("pop_leituras"),
+  ]);
+
+  return (data ?? []).map((row) => {
+    const base = funcionarioDoRow(row);
+    const email = (row.email ?? "").trim().toLowerCase();
+    return {
+      ...base,
+      processosVisualizados: visualizadosPorEmail.get(email) ?? 0,
+      processosLidos: lidosPorEmail.get(email) ?? 0,
+    };
+  });
 }
 
 /** Cria um colaborador no banco e devolve o registro persistido. */

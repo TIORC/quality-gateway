@@ -113,14 +113,14 @@ drop policy if exists "planos_de_acao: escrita" on public.planos_de_acao;
 create policy "planos_de_acao: escrita" on public.planos_de_acao for all to anon, authenticated using (true) with check (true);
 
 insert into public.pop_setores (id, nome, prefixo, categoria, icone, ordem) values
-  ('fiscal',      'Processos Fiscais',        'FIS', 'FISCAL',      'receipt',    1),
-  ('contabil',    'Processos Contábeis',      'CTB', 'CONTABIL',    'calculator', 2),
-  ('pessoal',     'Processos de Pessoal',     'RH',  'PESSOAL',     'users',      3),
-  ('financeiro',  'Processos Financeiros',    'FIN', 'FINANCEIRO',  'wallet',     4),
-  ('legalizacao', 'Processos de Legalização', 'LEG', 'LEGALIZACAO', 'scale',      5),
-  ('qualidade',   'Processos da Qualidade',   'QUA', 'QUALIDADE',   'shield',     6),
-  ('ti',          'Processos de TI',          'TI',  'TI',          'monitor',    7),
-  ('direcao',     'Processos de Direção',     'DIR', 'DIRECAO',     'building',   8)
+  ('fiscal',      'Fiscal',                   'FIS', 'FISCAL',      'receipt',    1),
+  ('contabil',    'Contábil',                 'CTB', 'CONTABIL',    'calculator', 2),
+  ('pessoal',     'Pessoal',                  'RH',  'PESSOAL',     'users',      3),
+  ('financeiro',  'Financeiro',               'FIN', 'FINANCEIRO',  'wallet',     4),
+  ('legalizacao', 'Legalização',              'LEG', 'LEGALIZACAO', 'scale',      5),
+  ('qualidade',   'Qualidade',                'QUA', 'QUALIDADE',   'shield',     6),
+  ('ti',          'TI',                       'TI',  'TI',          'monitor',    7),
+  ('direcao',     'Direção',                  'DIR', 'DIRECAO',     'building',   8)
 on conflict (id) do nothing;
 
 insert into public.pops (

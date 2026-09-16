@@ -263,7 +263,7 @@ export function rotuloDoValor(valor: string | null | undefined): string {
 const SETORES_POP_MOCK: SetorPop[] = [
   {
     id: "fiscal",
-    nome: "Processos Fiscais",
+    nome: "Fiscal",
     prefixo: "FIS",
     categoria: "FISCAL",
     icone: "receipt",
@@ -271,7 +271,7 @@ const SETORES_POP_MOCK: SetorPop[] = [
   },
   {
     id: "contabil",
-    nome: "Processos Contábeis",
+    nome: "Contábil",
     prefixo: "CTB",
     categoria: "CONTABIL",
     icone: "calculator",
@@ -279,7 +279,7 @@ const SETORES_POP_MOCK: SetorPop[] = [
   },
   {
     id: "pessoal",
-    nome: "Processos de Pessoal",
+    nome: "Pessoal",
     prefixo: "RH",
     categoria: "PESSOAL",
     icone: "users",
@@ -287,7 +287,7 @@ const SETORES_POP_MOCK: SetorPop[] = [
   },
   {
     id: "financeiro",
-    nome: "Processos Financeiros",
+    nome: "Financeiro",
     prefixo: "FIN",
     categoria: "FINANCEIRO",
     icone: "wallet",
@@ -295,7 +295,7 @@ const SETORES_POP_MOCK: SetorPop[] = [
   },
   {
     id: "legalizacao",
-    nome: "Processos de Legalização",
+    nome: "Legalização",
     prefixo: "LEG",
     categoria: "LEGALIZACAO",
     icone: "scale",
@@ -303,16 +303,16 @@ const SETORES_POP_MOCK: SetorPop[] = [
   },
   {
     id: "qualidade",
-    nome: "Processos da Qualidade",
+    nome: "Qualidade",
     prefixo: "QUA",
     categoria: "QUALIDADE",
     icone: "shield",
     ordem: 6,
   },
-  { id: "ti", nome: "Processos de TI", prefixo: "TI", categoria: "TI", icone: "monitor", ordem: 7 },
+  { id: "ti", nome: "TI", prefixo: "TI", categoria: "TI", icone: "monitor", ordem: 7 },
   {
     id: "direcao",
-    nome: "Processos de Direção",
+    nome: "Direção",
     prefixo: "DIR",
     categoria: "DIRECAO",
     icone: "building",
@@ -1606,6 +1606,32 @@ function leituraDoRow(row: PopLeituraRow): PopLeitura {
     justificativa: row.justificativa,
     createdAt: row.created_at,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Visualizações (quem abriu cada POP)                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Registra (ou atualiza) a visualização de um POP pelo usuário. Usada quando o
+ * detalhe do POP é aberto — a contagem real sai de `public.pop_visualizacoes`
+ * (ver `supabase/migrations/20260916180000_pop_visualizacoes.sql`).
+ */
+export async function registrarVisualizacao(
+  popId: string,
+  usuario: UsuarioFavorito,
+): Promise<void> {
+  const email = usuario.email.trim().toLowerCase();
+  if (!email) return;
+
+  const client = exigirCloud();
+  const { error } = await client
+    .from("pop_visualizacoes")
+    .upsert(
+      { pop_id: popId, usuario_email: email, usuario_nome: usuario.nome },
+      { onConflict: "pop_id,usuario_email" },
+    );
+  if (error && !tabelaAusente(error)) throw traduzErro(error);
 }
 
 /* -------------------------------------------------------------------------- */

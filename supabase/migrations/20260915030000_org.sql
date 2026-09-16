@@ -199,13 +199,13 @@ insert into public.colaboradores (
   id, nome, email, cargo, unidade, cidade, setor, nivel_acesso, grupos, exclusao,
   status, ultimo_acesso, processos_visualizados, processos_lidos
 ) values
-  ('col_welder',   'Welder Silva',       'welder@orcoma.com.br',       'Desenvolvedor Pleno',    'Matriz', 'Maracás/BA', 'TI',        'Líder de setor',      '', 'Sem acesso', 'Ativo',   '2026-09-14T17:42:00-03:00', 38, 24),
-  ('col_jacson',   'Jacson Mascarenhas', 'jacson@orcoma.com.br',       'CEO',                    'Matriz', 'Maracás/BA', 'Direção',  'Diretoria',           '', 'Sem acesso', 'Ativo',   '2026-09-15T08:05:00-03:00', 12, 9),
-  ('col_celso',    'Celso Alcantara',    'celso.alcantara@orcoma.com.br', 'Gerência Técnica',   'Matriz', 'Maracás/BA', 'Técnico',  'Diretoria',           '', 'Sem acesso', 'Ativo',   '2026-09-12T16:20:00-03:00', 27, 15),
-  ('col_kaylane',  'Kaylane Oliveira',   'kaylane.oliveira@orcoma.com.br', 'Assistente de Qualidade', 'Matriz', 'Maracás/BA', 'Qualidade', 'Colaborador',     '', 'Sem acesso', 'Ativo',   '2026-09-15T07:58:00-03:00', 64, 58),
+  ('col_welder',   'Welder Silva',       'welder@orcoma.com.br',       'Desenvolvedor Pleno',    'Matriz', 'Maracás/BA', 'TI',        'Líder de setor',      '', 'Sem acesso', 'Ativo',   '2026-09-14T17:42:00-03:00', 0, 0),
+  ('col_jacson',   'Jacson Mascarenhas', 'jacson@orcoma.com.br',       'CEO',                    'Matriz', 'Maracás/BA', 'Direção',  'Diretoria',           '', 'Sem acesso', 'Ativo',   '2026-09-15T08:05:00-03:00', 0, 0),
+  ('col_celso',    'Celso Alcantara',    'celso.alcantara@orcoma.com.br', 'Gerência Técnica',   'Matriz', 'Maracás/BA', 'Técnico',  'Diretoria',           '', 'Sem acesso', 'Ativo',   '2026-09-12T16:20:00-03:00', 0, 0),
+  ('col_kaylane',  'Kaylane Oliveira',   'kaylane.oliveira@orcoma.com.br', 'Assistente de Qualidade', 'Matriz', 'Maracás/BA', 'Qualidade', 'Colaborador',     '', 'Sem acesso', 'Ativo',   '2026-09-15T07:58:00-03:00', 0, 0),
   ('col_gustavo',  'Gustavo Ronaldy',    'ronaldy.souza@orcoma.com.br','Auxiliar de Qualidade',  'Matriz', 'Maracás/BA', 'Qualidade', 'Colaborador',        '', 'Sem acesso', 'Inativo',  NULL, 0, 0),
-  ('col_olandson', 'Olandson de Jesus',  'olandson@orcoma.com.br',     'Coordenador da Qualidade', 'Matriz', 'Maracás/BA', 'Qualidade', 'Gestor da Qualidade', '', 'Permitido', 'Ativo',  '2026-09-15T09:14:00-03:00', 96, 88),
-  ('col_gabriel',  'Gabriel Anacleto',   'gabriel.anacleto@orcoma.com.br', 'Desenvolvedor Júnior', 'Matriz', 'Maracás/BA', 'TI',     'Desenvolvedor',       '', 'Sem acesso', 'Ativo',   '2026-09-15T08:47:00-03:00', 18, 6)
+  ('col_olandson', 'Olandson de Jesus',  'olandson@orcoma.com.br',     'Coordenador da Qualidade', 'Matriz', 'Maracás/BA', 'Qualidade', 'Gestor da Qualidade', '', 'Permitido', 'Ativo',  '2026-09-15T09:14:00-03:00', 0, 0),
+  ('col_gabriel',  'Gabriel Anacleto',   'gabriel.anacleto@orcoma.com.br', 'Desenvolvedor Júnior', 'Matriz', 'Maracás/BA', 'TI',     'Desenvolvedor',       '', 'Sem acesso', 'Ativo',   '2026-09-15T08:47:00-03:00', 0, 0)
 on conflict (id) do update set
   nome = excluded.nome,
   email = excluded.email,
