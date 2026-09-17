@@ -278,6 +278,85 @@ export type Database = {
         }
         Relationships: []
       }
+      politica_leituras: {
+        Row: {
+          created_at: string
+          decisao: string
+          id: string
+          politica_id: string
+          updated_at: string
+          usuario_email: string
+          usuario_nome: string
+        }
+        Insert: {
+          created_at?: string
+          decisao?: string
+          id?: string
+          politica_id: string
+          updated_at?: string
+          usuario_email: string
+          usuario_nome?: string
+        }
+        Update: {
+          created_at?: string
+          decisao?: string
+          id?: string
+          politica_id?: string
+          updated_at?: string
+          usuario_email?: string
+          usuario_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "politica_leituras_politica_id_fkey"
+            columns: ["politica_id"]
+            isOneToOne: false
+            referencedRelation: "politicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      politica_sugestoes: {
+        Row: {
+          created_at: string
+          id: string
+          politica_id: string
+          status: string
+          sugestao: string
+          updated_at: string
+          usuario_email: string
+          usuario_nome: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          politica_id: string
+          status?: string
+          sugestao: string
+          updated_at?: string
+          usuario_email: string
+          usuario_nome?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          politica_id?: string
+          status?: string
+          sugestao?: string
+          updated_at?: string
+          usuario_email?: string
+          usuario_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "politica_sugestoes_politica_id_fkey"
+            columns: ["politica_id"]
+            isOneToOne: false
+            referencedRelation: "politicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       politicas: {
         Row: {
           anexo: Json | null
