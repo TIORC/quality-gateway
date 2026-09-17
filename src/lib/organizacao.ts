@@ -114,6 +114,9 @@ function colaboradoraDoRow(
     | "nivel_acesso"
     | "grupos"
     | "exclusao"
+    | "perm_adicionar_documentos"
+    | "perm_modificar_documentos"
+    | "perm_excluir_documentos"
   >,
 ): Colaborador {
   return {
@@ -127,6 +130,9 @@ function colaboradoraDoRow(
     nivelAcesso: row.nivel_acesso,
     grupos: row.grupos,
     exclusao: row.exclusao,
+    permAdicionarDocumentos: row.perm_adicionar_documentos,
+    permModificarDocumentos: row.perm_modificar_documentos,
+    permExcluirDocumentos: row.perm_excluir_documentos,
   };
 }
 
@@ -160,6 +166,9 @@ function colaboradorParaInsercao(dados: Colaborador): {
   nivel_acesso: string;
   grupos: string;
   exclusao: string;
+  perm_adicionar_documentos: boolean;
+  perm_modificar_documentos: boolean;
+  perm_excluir_documentos: boolean;
 } {
   return {
     id: dados.id,
@@ -172,6 +181,9 @@ function colaboradorParaInsercao(dados: Colaborador): {
     nivel_acesso: dados.nivelAcesso ?? "Colaborador",
     grupos: dados.grupos ?? "",
     exclusao: dados.exclusao ?? "Sem acesso",
+    perm_adicionar_documentos: dados.permAdicionarDocumentos ?? false,
+    perm_modificar_documentos: dados.permModificarDocumentos ?? false,
+    perm_excluir_documentos: dados.permExcluirDocumentos ?? false,
   };
 }
 
@@ -185,6 +197,9 @@ function colaboradorParaAtualizacao(dados: Colaborador): {
   nivel_acesso: string;
   grupos: string;
   exclusao: string;
+  perm_adicionar_documentos: boolean;
+  perm_modificar_documentos: boolean;
+  perm_excluir_documentos: boolean;
 } {
   return {
     nome: dados.nome,
@@ -196,6 +211,9 @@ function colaboradorParaAtualizacao(dados: Colaborador): {
     nivel_acesso: dados.nivelAcesso ?? "Colaborador",
     grupos: dados.grupos ?? "",
     exclusao: dados.exclusao ?? "Sem acesso",
+    perm_adicionar_documentos: dados.permAdicionarDocumentos ?? false,
+    perm_modificar_documentos: dados.permModificarDocumentos ?? false,
+    perm_excluir_documentos: dados.permExcluirDocumentos ?? false,
   };
 }
 
@@ -304,7 +322,7 @@ export async function carregarColaboradores(): Promise<Colaborador[]> {
   const { data, error } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,created_at,updated_at",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,created_at,updated_at",
     )
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);
@@ -350,7 +368,9 @@ export async function criarColaborador(dados: Colaborador): Promise<Colaborador>
   const { data, error } = await client
     .from("colaboradores")
     .insert(colaboradorParaInsercao({ ...dados, id: dados.id || novoId("col") }))
-    .select("id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao")
+    .select(
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos",
+    )
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível criar o colaborador.");
@@ -364,7 +384,9 @@ export async function atualizarColaborador(dados: Colaborador): Promise<Colabora
     .from("colaboradores")
     .update(colaboradorParaAtualizacao(dados))
     .eq("id", dados.id)
-    .select("id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao")
+    .select(
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos",
+    )
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Colaborador não encontrado.");

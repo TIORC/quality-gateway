@@ -71,7 +71,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { getSession } from "@/lib/auth";
-import { temAcessoTotalPops } from "@/lib/permissoes";
+import {
+  podeAdicionarDocumentos,
+  podeExcluirDocumentos,
+  podeModificarDocumentos,
+  temAcessoTotalPops,
+} from "@/lib/permissoes";
 import {
   ENTRADA_PADRAO,
   aplicarContadores,
@@ -107,7 +112,6 @@ import {
   nomesDosSetores,
   podeAprovarLiderProcesso,
   podeAprovarLiderQualidade,
-  podeElaborarPops,
   podeVerVersoesAnteriores,
   registrarLeitura,
   registrarVisualizacao,
@@ -284,7 +288,9 @@ function CardSetor({ nome, chaveIcone, contagem, aoClicar, destaque = false }: C
 interface PopCardProps {
   pop: Pop;
   favoritado: boolean;
-  podeElaborar: boolean;
+  podeAdicionar: boolean;
+  podeModificar: boolean;
+  podeExcluir: boolean;
   setores: SetorPop[];
   onAbrir: (pop: Pop) => void;
   onEditar: (pop: Pop) => void;
@@ -297,7 +303,9 @@ interface PopCardProps {
 function PopCard({
   pop,
   favoritado,
-  podeElaborar,
+  podeAdicionar,
+  podeModificar,
+  podeExcluir,
   setores,
   onAbrir,
   onEditar,
@@ -349,7 +357,7 @@ function PopCard({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
             Controles
           </p>
-          {podeElaborar ? (
+          {podeAdicionar || podeModificar || podeExcluir ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -362,19 +370,27 @@ function PopCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEditar(pop)}>
-                  <Edit3 className="h-4 w-4" /> Editar
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDuplicar(pop)}>
-                  <Copy className="h-4 w-4" /> Duplicar
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => onExcluir(pop)}
-                >
-                  <Trash2 className="h-4 w-4" /> Excluir
-                </DropdownMenuItem>
+                {podeModificar ? (
+                  <DropdownMenuItem onClick={() => onEditar(pop)}>
+                    <Edit3 className="h-4 w-4" /> Editar
+                  </DropdownMenuItem>
+                ) : null}
+                {podeAdicionar ? (
+                  <DropdownMenuItem onClick={() => onDuplicar(pop)}>
+                    <Copy className="h-4 w-4" /> Duplicar
+                  </DropdownMenuItem>
+                ) : null}
+                {podeExcluir ? (
+                  <>
+                    {(podeAdicionar || podeModificar) ? <DropdownMenuSeparator /> : null}
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => onExcluir(pop)}
+                    >
+                      <Trash2 className="h-4 w-4" /> Excluir
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
@@ -504,7 +520,7 @@ interface GradeProps {
   setores: SetorPop[];
   contagens: Record<string, number>;
   totalPops: number;
-  podeElaborar: boolean;
+  podeAdicionar: boolean;
   aoAbrirSetor: (id: string) => void;
   aoCriar: () => void;
 }
@@ -513,7 +529,7 @@ function GradeDeSetores({
   setores,
   contagens,
   totalPops,
-  podeElaborar,
+  podeAdicionar,
   aoAbrirSetor,
   aoCriar,
 }: GradeProps) {
@@ -531,7 +547,7 @@ function GradeDeSetores({
             Selecione um setor para navegar pelos POPs cadastrados.
           </p>
         </div>
-        {podeElaborar ? (
+        {podeAdicionar ? (
           <Button className="shrink-0" onClick={aoCriar}>
             <Plus className="h-4 w-4" />
             Novo POP
@@ -577,7 +593,9 @@ interface ListaProps {
   aoVoltar: () => void;
   aoCriar: () => void;
   onAbrir: (pop: Pop) => void;
-  podeElaborar: boolean;
+  podeAdicionar: boolean;
+  podeModificar: boolean;
+  podeExcluir: boolean;
   setores: SetorPop[];
   favoritos: string[];
   aoEditar: (pop: Pop) => void;
@@ -599,7 +617,9 @@ function ListaDePops({
   aoVoltar,
   aoCriar,
   onAbrir,
-  podeElaborar,
+  podeAdicionar,
+  podeModificar,
+  podeExcluir,
   setores,
   favoritos,
   aoEditar,
@@ -634,7 +654,7 @@ function ListaDePops({
             </p>
           </div>
         </div>
-        {podeElaborar ? (
+        {podeAdicionar ? (
           <Button className="shrink-0" onClick={aoCriar}>
             <Plus className="h-4 w-4" />
             Novo POP
@@ -671,7 +691,9 @@ function ListaDePops({
               key={pop.id}
               pop={pop}
               favoritado={favoritos.includes(pop.id)}
-              podeElaborar={podeElaborar}
+              podeAdicionar={podeAdicionar}
+              podeModificar={podeModificar}
+              podeExcluir={podeExcluir}
               setores={setores}
               onAbrir={onAbrir}
               onEditar={aoEditar}
@@ -867,6 +889,16 @@ function PopFormDialog({
     }
     if ((entrada.setoresResponsaveis ?? []).length === 0) {
       toast.error("Selecione ao menos um setor responsável pelo processo");
+      return;
+    }
+    // Dupla checagem de permissão (defesa mesmo se o botão congelar).
+    if (pop) {
+      if (!podeModificarDocumentos(getSession())) {
+        toast.error("Você não tem permissão para modificar documentos.");
+        return;
+      }
+    } else if (!podeAdicionarDocumentos(getSession())) {
+      toast.error("Você não tem permissão para adicionar documentos.");
       return;
     }
     setSalvando(true);
@@ -2035,7 +2067,9 @@ function Pops() {
   const [popAberto, setPopAberto] = useState<Pop | null>(null);
 
   const sessao = getSession();
-  const podeElaborar = podeElaborarPops(sessao);
+  const podeAdicionar = podeAdicionarDocumentos(sessao);
+  const podeModificar = podeModificarDocumentos(sessao);
+  const podeExcluir = podeExcluirDocumentos(sessao);
   const emailUsuario = sessao?.email ?? "";
   const colaboradorIdUsuario = sessao?.colaboradorId ?? "";
   const [favoritosMeus, setFavoritosMeus] = useState<string[]>([]);
@@ -2269,7 +2303,7 @@ function Pops() {
         setores={setores}
         contagens={contagens}
         totalPops={pops.length}
-        podeElaborar={podeElaborar}
+        podeAdicionar={podeAdicionar}
         aoAbrirSetor={navegarParaSetor}
         aoCriar={abrirCriacao}
       />
@@ -2288,7 +2322,9 @@ function Pops() {
         aoVoltar={voltarParaGrade}
         aoCriar={abrirCriacao}
         onAbrir={aoAbrirPop}
-        podeElaborar={podeElaborar}
+        podeAdicionar={podeAdicionar}
+        podeModificar={podeModificar}
+        podeExcluir={podeExcluir}
         setores={setores}
         aoEditar={abrirEdicao}
         aoDuplicar={(p) => void duplicar(p)}

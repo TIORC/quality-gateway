@@ -9,7 +9,11 @@
 
 import type { AppRoutePath } from "@/lib/navigation";
 import type { UserSession } from "@/lib/auth";
-import { NIVEIS_ACESSO_TOTAL_POPS, NIVEL_SOMENTE_LIBERADOS } from "@/lib/niveis-acesso";
+import {
+  NIVEIS_ACESSO_TOTAL_POPS,
+  NIVEL_SOMENTE_LIBERADOS,
+  normalizarSetor,
+} from "@/lib/niveis-acesso";
 
 const TODAS_AS_ROTAS: AppRoutePath[] = [
   "/painel",
@@ -73,4 +77,48 @@ export function temAcessoTotalPops(session: UserSession | null): boolean {
 /** Nível que vê apenas os documentos liberados individualmente. */
 export function veSomenteLiberados(session: UserSession | null): boolean {
   return session?.nivelAcesso === NIVEL_SOMENTE_LIBERADOS;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Permissões de documentos (POPs e políticas)                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Liderança da Qualidade: perfil "gestor", nível "Gestor da Qualidade" ou o
+ * cargo "Coordenador da Qualidade". Sempre gerencia documentos, sem depender
+ * das permissões individuais de colaborador.
+ */
+export function ehLiderancaDaQualidade(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (session.role === "admin" || session.role === "gestor") return true;
+  return (
+    session.nivelAcesso === "Gestor da Qualidade" || session.cargo === "Coordenador da Qualidade"
+  );
+}
+
+/** Colaborador do setor Qualidade que recebeu a permissão individual. */
+function permConcedida(session: UserSession, permissao: boolean | undefined): boolean {
+  if (normalizarSetor(session.setor) !== "qualidade") return false;
+  return permissao === true;
+}
+
+/** Indica se a sessão pode adicionar/criar documentos (POPs e políticas). */
+export function podeAdicionarDocumentos(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehLiderancaDaQualidade(session)) return true;
+  return permConcedida(session, session.permAdicionarDocumentos);
+}
+
+/** Indica se a sessão pode modificar/editar documentos (POPs e políticas). */
+export function podeModificarDocumentos(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehLiderancaDaQualidade(session)) return true;
+  return permConcedida(session, session.permModificarDocumentos);
+}
+
+/** Indica se a sessão pode excluir documentos (POPs e políticas). */
+export function podeExcluirDocumentos(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehLiderancaDaQualidade(session)) return true;
+  return permConcedida(session, session.permExcluirDocumentos);
 }

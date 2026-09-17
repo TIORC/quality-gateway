@@ -32,10 +32,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
 import { criarAcessoColaborador, listarEmailsComLogin, type UserRole } from "@/lib/auth";
-import { NIVEL_SOMENTE_LIBERADOS, NIVEIS_ACESSO } from "@/lib/niveis-acesso";
+import { NIVEL_SOMENTE_LIBERADOS, NIVEIS_ACESSO, normalizarSetor } from "@/lib/niveis-acesso";
+import { ehLiderancaDaQualidade } from "@/lib/permissoes";
 import { carregarPoliticas, type PoliticaItem } from "@/lib/politicas";
 import {
   carregarPops,
@@ -1665,6 +1667,17 @@ function GerirColaboradorDialog({
   const [grupos, setGrupos] = useState<string[]>(
     colaborador?.grupos ? colaborador.grupos.split(", ").filter(Boolean) : [],
   );
+  // Permissões de documentos (Qualidade): visíveis só para o setor Qualidade e
+  // editáveis apenas pela liderança da Qualidade e administradores.
+  const [permAdicionar, setPermAdicionar] = useState(
+    colaborador?.permAdicionarDocumentos ?? false,
+  );
+  const [permModificar, setPermModificar] = useState(
+    colaborador?.permModificarDocumentos ?? false,
+  );
+  const [permExcluir, setPermExcluir] = useState(
+    colaborador?.permExcluirDocumentos ?? false,
+  );
   // Liberação individual de documentos (quando o nível exige liberação).
   const [popsCatalogo, setPopsCatalogo] = useState<Pop[]>([]);
   const [politicasCatalogo, setPoliticasCatalogo] = useState<PoliticaItem[]>([]);
@@ -1675,8 +1688,17 @@ function GerirColaboradorDialog({
   // Criação de acesso de login: somente para sessão de admin.
   const sessionDialog = usePanelSession();
   const podeCriarLogin = sessionDialog?.role === "admin";
+  // Edição das permissões de documentos: liderança da Qualidade e admins.
+  const podeEditarPermissoes = ehLiderancaDaQualidade(sessionDialog);
   const [senhaAcesso, setSenhaAcesso] = useState("");
   const [perfilLogin, setPerfilLogin] = useState<UserRole>("usuario");
+
+  // Re-sincroniza as permissões ao trocar de colaborador no mesmo diálogo.
+  useEffect(() => {
+    setPermAdicionar(colaborador?.permAdicionarDocumentos ?? false);
+    setPermModificar(colaborador?.permModificarDocumentos ?? false);
+    setPermExcluir(colaborador?.permExcluirDocumentos ?? false);
+  }, [colaborador]);
 
   useEffect(() => {
     if (!colaborador || !podeLiberar) return;
@@ -1752,6 +1774,9 @@ function GerirColaboradorDialog({
       unidade,
       nivelAcesso,
       exclusao,
+      permAdicionarDocumentos: permAdicionar,
+      permModificarDocumentos: permModificar,
+      permExcluirDocumentos: permExcluir,
     };
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
@@ -1899,6 +1924,79 @@ function GerirColaboradorDialog({
               ))}
             </div>
           </Campo>
+
+          {normalizarSetor(setor) === "qualidade" ? (
+            <Campo rotulo="Permissões de documentos (Qualidade)">
+              <div className="space-y-2.5 rounded-xl border border-[#E9EEF5] p-4">
+                <label
+                  htmlFor="perm-adicionar-documentos"
+                  className="flex cursor-pointer items-center justify-between gap-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-[#1F2937]">
+                      Adicionar documentos
+                    </span>
+                    <span className="block text-[11.5px] leading-relaxed text-[#64748B]">
+                      Permite criar novos POPs e políticas e duplicar documentos.
+                    </span>
+                  </span>
+                  <Switch
+                    id="perm-adicionar-documentos"
+                    checked={permAdicionar}
+                    onCheckedChange={setPermAdicionar}
+                    disabled={!podeEditarPermissoes}
+                    aria-label="Permitir adicionar documentos"
+                  />
+                </label>
+                <label
+                  htmlFor="perm-modificar-documentos"
+                  className="flex cursor-pointer items-center justify-between gap-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-[#1F2937]">
+                      Modificar documentos
+                    </span>
+                    <span className="block text-[11.5px] leading-relaxed text-[#64748B]">
+                      Permite editar POPs e políticas já cadastrados.
+                    </span>
+                  </span>
+                  <Switch
+                    id="perm-modificar-documentos"
+                    checked={permModificar}
+                    onCheckedChange={setPermModificar}
+                    disabled={!podeEditarPermissoes}
+                    aria-label="Permitir modificar documentos"
+                  />
+                </label>
+                <label
+                  htmlFor="perm-excluir-documentos"
+                  className="flex cursor-pointer items-center justify-between gap-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-[#1F2937]">
+                      Excluir documentos
+                    </span>
+                    <span className="block text-[11.5px] leading-relaxed text-[#64748B]">
+                      Permite remover POPs e políticas.
+                    </span>
+                  </span>
+                  <Switch
+                    id="perm-excluir-documentos"
+                    checked={permExcluir}
+                    onCheckedChange={setPermExcluir}
+                    disabled={!podeEditarPermissoes}
+                    aria-label="Permitir excluir documentos"
+                  />
+                </label>
+              </div>
+              {!podeEditarPermissoes ? (
+                <p className="mt-1.5 text-[11.5px] text-[#94A3B8]">
+                  Somente o Coordenador da Qualidade e os administradores podem alterar estas
+                  permissões.
+                </p>
+              ) : null}
+            </Campo>
+          ) : null}
 
           <Campo rotulo="Acesso de login (opcional)">
             <div className="grid gap-4 sm:grid-cols-2">

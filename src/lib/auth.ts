@@ -43,6 +43,12 @@ export interface UserSession {
   nivelAcesso: string;
   /** Unidade do colaborador (vazio quando não há vínculo). */
   unidade: string;
+  /** Permite adicionar/criar documentos (POPs e políticas). */
+  permAdicionarDocumentos: boolean;
+  /** Permite modificar/editar documentos (POPs e políticas). */
+  permModificarDocumentos: boolean;
+  /** Permite excluir documentos (POPs e políticas). */
+  permExcluirDocumentos: boolean;
   loginAt: string;
 }
 
@@ -83,6 +89,9 @@ function readSession(): UserSession | null {
       colaboradorId: parsed.colaboradorId ?? "",
       nivelAcesso: parsed.nivelAcesso ?? "",
       unidade: parsed.unidade ?? "",
+      permAdicionarDocumentos: parsed.permAdicionarDocumentos ?? false,
+      permModificarDocumentos: parsed.permModificarDocumentos ?? false,
+      permExcluirDocumentos: parsed.permExcluirDocumentos ?? false,
       loginAt: parsed.loginAt ?? new Date().toISOString(),
     };
   } catch {
@@ -101,6 +110,47 @@ export function isAuthenticated(): boolean {
 
 export function isAdminSession(session: UserSession | null): boolean {
   return session?.role === "admin";
+}
+
+/**
+ * Re-sincroniza a sessão persistida com o vínculo organizacional atual do
+ * colaborador: cargo, setor, nível de acesso e as permissões de documentos.
+ * Chamado ao abrir o painel para valer, sem novo login, mudanças feitas em
+ * Configurações (ex.: troca de setor ou revogação de permissões).
+ *
+ * Devolve a sessão vigente (renovada quando há vínculo, original caso
+ * contrário) ou `null` quando não há sessão ativa.
+ */
+export async function atualizarSessao(): Promise<UserSession | null> {
+  const atual = readSession();
+  if (!atual) return null;
+  if (!lovableCloudConfigurado) return atual;
+  try {
+    const client = exigirCloud();
+    const colaborador = await buscarColaboradorVinculado(client, {
+      id: atual.id,
+      email: atual.email,
+      colaboradorId: atual.colaboradorId,
+    });
+    if (!colaborador) return atual;
+    const renovada: UserSession = {
+      ...atual,
+      colaboradorId: colaborador.id,
+      nome: colaborador.nome || atual.nome,
+      email: atual.email,
+      cargo: colaborador.cargo || atual.cargo,
+      setor: colaborador.setor || atual.setor,
+      unidade: colaborador.unidade || atual.unidade,
+      nivelAcesso: colaborador.nivel_acesso || atual.nivelAcesso,
+      permAdicionarDocumentos: colaborador.perm_adicionar_documentos,
+      permModificarDocumentos: colaborador.perm_modificar_documentos,
+      permExcluirDocumentos: colaborador.perm_excluir_documentos,
+    };
+    persistirSession(renovada);
+    return renovada;
+  } catch {
+    return atual;
+  }
 }
 
 async function hashSenha(senha: string, salt: string): Promise<string> {
@@ -138,6 +188,9 @@ function buildSession(
     colaboradorId: user.colaboradorId,
     nivelAcesso: user.nivelAcesso,
     unidade: user.unidade,
+    permAdicionarDocumentos: false,
+    permModificarDocumentos: false,
+    permExcluirDocumentos: false,
     loginAt: new Date().toISOString(),
   };
 }
@@ -190,11 +243,16 @@ async function buscarColaboradorVinculado(
   | "nivel_acesso"
   | "grupos"
   | "exclusao"
+  | "perm_adicionar_documentos"
+  | "perm_modificar_documentos"
+  | "perm_excluir_documentos"
 > | null> {
   if (usuario.colaboradorId) {
     const { data } = await client
       .from("colaboradores")
-      .select("id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao")
+      .select(
+        "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos",
+      )
       .eq("id", usuario.colaboradorId)
       .maybeSingle();
     if (data) return data;
@@ -203,7 +261,9 @@ async function buscarColaboradorVinculado(
   if (!email) return null;
   const { data } = await client
     .from("colaboradores")
-    .select("id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao")
+    .select(
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos",
+    )
     .eq("email", email)
     .maybeSingle();
   return data ?? null;
@@ -272,12 +332,18 @@ export async function login(
       if (colaborador) {
         sessionBase.colaboradorId = colaborador.id;
         sessionBase.unidade = colaborador.unidade;
+        // O registro organizacional (colaboradores) prevalece sobre a fotografia
+        // de `usuarios`: cargo, setor e nível de acesso refletem sempre o vínculo
+        // atual, mesmo quando o usuário mudou de setor após criar o login.
         if (colaborador.nivel_acesso) sessionBase.nivelAcesso = colaborador.nivel_acesso;
-        if (!usuario.cargo && colaborador.cargo) sessionBase.cargo = colaborador.cargo;
-        if (!usuario.setor && colaborador.setor) sessionBase.setor = colaborador.setor;
+        if (colaborador.cargo) sessionBase.cargo = colaborador.cargo;
+        if (colaborador.setor) sessionBase.setor = colaborador.setor;
         if (usuario.email !== colaborador.email && colaborador.email) {
           sessionBase.email = usuario.email;
         }
+        sessionBase.permAdicionarDocumentos = colaborador.perm_adicionar_documentos;
+        sessionBase.permModificarDocumentos = colaborador.perm_modificar_documentos;
+        sessionBase.permExcluirDocumentos = colaborador.perm_excluir_documentos;
         // Registra o acesso real: alimenta a coluna "Último acesso" de /funcionários.
         try {
           await client

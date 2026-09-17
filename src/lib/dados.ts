@@ -45,6 +45,9 @@ export interface Colaborador {
   nivelAcesso?: string;
   grupos?: string;
   exclusao?: string;
+  permAdicionarDocumentos?: boolean;
+  permModificarDocumentos?: boolean;
+  permExcluirDocumentos?: boolean;
 }
 
 export type StatusFuncionario = "Ativo" | "Inativo";

@@ -8,10 +8,16 @@
 
 import { exigirCloud } from "@/integrations/supabase/client";
 import type { PoliticaInsert, PoliticaLeituraRow, PoliticaLeituraInsert, PoliticaRow, PoliticaSugestaoRow, PoliticaSugestaoInsert } from "@/integrations/supabase/db-types";
-import type { UserSession } from "@/lib/auth";
+import { getSession, type UserSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR } from "@/lib/niveis-acesso";
 import { organizacaoDisponivel, tabelaAusente, traduzErro } from "@/lib/organizacao";
-import { temAcessoTotalPops, veSomenteLiberados } from "@/lib/permissoes";
+import {
+  podeAdicionarDocumentos,
+  podeExcluirDocumentos,
+  podeModificarDocumentos,
+  temAcessoTotalPops,
+  veSomenteLiberados,
+} from "@/lib/permissoes";
 import { ehSetorQualidade, listarDocumentosLiberados, type Pop, type UsuarioFavorito } from "@/lib/pops";
 import { politicaVisivelPorSetor } from "@/lib/setor-documentos";
 
@@ -177,6 +183,9 @@ export async function carregarPoliticasAcessiveis(
 
 /** Cria uma política no banco e devolve o registro persistido. */
 export async function criarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
+  if (!podeAdicionarDocumentos(getSession())) {
+    throw new Error("Você não tem permissão para adicionar documentos.");
+  }
   const client = exigirCloud();
   const { data, error } = await client
     .from("politicas")
@@ -190,6 +199,9 @@ export async function criarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
 
 /** Atualiza uma política no banco e devolve o registro persistido. */
 export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
+  if (!podeModificarDocumentos(getSession())) {
+    throw new Error("Você não tem permissão para modificar documentos.");
+  }
   const client = exigirCloud();
   const { data, error } = await client
     .from("politicas")
@@ -204,6 +216,9 @@ export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaIte
 
 /** Remove uma política do banco. */
 export async function excluirPolitica(id: string): Promise<void> {
+  if (!podeExcluirDocumentos(getSession())) {
+    throw new Error("Você não tem permissão para excluir documentos.");
+  }
   const client = exigirCloud();
   const { error } = await client.from("politicas").delete().eq("id", id);
   if (error) throw traduzErro(error);

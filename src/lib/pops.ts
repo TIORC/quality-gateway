@@ -9,7 +9,13 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json, Tables, TablesInsert } from "@/integrations/supabase/types";
 import { getSession, type UserSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
-import { temAcessoTotalPops, veSomenteLiberados } from "@/lib/permissoes";
+import {
+  podeAdicionarDocumentos,
+  podeExcluirDocumentos,
+  podeModificarDocumentos,
+  temAcessoTotalPops,
+  veSomenteLiberados,
+} from "@/lib/permissoes";
 import { popDoSetorDoUsuario } from "@/lib/setor-documentos";
 
 type PopRow = Tables<"pops">;
@@ -711,11 +717,17 @@ export function nomesDosSetores(ids: string[], setores: SetorPop[]): string[] {
   return ids.map((id) => setores.find((setor) => setor.id === id)?.nome ?? id);
 }
 
-/** Quem pode criar/editar/excluir POPs: admins e gestores, além do setor da Qualidade. */
+/**
+ * Quem pode mexer em POPs (criar/editar/excluir). Admins e a liderança da
+ * Qualidade sempre podem; profissionais do setor Qualidade apenas com as
+ * permissões individuais concedidas em Configurações.
+ */
 export function podeElaborarPops(sessao: UserSession | null | undefined): boolean {
-  if (!sessao) return false;
-  if (sessao.role === "admin" || sessao.role === "gestor") return true;
-  return ehSetorQualidade(sessao);
+  return (
+    podeAdicionarDocumentos(sessao) ||
+    podeModificarDocumentos(sessao) ||
+    podeExcluirDocumentos(sessao)
+  );
 }
 
 /**
@@ -945,6 +957,9 @@ export async function aprovarPopLiderQualidade(id: string): Promise<Pop> {
 }
 
 export async function criarPop(entrada: EntradaPop): Promise<Pop> {
+  if (!podeAdicionarDocumentos(getSession())) {
+    throw new Error("Você não tem permissão para adicionar documentos.");
+  }
   return criarPopCloud(entrada);
 }
 
@@ -960,10 +975,16 @@ export async function atualizarPop(
   entrada: EntradaPop,
   observacaoRevisao = "",
 ): Promise<Pop> {
+  if (!podeModificarDocumentos(getSession())) {
+    throw new Error("Você não tem permissão para modificar documentos.");
+  }
   return atualizarPopCloud(id, entrada, observacaoRevisao);
 }
 
 export async function excluirPop(id: string): Promise<void> {
+  if (!podeExcluirDocumentos(getSession())) {
+    throw new Error("Você não tem permissão para excluir documentos.");
+  }
   const client = exigirCloud();
   const { error } = await client.from("pops").delete().eq("id", id);
   if (error) throw traduzErro(error);

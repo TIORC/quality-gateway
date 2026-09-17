@@ -40,8 +40,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { supabase } from "@/integrations/supabase/client";
-import { getSession, isAdminSession, type UserSession } from "@/lib/auth";
+import { getSession, type UserSession } from "@/lib/auth";
 import { organizacaoDisponivel } from "@/lib/organizacao";
+import {
+  podeAdicionarDocumentos,
+  podeExcluirDocumentos,
+  podeModificarDocumentos,
+} from "@/lib/permissoes";
 import {
   BUCKET_ANEXOS,
   ROTULO_TIPO_ANEXO,
@@ -162,7 +167,9 @@ function Politicas() {
   );
 
   const sessao = getSession();
-  const podeGerenciar = isAdminSession(sessao);
+  const podeAdicionar = podeAdicionarDocumentos(sessao);
+  const podeModificar = podeModificarDocumentos(sessao);
+  const podeExcluir = podeExcluirDocumentos(sessao);
 
   // Carrega as políticas do banco quando o Lovable Cloud está disponível.
   useEffect(() => {
@@ -297,16 +304,18 @@ function Politicas() {
           </p>
         </div>
 
-        <Button className="shrink-0" onClick={() => setNovaPolitica(true)}>
-          <Plus className="h-4 w-4" />
-          Nova política
-        </Button>
+        {podeAdicionar ? (
+          <Button className="shrink-0" onClick={() => setNovaPolitica(true)}>
+            <Plus className="h-4 w-4" />
+            Nova política
+          </Button>
+        ) : null}
       </div>
 
       {politicaAberta ? (
         <PoliticaDetalhe
           politica={itens.find((i) => i.id === politicaAberta.id) ?? politicaAberta}
-          podeGerenciar={podeGerenciar}
+          podeModificar={podeModificar}
           onFechar={() => setPoliticaAberta(null)}
           onEditar={(item) => {
             setPoliticaAberta(null);
@@ -333,7 +342,9 @@ function Politicas() {
             <ListaPoliticas
               itens={listaDaAba(aba.valor)}
               onNova={() => setNovaPolitica(true)}
-              podeGerenciar={podeGerenciar}
+              podeAdicionar={podeAdicionar}
+              podeModificar={podeModificar}
+              podeExcluir={podeExcluir}
               onAbrir={(item) => setPoliticaAberta(item)}
               onEditar={(item) => setPoliticaEmEdicao(item)}
               onExcluir={(item) => setPoliticaParaExcluir(item)}
@@ -431,14 +442,18 @@ function exemplosIniciais(): PoliticaItem[] {
 function ListaPoliticas({
   itens,
   onNova,
-  podeGerenciar,
+  podeAdicionar,
+  podeModificar,
+  podeExcluir,
   onAbrir,
   onEditar,
   onExcluir,
 }: {
   itens: PoliticaItem[];
   onNova: () => void;
-  podeGerenciar: boolean;
+  podeAdicionar: boolean;
+  podeModificar: boolean;
+  podeExcluir: boolean;
   onAbrir: (item: PoliticaItem) => void;
   onEditar: (item: PoliticaItem) => void;
   onExcluir: (item: PoliticaItem) => void;
@@ -454,10 +469,12 @@ function ListaPoliticas({
           <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
             Crie a política, envie para o comitê de aprovação e acompanhe as leituras.
           </p>
-          <Button variant="outline" className="mt-5" onClick={onNova}>
-            <Plus className="h-4 w-4" />
-            Nova política
-          </Button>
+          {podeAdicionar ? (
+            <Button variant="outline" className="mt-5" onClick={onNova}>
+              <Plus className="h-4 w-4" />
+              Nova política
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -518,28 +535,32 @@ function ListaPoliticas({
             <Button type="button" variant="outline" size="sm" onClick={() => onAbrir(item)}>
               Abrir
             </Button>
-            {podeGerenciar ? (
+            {podeModificar || podeExcluir ? (
               <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-[#64748B]"
-                  aria-label={`Editar ${item.titulo}`}
-                  onClick={() => onEditar(item)}
-                >
-                  <Edit3 className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-[#64748B] hover:text-rose-600"
-                  aria-label={`Excluir ${item.titulo}`}
-                  onClick={() => onExcluir(item)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {podeModificar ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#64748B]"
+                    aria-label={`Editar ${item.titulo}`}
+                    onClick={() => onEditar(item)}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </Button>
+                ) : null}
+                {podeExcluir ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-[#64748B] hover:text-rose-600"
+                    aria-label={`Excluir ${item.titulo}`}
+                    onClick={() => onExcluir(item)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -1007,9 +1028,9 @@ function PoliticaDialog({
 }
 
 /* Tela de detalhe (página cheia) — mesma ordem + anexo + parecer/sugestão */
-function PoliticaDetalhe({ politica, podeGerenciar, onFechar, onEditar, onParecer, onSugestao }: {
+function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParecer, onSugestao }: {
   politica: PoliticaItem;
-  podeGerenciar: boolean;
+  podeModificar: boolean;
   onFechar: () => void;
   onEditar: (item: PoliticaItem) => void;
   onParecer: (id: string, parecer: ParecerPolitica | null) => void;
@@ -1245,7 +1266,7 @@ function PoliticaDetalhe({ politica, podeGerenciar, onFechar, onEditar, onParece
         </div>
 
         <div className="mt-6 flex flex-col gap-2 border-t border-[#E9EEF5] pt-4 sm:flex-row sm:justify-end">
-          {podeGerenciar ? (
+          {podeModificar ? (
             <Button type="button" variant="outline" onClick={() => onEditar(item)}>
               <Edit3 className="h-4 w-4" /> Editar política
             </Button>

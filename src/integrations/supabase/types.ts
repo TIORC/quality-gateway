@@ -60,6 +60,9 @@ export type Database = {
           id: string
           nivel_acesso: string
           nome: string
+          perm_adicionar_documentos: boolean
+          perm_excluir_documentos: boolean
+          perm_modificar_documentos: boolean
           processos_lidos: number
           processos_visualizados: number
           setor: string
@@ -78,6 +81,9 @@ export type Database = {
           id: string
           nivel_acesso?: string
           nome: string
+          perm_adicionar_documentos?: boolean
+          perm_excluir_documentos?: boolean
+          perm_modificar_documentos?: boolean
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
@@ -96,6 +102,9 @@ export type Database = {
           id?: string
           nivel_acesso?: string
           nome?: string
+          perm_adicionar_documentos?: boolean
+          perm_excluir_documentos?: boolean
+          perm_modificar_documentos?: boolean
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string

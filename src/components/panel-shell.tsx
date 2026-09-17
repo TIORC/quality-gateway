@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getSession, logout, rolePodeAcessarPainel, type UserSession } from "@/lib/auth";
+import { atualizarSessao, logout, rolePodeAcessarPainel, type UserSession } from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
 import { rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
@@ -61,20 +61,28 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
   const [menuAberto, setMenuAberto] = useState(false);
 
   // Guarda de acesso: admin, gestor e colaboradores com nível de acesso entram.
+  // Antes, re-sincroniza a sessão com o vínculo organizacional atual (troca de
+  // setor/cargo e permissões de documentos valem sem re-login).
   useEffect(() => {
-    const atual = getSession();
-    if (!atual || !rolePodeAcessarPainel(atual)) {
-      logout();
-      router.navigate({ to: "/", replace: true });
-      return;
-    }
-    // Rota fora das permissões do nível: vai para o Meu Perfil (sempre permitido).
-    if (!rotaPermitida(atual, location.pathname)) {
-      router.navigate({ to: "/meu-perfil", replace: true });
-      return;
-    }
-    setSession(atual);
-    setChecando(false);
+    let ativo = true;
+    void atualizarSessao().then((atual) => {
+      if (!ativo) return;
+      if (!atual || !rolePodeAcessarPainel(atual)) {
+        logout();
+        router.navigate({ to: "/", replace: true });
+        return;
+      }
+      // Rota fora das permissões do nível: vai para o Meu Perfil (sempre permitido).
+      if (!rotaPermitida(atual, location.pathname)) {
+        router.navigate({ to: "/meu-perfil", replace: true });
+        return;
+      }
+      setSession(atual);
+      setChecando(false);
+    });
+    return () => {
+      ativo = false;
+    };
   }, [router, location.pathname]);
 
   // Fecha o menu mobile ao navegar.
