@@ -127,7 +127,7 @@ import {
   type SetorPop,
   type StatusPop,
 } from "@/lib/pops";
-import { cn } from "@/lib/utils";
+import { cn, mascaraDataBr } from "@/lib/utils";
 
 export const Route = createFileRoute("/pops")({
   head: () => ({
@@ -135,13 +135,16 @@ export const Route = createFileRoute("/pops")({
   }),
   validateSearch: (search: Record<string, unknown>): PopSearch => {
     const setor = typeof search["setor"] === "string" ? search["setor"] : undefined;
-    return setor ? { setor } : {};
+    const abrir = typeof search["abrir"] === "string" ? search["abrir"] : undefined;
+    return { ...(setor ? { setor } : {}), ...(abrir ? { abrir } : {}) };
   },
   component: Pops,
 });
 
 interface PopSearch {
   setor?: string;
+  /** Id do POP a abrir automaticamente ao carregar a página (deep link do painel). */
+  abrir?: string;
 }
 
 const PAGE_SIZE = 7;
@@ -729,6 +732,7 @@ function camposDoPop(pop: Pop): EntradaPop {
     diaInicio: pop.diaInicio,
     metaDia: pop.metaDia,
     prazoLegal: pop.prazoLegal,
+    dataVencimento: pop.dataVencimento ?? null,
     arquivo: pop.arquivo,
     objetivo: pop.objetivo ?? "",
     materiaisSistemas: pop.materiaisSistemas ?? "",
@@ -952,6 +956,18 @@ function PopFormDialog({
                   : "A Revisão 01 é criada automaticamente ao salvar"}
               </span>
             </div>
+          </Campo>
+
+          <Campo rotulo="Data de validade do documento">
+            <Input
+              value={entrada.dataVencimento ?? ""}
+              onChange={(e) => definir("dataVencimento", mascaraDataBr(e.target.value))}
+              placeholder="dd/mm/aaaa"
+              inputMode="numeric"
+            />
+            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+              Data em que o documento expira — alimenta "Próximos vencimentos" no painel.
+            </p>
           </Campo>
 
           <Campo rotulo="Nome do POP" className="sm:col-span-2" obrigatorio>
@@ -1541,6 +1557,11 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
           <Tag cor={COR_NEUTRA} rotulo="Data da revisão">
             {formatarDataRevisao(popExibido.dataRevisao)}
           </Tag>
+          {popExibido.dataVencimento ? (
+            <Tag cor={COR_NEUTRA} rotulo="Validade até">
+              {formatarDataRevisao(popExibido.dataVencimento)}
+            </Tag>
+          ) : null}
         </div>
 
         {popExibido.status !== STATUS_POP.VIGENTE ? (
@@ -2028,7 +2049,7 @@ function PopDiscussaoDialog({ aberto, pop, onFechar, onAtualizado }: PopDiscussa
 /* -------------------------------------------------------------------------- */
 
 function Pops() {
-  const { setor } = Route.useSearch();
+  const { setor, abrir } = Route.useSearch();
   const router = useRouter();
   const [setores, setSetores] = useState<SetorPop[]>([]);
   const [pops, setPops] = useState<Pop[]>([]);
@@ -2108,6 +2129,15 @@ function Pops() {
   useEffect(() => {
     setPagina(0);
   }, [busca, setor]);
+
+  // Deep link: abre um POP específico quando chega com `?abrir=<id>` (painel).
+  useEffect(() => {
+    if (!abrir || popAberto) return;
+    const alvo = pops.find((pop) => pop.id === abrir);
+    if (!alvo) return;
+    setPopAberto(alvo);
+    void router.navigate({ to: "/pops", search: setor ? { setor } : {} });
+  }, [abrir, pops, popAberto, setor, router]);
 
   async function buscarDados() {
     try {

@@ -1,8 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Edit3, FileText, Paperclip, Plus, Trash2, UploadCloud } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CampoMencao } from "@/components/campo-mencao";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import {
+  ArrowLeft,
+  Check,
+  Edit3,
+  FileText,
+  History,
+  Lightbulb,
+  Link2,
+  Paperclip,
+  Plus,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PanelShell } from "@/components/panel-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -15,17 +28,47 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { supabase } from "@/integrations/supabase/client";
 import { getSession, isAdminSession } from "@/lib/auth";
-import type { Colaborador } from "@/lib/dados";
-import { mascaraDataBr } from "@/lib/utils";
+import { organizacaoDisponivel } from "@/lib/organizacao";
+import {
+  BUCKET_ANEXOS,
+  ROTULO_TIPO_ANEXO,
+  TIPOS_ANEXO_ACEITOS,
+  textoDoAnexoOffice,
+  urlAssinadaDoAnexo,
+} from "@/lib/pops";
+import { cn, mascaraDataBr } from "@/lib/utils";
+import {
+  atualizarPolitica,
+  carregarPoliticas,
+  criarPolitica,
+  excluirPolitica,
+  politicasDisponiveis,
+  type ParecerPolitica,
+  type PoliticaAnexo,
+  type PoliticaItem,
+  type SugestaoPolitica,
+} from "@/lib/politicas";
 
 export const Route = createFileRoute("/politicas")({
   head: () => ({
     meta: [{ title: "Políticas | Gestão da Qualidade" }],
   }),
+  validateSearch: (search: Record<string, unknown>): { abrir?: string } => {
+    const abrir = typeof search["abrir"] === "string" ? search["abrir"] : undefined;
+    return abrir ? { abrir } : {};
+  },
   component: Politicas,
 });
 
@@ -36,48 +79,163 @@ const ABAS = [
   { valor: "vencendo", rotulo: "Vencendo" },
 ] as const;
 
+const STATUS_POLITICA = ["Em aprovação", "Aprovado", "Divulgado"] as const;
+
 function novaId() {
   return `pol_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-interface PoliticaItem {
-  id: string;
-  codigo: string;
-  titulo: string;
-  doQueTrata: string;
-  setores: string[];
-  comite: string[];
-  prazoResposta: string;
-  proximaRevisao: string;
-  arquivo: string | null;
+function proximoCodigoPolitica(itens: PoliticaItem[]): string {
+  let maior = 0;
+  for (const item of itens) {
+    const m = /(\d+)\s*$/.exec(item.codigo.trim());
+    if (m) maior = Math.max(maior, Number(m[1]));
+  }
+  return `POLITICA – ORC – ${String(maior + 1).padStart(3, "0")}`;
+}
+
+function rotuloRevisao(numero: number) {
+  return `Revisão ${String(numero).padStart(2, "0")}`;
+}
+
+function dataHojeBr() {
+  const agora = new Date();
+  const dd = String(agora.getDate()).padStart(2, "0");
+  const mm = String(agora.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${agora.getFullYear()}`;
 }
 
 function Politicas() {
+  const router = useRouter();
+  const { abrir } = Route.useSearch();
   const catalogo = useCatalogoOrganizacional();
   const [novaPolitica, setNovaPolitica] = useState(false);
   const [politicaEmEdicao, setPoliticaEmEdicao] = useState<PoliticaItem | null>(null);
   const [politicaParaExcluir, setPoliticaParaExcluir] = useState<PoliticaItem | null>(null);
-  const [itens, setItens] = useState<PoliticaItem[]>([]);
+  const [politicaAberta, setPoliticaAberta] = useState<PoliticaItem | null>(null);
+  const [usarBanco, setUsarBanco] = useState<boolean>(() => politicasDisponiveis());
+  const [itens, setItens] = useState<PoliticaItem[]>(() =>
+    politicasDisponiveis() ? [] : exemplosIniciais(),
+  );
 
   const sessao = getSession();
   const podeGerenciar = isAdminSession(sessao);
 
+  // Carrega as políticas do banco quando o Lovable Cloud está disponível.
+  useEffect(() => {
+    if (!politicasDisponiveis()) return;
+    let ativo = true;
+    carregarPoliticas()
+      .then((dados) => {
+        if (ativo) setItens(dados);
+      })
+      .catch(() => {
+        if (!ativo) return;
+        setUsarBanco(false);
+        setItens(exemplosIniciais());
+        toast("Políticas em modo de demonstração — banco de dados indisponível.", {
+          description: "As alterações não serão persistidas até o banco responder.",
+        });
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  // Deep link: abre uma política específica quando chega com `?abrir=<id>` (painel).
+  useEffect(() => {
+    if (!abrir || politicaAberta) return;
+    const alvo = itens.find((item) => item.id === abrir);
+    if (!alvo) return;
+    setPoliticaAberta(alvo);
+    void router.navigate({ to: "/politicas", search: {} });
+  }, [abrir, itens, politicaAberta, router]);
+
   function listaDaAba(valor: string) {
     if (valor === "todas") return itens;
-    return [];
+    if (valor === "preciso-ler") return itens.filter((i) => !i.parecer);
+    if (valor === "meu-parecer") return itens.filter((i) => i.parecer || i.sugestoes.length > 0);
+    if (valor === "vencendo") return itens.filter((i) => i.status === "Em aprovação");
+    return itens;
   }
 
   function salvarPolitica(politicaId: string | null, dados: Omit<PoliticaItem, "id">) {
-    setItens((atual) =>
-      politicaId
-        ? atual.map((item) => (item.id === politicaId ? { id: politicaId, ...dados } : item))
-        : [{ id: novaId(), ...dados }, ...atual],
+    const idTemporario = politicaId ?? novaId();
+    setItens((atual) => {
+      if (politicaId) {
+        return atual.map((item) => (item.id === politicaId ? { id: politicaId, ...dados } : item));
+      }
+      return [{ id: idTemporario, ...dados }, ...atual];
+    });
+    setPoliticaAberta((aberta) =>
+      aberta && politicaId && aberta.id === politicaId ? { id: politicaId, ...dados } : aberta,
     );
+    if (!usarBanco) return;
+    if (politicaId) {
+      void atualizarPolitica({ id: politicaId, ...dados })
+        .then((atualizada) =>
+          setItens((atual) => atual.map((item) => (item.id === politicaId ? atualizada : item))),
+        )
+        .catch((erro) =>
+          toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a política."),
+        );
+    } else {
+      void criarPolitica({ id: idTemporario, ...dados })
+        .then((criada) =>
+          setItens((atual) => atual.map((item) => (item.id === idTemporario ? criada : item))),
+        )
+        .catch((erro) =>
+          toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a política."),
+        );
+    }
+  }
+
+  function registrarParecer(id: string, parecer: ParecerPolitica | null) {
+    const alvo = itens.find((item) => item.id === id);
+    setItens((atual) => atual.map((item) => (item.id === id ? { ...item, parecer } : item)));
+    setPoliticaAberta((aberta) => (aberta && aberta.id === id ? { ...aberta, parecer } : aberta));
+    if (!usarBanco || !alvo) return;
+    void atualizarPolitica({ ...alvo, parecer })
+      .then((atualizada) =>
+        setItens((atual) => atual.map((item) => (item.id === id ? atualizada : item))),
+      )
+      .catch((erro) =>
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar o parecer."),
+      );
+  }
+
+  function adicionarSugestao(id: string, texto: string) {
+    const sugestao: SugestaoPolitica = {
+      id: novaId(),
+      texto: texto.trim(),
+      data: dataHojeBr(),
+    };
+    const alvo = itens.find((item) => item.id === id);
+    setItens((atual) =>
+      atual.map((item) => (item.id === id ? { ...item, sugestoes: [sugestao, ...item.sugestoes] } : item)),
+    );
+    setPoliticaAberta((aberta) =>
+      aberta && aberta.id === id ? { ...aberta, sugestoes: [sugestao, ...aberta.sugestoes] } : aberta,
+    );
+    if (!usarBanco || !alvo) return;
+    void atualizarPolitica({ ...alvo, sugestoes: [sugestao, ...alvo.sugestoes] })
+      .then((atualizada) =>
+        setItens((atual) => atual.map((item) => (item.id === id ? atualizada : item))),
+      )
+      .catch((erro) =>
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a sugestão."),
+      );
   }
 
   function removerPolitica(id: string) {
     setItens((atual) => atual.filter((item) => item.id !== id));
+    if (!usarBanco) return;
+    void excluirPolitica(id).catch((erro) =>
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível excluir a política."),
+    );
   }
+
+  const codigoSugerido = useMemo(() => proximoCodigoPolitica(itens), [itens]);
 
   return (
     <PanelShell wide>
@@ -89,8 +247,10 @@ function Politicas() {
           <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-[#1F2937] sm:text-[26px]">
             Políticas
           </h1>
-          <p className="mt-1.5 text-sm text-[#64748B]">
-            Da criação à leitura registrada, com rastro de quem aprovou e quem leu.
+          <p className="mt-1.5 max-w-2xl text-sm text-[#64748B]">
+            A aba Políticas será destinada ao cadastro, publicação, aprovação, divulgação e controle
+            das revisões das políticas da Orcoma. Cada política terá um código próprio e sequencial,
+            mantendo seu histórico sempre que houver alterações.
           </p>
         </div>
 
@@ -100,6 +260,19 @@ function Politicas() {
         </Button>
       </div>
 
+      {politicaAberta ? (
+        <PoliticaDetalhe
+          politica={itens.find((i) => i.id === politicaAberta.id) ?? politicaAberta}
+          podeGerenciar={podeGerenciar}
+          onFechar={() => setPoliticaAberta(null)}
+          onEditar={(item) => {
+            setPoliticaAberta(null);
+            setPoliticaEmEdicao(item);
+          }}
+          onParecer={registrarParecer}
+          onSugestao={adicionarSugestao}
+        />
+      ) : (
       <Tabs defaultValue="todas">
         <TabsList>
           {ABAS.map((aba) => (
@@ -118,18 +291,21 @@ function Politicas() {
               itens={listaDaAba(aba.valor)}
               onNova={() => setNovaPolitica(true)}
               podeGerenciar={podeGerenciar}
+              onAbrir={(item) => setPoliticaAberta(item)}
               onEditar={(item) => setPoliticaEmEdicao(item)}
               onExcluir={(item) => setPoliticaParaExcluir(item)}
             />
           </TabsContent>
         ))}
       </Tabs>
+      )}
 
       <PoliticaDialog
         aberto={novaPolitica || politicaEmEdicao !== null}
         politica={politicaEmEdicao}
+        codigoSugerido={codigoSugerido}
         opcoesSetores={catalogo.setores}
-        colaboradores={catalogo.colaboradores}
+        carregandoSetores={catalogo.carregando}
         onFechar={() => {
           setNovaPolitica(false);
           setPoliticaEmEdicao(null);
@@ -170,16 +346,57 @@ function Politicas() {
   );
 }
 
+function statusCor(status: string) {
+  if (status === "Aprovado") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (status === "Divulgado") return "bg-blue-50 text-blue-700 border-blue-200";
+  if (status === "Em aprovação") return "bg-amber-50 text-amber-700 border-amber-200";
+  return "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+function exemplosIniciais(): PoliticaItem[] {
+  return [
+    {
+      id: "pol_exemplo_001",
+      codigo: "POLITICA – ORC – 001",
+      titulo: "Política da Qualidade Orcoma",
+      objetivo:
+        "Estabelecer os princípios e diretrizes da qualidade para garantir a padronização dos processos e a satisfação dos clientes.",
+      setores: ["Todos"],
+      aplicabilidade: "Aplica-se a todos os setores e unidades da Orcoma.",
+      links: ["https://orcoma.com.br/qualidade"],
+      dataPostagem: dataHojeBr(),
+      status: "Divulgado",
+      historico: [
+        {
+          id: "rev_ex_001",
+          numero: 1,
+          data: dataHojeBr(),
+          observacao: "Publicação inicial da política.",
+        },
+      ],
+      dataRevisao: dataHojeBr(),
+      revisao: 1,
+      observacaoRevisao: "Publicação inicial da política.",
+      anexo: null,
+      parecer: null,
+      sugestoes: [],
+      dataVencimento: "20/09/2026",
+    },
+  ];
+}
+
 function ListaPoliticas({
   itens,
   onNova,
   podeGerenciar,
+  onAbrir,
   onEditar,
   onExcluir,
 }: {
   itens: PoliticaItem[];
   onNova: () => void;
   podeGerenciar: boolean;
+  onAbrir: (item: PoliticaItem) => void;
   onEditar: (item: PoliticaItem) => void;
   onExcluir: (item: PoliticaItem) => void;
 }) {
@@ -210,50 +427,79 @@ function ListaPoliticas({
           key={item.id}
           className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
         >
-          <div className="flex min-w-0 flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => onAbrir(item)}
+            className="flex min-w-0 flex-1 flex-col gap-1 text-left"
+          >
             <div className="flex flex-wrap items-center gap-2">
               <span className="shrink-0 rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-semibold text-[#64748B]">
                 {item.codigo}
               </span>
               <p className="truncate text-[14px] font-semibold text-[#1F2937]">{item.titulo}</p>
+              <Badge variant="outline" className={cn("text-[11px]", statusCor(item.status))}>
+                {item.status}
+              </Badge>
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                {rotuloRevisao(item.revisao)}
+              </span>
             </div>
-            <p className="text-xs text-[#64748B]">
-              {item.setores.length > 0 ? item.setores.join(", ") : "Todos os setores"} · Prazo do
-              comitê {item.prazoResposta} · Revisão {item.proximaRevisao}
+            <p className="line-clamp-1 text-xs text-[#64748B]">
+              {item.objetivo || "Sem objetivo cadastrado."} ·{" "}
+              {item.setores.length > 0 ? item.setores.join(", ") : "Todos os setores"} · Postada em{" "}
+              {item.dataPostagem || "—"}
             </p>
+          </button>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {item.anexo ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1E3A8A]">
+                <Paperclip className="h-3.5 w-3.5" />
+                <span className="max-w-[180px] truncate">{item.anexo.nome}</span>
+              </span>
+            ) : null}
+            {item.parecer ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[11px]",
+                  item.parecer.tipo === "concordo"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-rose-50 text-rose-700 border-rose-200",
+                )}
+              >
+                {item.parecer.tipo === "concordo" ? "Lido" : "Discordo"}
+              </Badge>
+            ) : null}
+
+            <Button type="button" variant="outline" size="sm" onClick={() => onAbrir(item)}>
+              Abrir
+            </Button>
+            {podeGerenciar ? (
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[#64748B]"
+                  aria-label={`Editar ${item.titulo}`}
+                  onClick={() => onEditar(item)}
+                >
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[#64748B] hover:text-rose-600"
+                  aria-label={`Excluir ${item.titulo}`}
+                  onClick={() => onExcluir(item)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
           </div>
-
-          {item.arquivo ? (
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-[#1E3A8A]">
-              <Paperclip className="h-3.5 w-3.5" />
-              <span className="max-w-[240px] truncate">{item.arquivo}</span>
-            </span>
-          ) : null}
-
-          {podeGerenciar ? (
-            <div className="flex shrink-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-[#64748B]"
-                aria-label={`Editar ${item.titulo}`}
-                onClick={() => onEditar(item)}
-              >
-                <Edit3 className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-[#64748B] hover:text-rose-600"
-                aria-label={`Excluir ${item.titulo}`}
-                onClick={() => onExcluir(item)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : null}
         </li>
       ))}
     </ul>
@@ -277,8 +523,9 @@ function Campo({ rotulo, children }: CampoProps) {
 interface PoliticaDialogProps {
   aberto: boolean;
   politica: PoliticaItem | null;
+  codigoSugerido: string;
   opcoesSetores: string[];
-  colaboradores: Colaborador[];
+  carregandoSetores: boolean;
   onFechar: () => void;
   onSalvar: (politicaId: string | null, dados: Omit<PoliticaItem, "id">) => void;
 }
@@ -286,52 +533,186 @@ interface PoliticaDialogProps {
 function PoliticaDialog({
   aberto,
   politica,
+  codigoSugerido,
   opcoesSetores,
-  colaboradores,
+  carregandoSetores,
   onFechar,
   onSalvar,
 }: PoliticaDialogProps) {
-  const [codigo, setCodigo] = useState("PL-QUA-008");
+  const [codigo, setCodigo] = useState(codigoSugerido);
   const [titulo, setTitulo] = useState("");
-  const [sobreOCriterio, setSobreOCriterio] = useState("");
+  const [objetivo, setObjetivo] = useState("");
   const [setores, setSetores] = useState<string[]>([]);
-  const [comite, setComite] = useState<Colaborador[]>([]);
-  const [prazoResposta, setPrazoResposta] = useState("10/09/2026");
-  const [proximaRevisao, setProximaRevisao] = useState("10/09/2027");
+  const [aplicabilidade, setAplicabilidade] = useState("");
+  const [linksTexto, setLinksTexto] = useState("");
+  const [dataPostagem, setDataPostagem] = useState(dataHojeBr());
+  const [dataVencimento, setDataVencimento] = useState("");
+  const [status, setStatus] = useState<string>("Em aprovação");
+  const [dataRevisao, setDataRevisao] = useState(dataHojeBr());
+  const [observacaoRevisao, setObservacaoRevisao] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  const setoresDisponiveis = useMemo(() => {
+    const base = opcoesSetores.length > 0 ? opcoesSetores : ["Todos"];
+    return base.includes("Todos") ? base : ["Todos", ...base];
+  }, [opcoesSetores]);
+
   function alternarSetor(setor: string) {
-    setSetores((atual) =>
-      atual.includes(setor) ? atual.filter((item) => item !== setor) : [...atual, setor],
-    );
+    setSetores((atual) => {
+      if (setor === "Todos") return atual.includes("Todos") ? [] : [...setoresDisponiveis];
+      const semTodos = atual.filter((item) => item !== "Todos");
+      const proximo = semTodos.includes(setor)
+        ? semTodos.filter((item) => item !== setor)
+        : [...semTodos, setor];
+      // Se todos os setores (exceto "Todos") estiverem marcados, marca "Todos" também.
+      const todosOsOutros = setoresDisponiveis.filter((s) => s !== "Todos");
+      if (todosOsOutros.length > 0 && todosOsOutros.every((s) => proximo.includes(s))) {
+        return ["Todos", ...proximo];
+      }
+      return proximo;
+    });
+  }
+
+  function marcarTodos() {
+    setSetores([...setoresDisponiveis]);
   }
 
   useEffect(() => {
-    const carregar = politica !== null;
-    setCodigo(carregar && politica.codigo ? politica.codigo : "PL-QUA-008");
-    setTitulo(carregar ? (politica.titulo ?? "") : "");
-    setSobreOCriterio(carregar ? (politica.doQueTrata ?? "") : "");
-    setSetores(carregar ? (politica.setores ?? []) : []);
-    setComite(
-      carregar ? colaboradores.filter((c) => (politica.comite ?? []).includes(c.nome)) : [],
-    );
-    setPrazoResposta(carregar ? (politica.prazoResposta ?? "") : "10/09/2026");
-    setProximaRevisao(carregar ? (politica.proximaRevisao ?? "") : "10/09/2027");
-    setArquivo(null);
-  }, [aberto, politica, colaboradores]);
+    if (!aberto) return;
+    if (politica) {
+      setCodigo(politica.codigo);
+      setTitulo(politica.titulo ?? "");
+      setObjetivo(politica.objetivo ?? "");
+      setSetores(politica.setores?.length ? politica.setores : [...setoresDisponiveis]);
+      setAplicabilidade(politica.aplicabilidade ?? "");
+      setLinksTexto((politica.links ?? []).join("\n"));
+      setDataPostagem(politica.dataPostagem ?? dataHojeBr());
+      setDataVencimento(politica.dataVencimento ?? "");
+      setStatus(politica.status ?? "Em aprovação");
+      setDataRevisao(politica.dataRevisao ?? dataHojeBr());
+      setObservacaoRevisao(politica.observacaoRevisao ?? "");
+      setArquivo(null);
+    } else {
+      setCodigo(codigoSugerido);
+      setTitulo("");
+      setObjetivo("");
+      // Regra: já vem com TODOS selecionados; desmarque o que não se aplica (implica no acesso).
+      setSetores([...setoresDisponiveis]);
+      setAplicabilidade("");
+      setLinksTexto("");
+      setDataPostagem(dataHojeBr());
+      setDataVencimento("");
+      setStatus("Em aprovação");
+      setDataRevisao(dataHojeBr());
+      setObservacaoRevisao("");
+      setArquivo(null);
+    }
+  }, [aberto, politica, codigoSugerido, setoresDisponiveis]);
+
+  const [erroUpload, setErroUpload] = useState("");
 
   function enviar() {
+    setErroUpload("");
+    void gravar();
+  }
+
+  async function gravar() {
+    let anexoFinal: PoliticaAnexo | null = politica?.anexo ?? null;
+
+    if (arquivo) {
+      const tipoValido = (TIPOS_ANEXO_ACEITOS as readonly string[]).includes(arquivo.type);
+      if (!tipoValido) {
+        setErroUpload("Formato não suportado. Envie um arquivo PDF ou Word (doc/docx).");
+        return;
+      }
+      if (arquivo.size > 20 * 1024 * 1024) {
+        setErroUpload("O anexo deve ter no máximo 20 MB.");
+        return;
+      }
+
+      if (organizacaoDisponivel()) {
+        const extensao = arquivo.name.includes(".") ? arquivo.name.split(".").pop() : "bin";
+        const caminho = `politicas/${politica?.id ?? novaId()}/${Date.now()}.${(extensao ?? "bin").toLowerCase()}`;
+        try {
+          const { error: erroUploadStorage } = await supabase.storage
+            .from(BUCKET_ANEXOS)
+            .upload(caminho, arquivo, {
+              contentType: arquivo.type,
+              upsert: false,
+              cacheControl: "3600",
+            });
+          if (erroUploadStorage) throw erroUploadStorage;
+          anexoFinal = { path: caminho, nome: arquivo.name, tipo: arquivo.type };
+        } catch (erro) {
+          setErroUpload(
+            "Não foi possível enviar o anexo no momento. A política foi salva sem o arquivo.",
+          );
+          toast.error("Não foi possível enviar o anexo.", {
+            description: String((erro as Error)?.message),
+          });
+          anexoFinal = { path: null, nome: arquivo.name, tipo: arquivo.type };
+        }
+      } else {
+        anexoFinal = { path: null, nome: arquivo.name, tipo: arquivo.type };
+        toast("Anexo mantido em memória (preview indisponível sem conexão ao storage).", {
+          description: "Conecte o Supabase para envio e visualização do documento.",
+        });
+      }
+    }
+
+    const links = linksTexto
+      .split(/[\n,;]+/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const setoresFinais = setores.length > 0 ? setores : [...setoresDisponiveis];
+    const revisaoAtual = politica?.revisao ?? 1;
+    const houveAlteracaoRevisao =
+      (observacaoRevisao.trim() || dataRevisao.trim()) &&
+      (observacaoRevisao.trim() !== (politica?.observacaoRevisao ?? "").trim() ||
+        dataRevisao.trim() !== (politica?.dataRevisao ?? "").trim() ||
+        !politica);
+    const novaRevisao = politica && houveAlteracaoRevisao ? revisaoAtual + 1 : revisaoAtual;
+    const historicoBase = politica?.historico ?? [];
+    const historico =
+      politica && houveAlteracaoRevisao
+        ? [
+            {
+              id: novaId(),
+              numero: novaRevisao,
+              data: dataRevisao.trim() || dataHojeBr(),
+              observacao: observacaoRevisao.trim() || "Revisão registrada.",
+            },
+            ...historicoBase,
+          ]
+        : historicoBase.length > 0
+          ? historicoBase
+          : [
+              {
+                id: novaId(),
+                numero: 1,
+                data: dataRevisao.trim() || dataHojeBr(),
+                observacao: observacaoRevisao.trim() || "Publicação inicial da política.",
+              },
+            ];
     onSalvar(politica?.id ?? null, {
-      codigo,
-      titulo,
-      doQueTrata: sobreOCriterio,
-      setores,
-      comite: comite.map((colaborador) => colaborador.nome),
-      prazoResposta,
-      proximaRevisao,
-      arquivo: arquivo?.name ?? politica?.arquivo ?? null,
+      codigo: codigo.trim() || codigoSugerido,
+      titulo: titulo.trim(),
+      objetivo: objetivo.trim(),
+      setores: setoresFinais,
+      aplicabilidade: aplicabilidade.trim(),
+      links,
+      dataPostagem: dataPostagem.trim() || dataHojeBr(),
+      dataVencimento: dataVencimento.trim(),
+      status: status.trim() || "Em aprovação",
+      historico,
+      dataRevisao: dataRevisao.trim() || dataHojeBr(),
+      revisao: novaRevisao,
+      observacaoRevisao: observacaoRevisao.trim(),
+      anexo: anexoFinal,
+      parecer: politica?.parecer ?? null,
+      sugestoes: politica?.sugestoes ?? [],
     });
     onFechar();
   }
@@ -343,86 +724,189 @@ function PoliticaDialog({
           <DialogTitle>{politica ? "Editar política" : "Nova política"}</DialogTitle>
           <DialogDescription>
             {politica
-              ? "Ajuste os dados da política e salve as alterações."
-              : "Cadastre a política, defina o escopo e envie para o comitê de aprovação."}
+              ? "Ajuste os dados. O código é sequencial e o histórico é mantido a cada alteração."
+              : "Cadastre com código sequencial. O histórico será mantido a cada alteração."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Código">
-              <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} />
-            </Campo>
+          <Campo rotulo="Código">
+            <Input
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              placeholder="POLITICA – ORC – 001"
+            />
+            <p className="text-xs italic text-[#94A3B8]">
+              Código próprio e sequencial: POLITICA – ORC – 001, 002 etc.
+            </p>
+          </Campo>
 
-            <Campo rotulo="Título">
-              <Input
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ex.: Política de Backup e Retenção"
-              />
-            </Campo>
-          </div>
+          <Campo rotulo="Título da política">
+            <Input
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              placeholder="Ex.: Política de Qualidade Orcoma"
+            />
+          </Campo>
 
-          <Campo rotulo="Do que trata">
+          <Campo rotulo="Objetivo">
             <Textarea
-              value={sobreOCriterio}
-              onChange={(e) => setSobreOCriterio(e.target.value)}
-              placeholder="Resuma o objetivo e o alcance da política."
+              value={objetivo}
+              onChange={(e) => setObjetivo(e.target.value)}
+              placeholder="Breve descrição do conteúdo e finalidade da política."
               className="min-h-[90px]"
             />
           </Campo>
 
-          <Campo rotulo="Setores a que se aplica">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {opcoesSetores.map((setor) => (
-                <label
-                  key={setor}
-                  htmlFor={`setor-politica-${setor}`}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-[#E9EEF5] px-3 py-2.5 text-[13px] text-[#1F2937] transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC]"
-                >
-                  <Checkbox
-                    id={`setor-politica-${setor}`}
-                    checked={setores.includes(setor)}
-                    onCheckedChange={() => alternarSetor(setor)}
-                  />
-                  {setor}
-                </label>
-              ))}
+          <Campo rotulo="Setor/Área responsável">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={marcarTodos}>
+                Selecionar todos
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSetores([])}
+                className="text-[#64748B]"
+              >
+                Limpar
+              </Button>
+              <span className="text-xs text-[#64748B]">
+                {setores.length} de {setoresDisponiveis.length} selecionados
+              </span>
             </div>
-          </Campo>
-
-          <Campo rotulo="Comitê de aprovação">
-            <CampoMencao colaboradores={colaboradores} selecionados={comite} onChange={setComite} />
+            {carregandoSetores ? (
+              <p className="text-xs text-[#94A3B8]">Carregando setores…</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {setoresDisponiveis.map((setor) => (
+                  <label
+                    key={setor}
+                    htmlFor={`setor-politica-${setor}`}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-[#E9EEF5] px-3 py-2.5 text-[13px] text-[#1F2937] transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC]"
+                  >
+                    <Checkbox
+                      id={`setor-politica-${setor}`}
+                      checked={setores.includes(setor)}
+                      onCheckedChange={() => alternarSetor(setor)}
+                    />
+                    {setor}
+                  </label>
+                ))}
+              </div>
+            )}
             <p className="text-xs italic text-[#94A3B8]">
-              Quem for mencionado recebe a ação por e-mail e acompanha em modo leitura.
+              Todos já vêm selecionados — desmarque as áreas que não se aplicam. Implica no acesso.
             </p>
           </Campo>
 
+          <Campo rotulo="Aplicabilidade">
+            <Textarea
+              value={aplicabilidade}
+              onChange={(e) => setAplicabilidade(e.target.value)}
+              placeholder="Setores ou unidades aos quais a política se aplica — uma área específica ou toda a Orcoma."
+              className="min-h-[80px]"
+            />
+          </Campo>
+
+          <Campo rotulo="Links vinculados">
+            <Textarea
+              value={linksTexto}
+              onChange={(e) => setLinksTexto(e.target.value)}
+              placeholder="Documentos, formulários, materiais ou referências (um por linha)."
+              className="min-h-[80px]"
+            />
+            <p className="text-xs italic text-[#94A3B8]">Um por linha (aceita vírgula ou ;).</p>
+          </Campo>
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Prazo para o comitê responder">
+            <Campo rotulo="Data da postagem">
               <Input
-                value={prazoResposta}
-                onChange={(e) => setPrazoResposta(mascaraDataBr(e.target.value))}
+                value={dataPostagem}
+                onChange={(e) => setDataPostagem(mascaraDataBr(e.target.value))}
+                placeholder="dd/mm/aaaa"
+                inputMode="numeric"
+              />
+            </Campo>
+            <Campo rotulo="Data de validade">
+              <Input
+                value={dataVencimento}
+                onChange={(e) => setDataVencimento(mascaraDataBr(e.target.value))}
                 placeholder="dd/mm/aaaa"
                 inputMode="numeric"
               />
               <p className="text-xs italic text-[#94A3B8]">
-                Vencido o prazo, a Qualidade pode seguir sem o retorno.
+                Data em que a política expira — alimenta "Próximos vencimentos" no painel.
               </p>
             </Campo>
-
-            <Campo rotulo="Próxima revisão prevista">
-              <Input
-                value={proximaRevisao}
-                onChange={(e) => setProximaRevisao(mascaraDataBr(e.target.value))}
-                placeholder="dd/mm/aaaa"
-                inputMode="numeric"
-              />
-              <p className="text-xs italic text-[#94A3B8]">Aviso automático 30 dias antes.</p>
+            <Campo rotulo="Status">
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_POLITICA.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs italic text-[#94A3B8]">Em aprovação, aprovado, divulgado…</p>
             </Campo>
           </div>
 
-          <Campo rotulo="Arquivo da política">
+          {politica && politica.historico.length > 0 ? (
+            <div className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
+              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]">
+                <History className="h-4 w-4 text-[#64748B]" />
+                Histórico de modificações
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {politica.historico.map((h) => (
+                  <li key={h.id} className="text-xs text-[#475569]">
+                    <span className="font-semibold text-[#1F2937]">{rotuloRevisao(h.numero)}</span>
+                    {" · "}
+                    {h.data}
+                    {h.observacao ? ` — ${h.observacao}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo rotulo="Data da revisão">
+              <Input
+                value={dataRevisao}
+                onChange={(e) => setDataRevisao(mascaraDataBr(e.target.value))}
+                placeholder="dd/mm/aaaa"
+                inputMode="numeric"
+              />
+            </Campo>
+            <Campo rotulo="Revisão">
+              <Input
+                value={rotuloRevisao(politica ? politica.revisao : 1)}
+                disabled
+                className="bg-[#F8FAFC] text-[#64748B]"
+              />
+              <p className="text-xs italic text-[#94A3B8]">
+                Revisão 01, 02, 03… incrementada ao salvar.
+              </p>
+            </Campo>
+          </div>
+
+          <Campo rotulo="Observação da revisão">
+            <Textarea
+              value={observacaoRevisao}
+              onChange={(e) => setObservacaoRevisao(e.target.value)}
+              placeholder="Registro objetivo do que foi alterado nesta versão."
+              className="min-h-[80px]"
+            />
+          </Campo>
+
+          <Campo rotulo="Arquivo da política (opcional)">
             <input
               ref={inputRef}
               type="file"
@@ -438,12 +922,14 @@ function PoliticaDialog({
                 e.preventDefault();
                 setArquivo(e.dataTransfer.files?.[0] ?? null);
               }}
-              className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#D9E0EA] bg-[#F8FAFC] px-6 py-10 text-center transition hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
+              className="flex w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#D9E0EA] bg-[#F8FAFC] px-6 py-8 text-center transition hover:border-[#94A3B8] hover:bg-[#F1F5F9]"
             >
               <UploadCloud className="h-8 w-8 text-[#94A3B8]" />
-              {arquivo ? (
+              {arquivo || politica?.anexo?.nome ? (
                 <>
-                  <p className="mt-3 text-[13px] font-semibold text-[#1F2937]">{arquivo.name}</p>
+                  <p className="mt-3 text-[13px] font-semibold text-[#1F2937]">
+                    {arquivo?.name ?? politica?.anexo?.nome}
+                  </p>
                   <p className="mt-1 text-xs text-[#64748B]">
                     Clique para trocar ou arraste outro arquivo.
                   </p>
@@ -454,6 +940,9 @@ function PoliticaDialog({
                 </p>
               )}
             </button>
+            {erroUpload ? (
+              <p className="text-xs font-medium text-rose-600">{erroUpload}</p>
+            ) : null}
           </Campo>
         </div>
 
@@ -473,3 +962,196 @@ function PoliticaDialog({
     </Dialog>
   );
 }
+
+/* Tela de detalhe (página cheia) — mesma ordem + anexo + parecer/sugestão */
+function PoliticaDetalhe({ politica, podeGerenciar, onFechar, onEditar, onParecer, onSugestao }: {
+  politica: PoliticaItem;
+  podeGerenciar: boolean;
+  onFechar: () => void;
+  onEditar: (item: PoliticaItem) => void;
+  onParecer: (id: string, parecer: ParecerPolitica | null) => void;
+  onSugestao: (id: string, texto: string) => void;
+}) {
+  const [mostrarSugestao, setMostrarSugestao] = useState(false);
+  const [textoSugestao, setTextoSugestao] = useState("");
+  const politicaId = politica.id;
+  useEffect(() => { setMostrarSugestao(false); setTextoSugestao(""); }, [politicaId]);
+  const item = politica;
+  function confirmarLeitura() { onParecer(item.id, { tipo: "concordo", clausula: "", motivo: "", data: dataHojeBr() }); }
+  function enviarSugestao() { if (!textoSugestao.trim()) return; onSugestao(item.id, textoSugestao); setTextoSugestao(""); setMostrarSugestao(false); }
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="ghost" size="sm" onClick={onFechar} className="text-[#64748B]">
+          <ArrowLeft className="h-4 w-4" /> Voltar para as Políticas
+        </Button>
+        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
+          {item.codigo}
+        </span>
+      </div>
+
+      <article className="rounded-2xl border border-[#D9E0EA] bg-white p-5 shadow-sm sm:p-7">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="flex-1 text-lg font-bold tracking-tight text-[#1F2937] sm:text-xl">
+            {item.titulo || "Política sem título"}
+          </h2>
+          <Badge variant="outline" className={cn("text-[11px]", statusCor(item.status))}>{item.status}</Badge>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{rotuloRevisao(item.revisao)}</span>
+        </div>
+        <p className="mt-2.5 text-[13px] text-[#64748B]">
+          Postada em {item.dataPostagem || "—"} · Revisão de {item.dataRevisao || "—"}
+        </p>
+
+        <div className="mt-6 space-y-4">
+          <DetalheItem rotulo="Código" valor={item.codigo} />
+          <DetalheItem rotulo="Título da política" valor={item.titulo} />
+          <DetalheItem rotulo="Objetivo" valor={item.objetivo} />
+          <div className="space-y-1">
+            <p className="text-[13px] font-semibold text-[#1F2937]">Setor/Área responsável</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(item.setores.length > 0 ? item.setores : ["Todos"]).map((s) => (<Badge key={s} variant="secondary" className="text-[11px]">{s}</Badge>))}
+            </div>
+            <p className="text-xs italic text-[#94A3B8]">Define o acesso à política.</p>
+          </div>
+          <DetalheItem rotulo="Aplicabilidade" valor={item.aplicabilidade} />
+          <div className="space-y-1">
+            <p className="text-[13px] font-semibold text-[#1F2937]">Links vinculados</p>
+            {item.links.length > 0 ? (<ul className="space-y-1">{item.links.map((link) => (<li key={link}><a href={/^https?:\/\//i.test(link) ? link : `https://${link}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[13px] font-medium text-[#1E3A8A] hover:underline"><Link2 className="h-3.5 w-3.5" />{link}</a></li>))}</ul>) : (<p className="text-[13px] text-[#94A3B8]">Nenhum link vinculado.</p>)}
+          </div>
+          <DetalheItem rotulo="Data da postagem" valor={item.dataPostagem} />
+          <DetalheItem rotulo="Status" valor={item.status} />
+          <PoliticaAnexoVisualizador anexo={item.anexo} />
+          <div className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
+            <p className="text-[13px] font-semibold text-[#1F2937]">Seu parecer</p>
+            {item.parecer ? (
+              <p className="mt-1 text-[13px] text-[#475569]">
+                {item.parecer.tipo === "concordo" ? (<><span className="font-semibold text-emerald-700">Lido</span> em {item.parecer.data}.</>) : (<><span className="font-semibold text-rose-700">Discordo</span> em {item.parecer.data} — {item.parecer.clausula} · {item.parecer.motivo}</>)}{" "}
+                <button type="button" className="font-medium text-[#1E3A8A] hover:underline" onClick={() => onParecer(item.id, null)}>desfazer</button>
+              </p>
+            ) : (<p className="mt-1 text-xs text-[#64748B]">Registre aqui que leu a política, ou sugira uma melhoria.</p>)}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmarLeitura}><Check className="h-4 w-4" />LIDO</Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarSugestao((v) => !v)}><Lightbulb className="h-4 w-4" />Sugerir Melhoria</Button>
+            </div>
+            {mostrarSugestao ? (
+              <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-white p-3">
+                <Label className="text-[13px] font-medium">Sugestão de melhoria</Label>
+                <Textarea value={textoSugestao} onChange={(e) => setTextoSugestao(e.target.value)} placeholder="Descreva sua sugestão (vale mesmo se você concorda)." className="min-h-[70px]" />
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => setMostrarSugestao(false)}>Cancelar</Button>
+                  <Button type="button" size="sm" className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" onClick={enviarSugestao} disabled={!textoSugestao.trim()}>Enviar sugestão</Button>
+                </div>
+              </div>
+            ) : null}
+            {item.sugestoes.length > 0 ? (
+              <ul className="mt-3 space-y-1.5">{item.sugestoes.map((s) => (<li key={s.id} className="rounded-lg bg-white p-2 text-xs text-[#475569] ring-1 ring-[#E9EEF5]"><span className="font-semibold text-[#1F2937]">Sugestão · {s.data}:</span> {s.texto}</li>))}</ul>
+            ) : null}
+          </div>
+          <div className="space-y-1">
+            <p className="flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]"><History className="h-4 w-4 text-[#64748B]" />Histórico de modificações</p>
+            {item.historico.length > 0 ? (<ul className="space-y-1.5">{item.historico.map((h) => (<li key={h.id} className="text-[13px] text-[#475569]"><span className="font-semibold text-[#1F2937]">{rotuloRevisao(h.numero)}</span>{" · "}{h.data}{h.observacao ? ` — ${h.observacao}` : ""}</li>))}</ul>) : (<p className="text-[13px] text-[#94A3B8]">Nenhuma modificação registrada.</p>)}
+          </div>
+          <DetalheItem rotulo="Data da revisão" valor={item.dataRevisao} />
+          <DetalheItem rotulo="Data de validade" valor={item.dataVencimento} />
+          <DetalheItem rotulo="Revisão" valor={rotuloRevisao(item.revisao)} />
+          <DetalheItem rotulo="Observação da revisão" valor={item.observacaoRevisao} />
+        </div>
+
+        <div className="mt-6 flex flex-col gap-2 border-t border-[#E9EEF5] pt-4 sm:flex-row sm:justify-end">
+          {podeGerenciar ? (
+            <Button type="button" variant="outline" onClick={() => onEditar(item)}>
+              <Edit3 className="h-4 w-4" /> Editar política
+            </Button>
+          ) : null}
+          <Button type="button" onClick={onFechar} className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]">
+            Voltar
+          </Button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+/* Visualizador do anexo da política — somente leitura (PDF embutido; Word como texto extraído). */
+function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
+  const [urlPdf, setUrlPdf] = useState<string | null>(null);
+  const [texto, setTexto] = useState<string | null>(null);
+  const [estado, setEstado] = useState<"carregando" | "pronto" | "erro">("carregando");
+
+  useEffect(() => {
+    if (!anexo?.path) {
+      setUrlPdf(null);
+      setTexto(null);
+      setEstado("carregando");
+      return;
+    }
+    let ativo = true;
+    setEstado("carregando");
+    const ehPdf = anexo.tipo === "application/pdf";
+    Promise.all([
+      urlAssinadaDoAnexo(anexo.path),
+      ehPdf ? Promise.resolve(null) : textoDoAnexoOffice(anexo.path),
+    ])
+      .then(([link, textoExtraido]) => {
+        if (!ativo) return;
+        setUrlPdf(ehPdf ? link : null);
+        setTexto(textoExtraido);
+        setEstado("pronto");
+      })
+      .catch(() => {
+        if (ativo) setEstado("erro");
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [anexo?.path, anexo?.tipo]);
+
+  if (!anexo) return null;
+
+  const badgeTipo = ROTULO_TIPO_ANEXO[anexo.tipo] ?? "Documento";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[13px] font-semibold text-[#1F2937]">Documento da política</p>
+        <Badge variant="outline" className="bg-[#EEF2F7] text-[10px] text-[#1E3A8A]">{badgeTipo}</Badge>
+        <span className="text-xs font-medium text-[#64748B]">{anexo.nome}</span>
+        <Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+          Somente leitura — download bloqueado
+        </Badge>
+      </div>
+
+      {!anexo.path ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">
+          O arquivo não foi enviado ao armazenamento. Salve a política novamente com o anexo para
+          visualizá-lo aqui.
+        </p>
+      ) : estado === "carregando" ? (
+        <p className="rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] p-3 text-[13px] text-[#64748B]">
+          Abrindo o documento…
+        </p>
+      ) : estado === "erro" ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">
+          Não foi possível abrir o documento agora. Tente novamente mais tarde.
+        </p>
+      ) : anexo.tipo === "application/pdf" && urlPdf ? (
+        <iframe
+          src={`${urlPdf}#toolbar=0&navpanes=0&statusbar=0&view=FitH`}
+          className="h-[640px] w-full rounded-lg border border-[#D9E0EA] bg-[#F8FAFC]"
+          title={`Documento ${anexo.nome}`}
+        />
+      ) : (
+        <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E0EA] bg-white p-4 font-sans text-[13px] leading-relaxed text-[#334155]">
+          {texto ?? ""}
+        </pre>
+      )}
+    </div>
+  );
+}
+function DetalheItem({ rotulo, valor }: { rotulo: string; valor: string }) {
+  if (!valor?.trim()) return null;
+  return (<div className="space-y-0.5"><p className="text-[13px] font-semibold text-[#1F2937]">{rotulo}</p><p className="whitespace-pre-line text-[13px] leading-relaxed text-[#475569]">{valor}</p></div>);
+}
+
+
+

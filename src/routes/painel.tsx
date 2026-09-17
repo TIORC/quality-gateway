@@ -23,6 +23,13 @@ type PlanoDeAcaoRow = Tables<"planos_de_acao">;
 
 import { logout, getSession } from "@/lib/auth";
 import { carregarEmpresaPrincipal, type Empresa } from "@/lib/organizacao";
+import { carregarPopsAcessiveis } from "@/lib/pops";
+import {
+  carregarPoliticas,
+  documentosVencidosOuProximos,
+  politicasDisponiveis,
+  type DocumentoVencimento,
+} from "@/lib/politicas";
 import {
   cn,
   formatarDataLongaBrasilia,
@@ -311,6 +318,9 @@ function Painel() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [planos, setPlanos] = useState<PlanoDeAcaoRow[]>([]);
   const [carregando, setCarregando] = useState(true);
+  // Documentos (POPs e políticas) vencidos ou vencendo nos próximos 30 dias.
+  const [documentosVencendo, setDocumentosVencendo] = useState<DocumentoVencimento[]>([]);
+  const [carregandoVencimentos, setCarregandoVencimentos] = useState(true);
   // Horário de Brasília exibido no cabeçalho. Começa nulo e é preenchido no
   // cliente (o relógio é recalculado a cada segundo) para não divergir do HTML
   // gerado no servidor durante a hidratação.
@@ -377,6 +387,30 @@ function Painel() {
       setCarregando(false);
     }
     carregar();
+  }, []);
+
+  // Próximos vencimentos: POPs e políticas com data de validade nos próximos
+  // 30 dias (inclui os já vencidos), ordenados do mais urgente ao menos.
+  useEffect(() => {
+    let ativo = true;
+    async function carregarVencimentos() {
+      try {
+        const sessao = getSession();
+        const [popsResp, politicasResp] = await Promise.all([
+          carregarPopsAcessiveis(sessao).catch(() => ({ setores: [], pops: [] })),
+          politicasDisponiveis() ? carregarPoliticas().catch(() => []) : Promise.resolve([]),
+        ]);
+        if (!ativo) return;
+        setDocumentosVencendo(documentosVencidosOuProximos(popsResp.pops, politicasResp));
+      } catch {
+        if (ativo) setDocumentosVencendo([]);
+      }
+      if (ativo) setCarregandoVencimentos(false);
+    }
+    void carregarVencimentos();
+    return () => {
+      ativo = false;
+    };
   }, []);
 
   const totalAcoes = planos.length;
@@ -578,9 +612,75 @@ function Painel() {
               </button>
             </div>
             <div className="mt-4 h-px w-full bg-[#E9EEF5]" />
-            <div className="flex flex-1 items-center justify-center px-5 py-16">
-              <p className="text-sm text-[#64748B]">Nenhuma ação em aberto.</p>
-            </div>
+            {carregandoVencimentos ? (
+              <div className="flex flex-1 items-center justify-center px-5 py-16">
+                <p className="text-sm text-[#94A3B8]">Carregando…</p>
+              </div>
+            ) : documentosVencendo.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center px-5 py-16">
+                <p className="text-sm text-[#64748B]">
+                  Nenhum documento vencendo nos próximos 30 dias.
+                </p>
+              </div>
+            ) : (
+              <ul className="max-h-[360px] divide-y divide-[#E9EEF5] overflow-y-auto">
+                {documentosVencendo.map((doc) => {
+                  const vencido = doc.diasRestantes < 0;
+                  const venceHoje = doc.diasRestantes === 0;
+                  return (
+                    <li key={`${doc.tipo}-${doc.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (doc.tipo === "pop") {
+                            void router.navigate({ to: "/pops", search: { abrir: doc.id } });
+                          } else {
+                            void router.navigate({ to: "/politicas", search: { abrir: doc.id } });
+                          }
+                        }}
+                        className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-[#F8FAFC]"
+                      >
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                            doc.tipo === "pop"
+                              ? "bg-[#EEF2FF] text-[#4F46E5]"
+                              : "bg-[#ECFDF5] text-[#047857]",
+                          )}
+                        >
+                          {doc.tipo === "pop" ? "POP" : "Política"}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-[#1F2937]">
+                            {doc.codigo}
+                          </span>
+                          <span className="block truncate text-[12px] text-[#64748B]">
+                            {doc.titulo}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span
+                            className={cn(
+                              "block text-[12px] font-semibold",
+                              vencido || venceHoje ? "text-[#DC2626]" : "text-[#B45309]",
+                            )}
+                          >
+                            {vencido
+                              ? `Vencido há ${Math.abs(doc.diasRestantes)} d`
+                              : venceHoje
+                                ? "Vence hoje"
+                                : `Vence em ${doc.diasRestantes} d`}
+                          </span>
+                          <span className="block text-[11px] text-[#94A3B8]">
+                            {doc.dataVencimentoExibicao}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           <ChartCard title="Ações por setor" className="lg:col-span-1">

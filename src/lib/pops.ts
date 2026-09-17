@@ -61,6 +61,8 @@ export interface Pop {
   metaDia: number | null;
   /** Data limite legal, no formato `aaaa-mm-dd`. */
   prazoLegal: string | null;
+  /** Data de validade do documento, no formato `aaaa-mm-dd` (próximos vencimentos). */
+  dataVencimento: string | null;
   favoritos: number;
   anotacoes: number;
   arquivo: string | null;
@@ -388,6 +390,7 @@ export const ENTRADA_PADRAO: EntradaPop = {
   diaInicio: null,
   metaDia: null,
   prazoLegal: null,
+  dataVencimento: null,
   arquivo: null,
   setoresResponsaveis: [],
   visualizadores: [],
@@ -423,6 +426,7 @@ function popDoRow(row: PopRow): Pop {
     diaInicio: row.dia_inicio,
     metaDia: row.meta_dia,
     prazoLegal: row.prazo_legal,
+    dataVencimento: row.data_vencimento ?? null,
     favoritos: row.favoritos,
     anotacoes: row.anotacoes,
     arquivo: row.arquivo,
@@ -529,6 +533,7 @@ function popParaInsercao(entrada: EntradaPop): PopInsert {
     dia_inicio: entrada.diaInicio,
     meta_dia: entrada.metaDia,
     prazo_legal: entrada.prazoLegal,
+    data_vencimento: entrada.dataVencimento ?? null,
     arquivo: entrada.arquivo,
     objetivo: entrada.objetivo ?? "",
     materiais_sistemas: entrada.materiaisSistemas ?? "",
@@ -956,6 +961,7 @@ export async function duplicarPop(origem: Pop): Promise<Pop> {
     diaInicio: origem.diaInicio,
     metaDia: origem.metaDia,
     prazoLegal: origem.prazoLegal,
+    dataVencimento: origem.dataVencimento,
     arquivo: origem.arquivo,
     objetivo: origem.objetivo ?? "",
     materiaisSistemas: origem.materiaisSistemas ?? "",
