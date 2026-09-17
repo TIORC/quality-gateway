@@ -71,6 +71,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { getSession } from "@/lib/auth";
+import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor, prefixoDoSetor } from "@/lib/niveis-acesso";
 import {
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
@@ -98,6 +99,7 @@ import {
   dataIsoParaBr,
   desfavoritarPop,
   duplicarPop,
+  ehSetorQualidade,
   enviarAnexoPop,
   enviarSugestaoPop,
   excluirAnotacao,
@@ -520,6 +522,7 @@ interface GradeProps {
   setores: SetorPop[];
   contagens: Record<string, number>;
   totalPops: number;
+  mostrarCardGeral: boolean;
   podeAdicionar: boolean;
   aoAbrirSetor: (id: string) => void;
   aoCriar: () => void;
@@ -529,6 +532,7 @@ function GradeDeSetores({
   setores,
   contagens,
   totalPops,
+  mostrarCardGeral,
   podeAdicionar,
   aoAbrirSetor,
   aoCriar,
@@ -556,13 +560,15 @@ function GradeDeSetores({
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <CardSetor
-          nome="Todos os Setores"
-          chaveIcone="layout-grid"
-          contagem={totalPops}
-          destaque
-          aoClicar={() => aoAbrirSetor("todos")}
-        />
+        {mostrarCardGeral ? (
+          <CardSetor
+            nome="Todos os Setores"
+            chaveIcone="layout-grid"
+            contagem={totalPops}
+            destaque
+            aoClicar={() => aoAbrirSetor("todos")}
+          />
+        ) : null}
         {setores.map((s) => (
           <CardSetor
             key={s.id}
@@ -2236,6 +2242,26 @@ function Pops() {
 
   const contagens = useMemo(() => contarPopsPorSetor(pops), [pops]);
 
+  // Colaborador, Líder de setor e Desenvolvedor (fora do setor da Qualidade) veem
+  // apenas o card "Geral" e o card do próprio setor; os demais níveis veem todos.
+  const gradeRestrita = Boolean(
+    !temAcessoTotalPops(sessao) &&
+      !ehSetorQualidade(sessao) &&
+      NIVEIS_FILTRAM_POR_SETOR.has(sessao?.nivelAcesso ?? ""),
+  );
+
+  const setoresGrade = useMemo(() => {
+    if (!gradeRestrita) return setores;
+    const setorNorm = normalizarSetor(sessao?.setor ?? "");
+    const prefixo = prefixoDoSetor(sessao?.setor ?? "");
+    return setores.filter((s) => {
+      if (s.id === "geral" || normalizarSetor(s.nome) === "geral") return true;
+      if (setorNorm && normalizarSetor(s.nome) === setorNorm) return true;
+      if (prefixo && s.prefixo && s.prefixo.toUpperCase() === prefixo.toUpperCase()) return true;
+      return false;
+    });
+  }, [gradeRestrita, setores, sessao]);
+
   const popsDoSetor = useMemo(() => {
     if (setorEhTodos || !setorSelecionado) return pops;
     const id = setorSelecionado.id;
@@ -2300,9 +2326,10 @@ function Pops() {
   } else if (!mostraLista) {
     conteudo = (
       <GradeDeSetores
-        setores={setores}
+        setores={setoresGrade}
         contagens={contagens}
         totalPops={pops.length}
+        mostrarCardGeral={!gradeRestrita}
         podeAdicionar={podeAdicionar}
         aoAbrirSetor={navegarParaSetor}
         aoCriar={abrirCriacao}
