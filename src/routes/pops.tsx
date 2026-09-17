@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Building2,
   Calculator,
+  Check,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -12,10 +13,14 @@ import {
   Eye,
   FileCheck,
   FileText,
+  HeartHandshake,
+  History,
   LayoutGrid,
   Layers,
+  Lightbulb,
   Link2,
   Loader2,
+  Megaphone,
   MessageSquare,
   MonitorSmartphone,
   MoreVertical,
@@ -23,14 +28,13 @@ import {
   ReceiptText,
   Scale,
   Search,
-  Send,
   Shield,
   Star,
-  ThumbsDown,
-  ThumbsUp,
   Trash2,
+  UserRound,
   Users,
   Wallet,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -63,25 +67,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { getSession } from "@/lib/auth";
 import { temAcessoTotalPops } from "@/lib/permissoes";
 import {
-  CARGOS_RESPONSAVEIS,
-  CATEGORIAS,
-  DIFICULDADES,
-  FREQUENCIAS,
-  PRAZOS_REFERENCIA,
-  REGIMES,
-  ROTULO_TIPO_ANEXO,
+  ENTRADA_PADRAO,
   aplicarContadores,
   aprovarPopLiderProcesso,
   aprovarPopLiderQualidade,
@@ -101,29 +92,38 @@ import {
   desfavoritarPop,
   duplicarPop,
   enviarAnexoPop,
+  enviarSugestaoPop,
   excluirAnotacao,
   excluirPop,
   favoritarPop,
+  formatarDataRevisao,
   listarAnotacoes,
   listarLeiturasPop,
+  listarRevisoesPop,
+  listarSugestoesPop,
   marcarNotificacaoLida,
+  nomesDosSetores,
   podeAprovarLiderProcesso,
   podeAprovarLiderQualidade,
   podeElaborarPops,
+  podeVerVersoesAnteriores,
   registrarLeitura,
   registrarVisualizacao,
+  ROTULO_TIPO_ANEXO,
   rotuloDoValor,
+  rotuloRevisao,
   STATUS_POP,
   textoDoAnexoOffice,
   urlAssinadaDoAnexo,
-  ENTRADA_PADRAO,
-  type DecisaoLeitura,
+  type ConteudoRevisaoPop,
   type EntradaPop,
   type Notificacao,
   type Pop,
   type PopAnotacao,
   type PopEtapa,
   type PopLeitura,
+  type PopRevisao,
+  type PopSugestao,
   type SetorPop,
   type StatusPop,
 } from "@/lib/pops";
@@ -158,6 +158,10 @@ const ICONES_SETOR: Record<string, LucideIcon> = {
   building: Building2,
   briefcase: CreditCard,
   layers: Layers,
+  "user-round": UserRound,
+  megaphone: Megaphone,
+  "heart-handshake": HeartHandshake,
+  wrench: Wrench,
 };
 
 function iconeDoSetor(chave: string): LucideIcon {
@@ -187,78 +191,13 @@ function StatusBadge({ status }: { status: StatusPop }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Cores das tags do cartão POP                                               */
+/* Cores e rótulos auxiliares da ficha do POP                                 */
 /* -------------------------------------------------------------------------- */
 
-const BG = {
-  indigo: "bg-[#EEF2FF]",
-  sky: "bg-[#EFF6FF]",
-  amber: "bg-[#FEF3C7]",
-  orange: "bg-[#FFF7ED]",
-  emerald: "bg-[#ECFDF5]",
-  rose: "bg-[#FFF1F2]",
-  gray: "bg-[#F1F5F9]",
-  muted: "bg-[#F1F5F9]",
-};
-
-const TEXT = {
-  indigo: "text-[#4F46E5]",
-  sky: "text-[#2563EB]",
-  amber: "text-[#B45309]",
-  orange: "text-[#EA580C]",
-  emerald: "text-[#059669]",
-  rose: "text-[#E11D48]",
-  muted: "text-[#475569]",
-};
-
-const COR_NEUTRA = `${BG.muted} ${TEXT.muted}`;
-const COR_AZUL = `${BG.sky} ${TEXT.sky}`;
-const COR_VIOLETA = `${BG.indigo} ${TEXT.indigo}`;
-const COR_VERDE = `${BG.emerald} ${TEXT.emerald}`;
-const COR_LARANJA = `${BG.orange} ${TEXT.orange}`;
-
-function classeCategoria(valor: string): string {
-  switch (valor) {
-    case "FISCAL":
-      return `${BG.indigo} ${TEXT.indigo}`;
-    case "CONTABIL":
-      return `${BG.indigo} ${TEXT.indigo}`;
-    case "PESSOAL":
-      return `${BG.sky} ${TEXT.sky}`;
-    case "FINANCEIRO":
-      return `${BG.sky} ${TEXT.sky}`;
-    case "LEGALIZACAO":
-      return `${BG.gray} ${TEXT.muted}`;
-    case "QUALIDADE":
-      return `${BG.emerald} ${TEXT.emerald}`;
-    case "TI":
-      return `${BG.rose} ${TEXT.rose}`;
-    case "DIRECAO":
-      return `${BG.orange} ${TEXT.orange}`;
-    default:
-      return `${BG.muted} ${TEXT.muted}`;
-  }
-}
-
-function classeDificuldade(valor: string): string {
-  switch (valor) {
-    case "FACIL":
-      return `${BG.muted} ${TEXT.emerald}`;
-    case "MEDIO":
-      return `${BG.muted} ${TEXT.amber}`;
-    case "DIFICIL":
-      return `${BG.muted} ${TEXT.rose}`;
-    default:
-      return `${BG.muted} ${TEXT.muted}`;
-  }
-}
-
-function formatarPrazo(valor: string | null): string {
-  if (!valor) return "—";
-  const [ano, mes, dia] = valor.split("-");
-  if (!ano || !mes || !dia) return valor;
-  return `${dia}/${mes}/${ano}`;
-}
+/** Cor da tag de revisão vigente. */
+const COR_REVISAO = "bg-[#EEF2FF] text-[#4F46E5]";
+/** Cor da tag neutra (setores, materiais e afins). */
+const COR_NEUTRA = "bg-[#F1F5F9] text-[#475569]";
 
 function paginasCompactas(paginaAtual: number, totalPaginas: number): (number | "…")[] {
   if (totalPaginas <= 7) {
@@ -282,21 +221,13 @@ function paginasCompactas(paginaAtual: number, totalPaginas: number): (number | 
 /* Componentes de apoio                                                       */
 /* -------------------------------------------------------------------------- */
 
-function Tag({ cor, rotulo, children }: { cor: string; rotulo: string; children: ReactNode }) {
+/** Etiqueta usada na ficha do POP (setores responsáveis, acesso, revisão...). */
+function Tag({ cor, rotulo, children }: { cor: string; rotulo?: string; children: ReactNode }) {
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]", cor)}>
-      <span className="font-medium opacity-70">{rotulo}</span>
+      {rotulo ? <span className="font-medium opacity-70">{rotulo}</span> : null}
       <span className="font-semibold">{children}</span>
     </span>
-  );
-}
-
-function Meta({ rotulo, valor }: { rotulo: string; valor: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[11px] text-[#94A3B8]">{rotulo}</span>
-      <span className="text-[13px] font-semibold text-[#1F2937]">{valor}</span>
-    </div>
   );
 }
 
@@ -349,6 +280,7 @@ interface PopCardProps {
   pop: Pop;
   favoritado: boolean;
   podeElaborar: boolean;
+  setores: SetorPop[];
   onAbrir: (pop: Pop) => void;
   onEditar: (pop: Pop) => void;
   onDuplicar: (pop: Pop) => void;
@@ -361,6 +293,7 @@ function PopCard({
   pop,
   favoritado,
   podeElaborar,
+  setores,
   onAbrir,
   onEditar,
   onDuplicar,
@@ -368,6 +301,7 @@ function PopCard({
   onDiscutir,
   onFavoritar,
 }: PopCardProps) {
+  const responsaveis = nomesDosSetores(pop.setoresResponsaveis ?? [], setores);
   return (
     <li className="flex flex-col gap-4 rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm lg:flex-row lg:gap-6 lg:p-5">
       <div className="min-w-0 flex-1">
@@ -387,38 +321,28 @@ function PopCard({
         </div>
 
         <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-[#64748B]">
-          {pop.descricao || "Sem descrição cadastrada."}
+          {pop.objetivo || pop.descricao || "Sem objetivo cadastrado."}
         </p>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Tag cor={COR_NEUTRA} rotulo="Depto">
-            {pop.departamento || "—"}
+          <Tag cor={COR_REVISAO} rotulo="Revisão">
+            {rotuloRevisao(pop.revisao)}
           </Tag>
-          <Tag cor={classeCategoria(pop.categoria)} rotulo="Categoria">
-            {rotuloDoValor(pop.categoria)}
+          <Tag cor={COR_NEUTRA} rotulo="Data da revisão">
+            {formatarDataRevisao(pop.dataRevisao)}
           </Tag>
-          <Tag cor={COR_AZUL} rotulo="Frequência">
-            {rotuloDoValor(pop.frequencia)}
-          </Tag>
-          <Tag cor={COR_VIOLETA} rotulo="Prazo de ref.">
-            {rotuloDoValor(pop.prazoReferencia)}
-          </Tag>
-          <Tag cor={COR_VERDE} rotulo="Regime">
-            {rotuloDoValor(pop.regime)}
-          </Tag>
-          <Tag cor={classeDificuldade(pop.dificuldade)} rotulo="Dificuldade">
-            {rotuloDoValor(pop.dificuldade)}
-          </Tag>
-          <Tag cor={COR_LARANJA} rotulo="Cargo">
-            {rotuloDoValor(pop.cargoResponsavel)}
-          </Tag>
+          {responsaveis.map((nome) => (
+            <Tag key={nome} cor={COR_NEUTRA} rotulo="Responsável">
+              {nome}
+            </Tag>
+          ))}
         </div>
       </div>
 
       <aside className="lg:w-64 flex shrink-0 flex-col rounded-xl border border-[#E9EEF5] bg-[#F8FAFC]">
         <div className="flex items-center justify-between border-b border-[#E9EEF5] px-4 py-2.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
-            Prazo e controles
+            Controles
           </p>
           {podeElaborar ? (
             <DropdownMenu>
@@ -452,15 +376,24 @@ function PopCard({
         </div>
 
         <div className="flex-1 space-y-2.5 px-4 py-3">
-          <Meta
-            rotulo="Dia de início"
-            valor={pop.diaInicio !== null ? String(pop.diaInicio) : "—"}
-          />
-          <Meta
-            rotulo="Meta de conclusão"
-            valor={pop.metaDia !== null ? String(pop.metaDia) : "—"}
-          />
-          <Meta rotulo="Prazo legal" valor={formatarPrazo(pop.prazoLegal)} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1 text-[11px] text-[#94A3B8]">
+              <History className="h-3 w-3" /> Revisão vigente
+            </span>
+            <span className="text-[13px] font-semibold text-[#1F2937]">
+              {rotuloRevisao(pop.revisao)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1 text-[11px] text-[#94A3B8]">
+              <Eye className="h-3 w-3" /> Quem visualiza
+            </span>
+            <span className="text-right text-[12.5px] font-semibold text-[#1F2937]">
+              {(pop.visualizadores ?? []).length === 0
+                ? "Todos os setores"
+                : nomesDosSetores(pop.visualizadores, setores).join(", ")}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-4 border-t border-[#E9EEF5] px-4 py-2.5">
@@ -640,6 +573,7 @@ interface ListaProps {
   aoCriar: () => void;
   onAbrir: (pop: Pop) => void;
   podeElaborar: boolean;
+  setores: SetorPop[];
   favoritos: string[];
   aoEditar: (pop: Pop) => void;
   aoDuplicar: (pop: Pop) => void;
@@ -661,6 +595,7 @@ function ListaDePops({
   aoCriar,
   onAbrir,
   podeElaborar,
+  setores,
   favoritos,
   aoEditar,
   aoDuplicar,
@@ -707,7 +642,7 @@ function ListaDePops({
         <Input
           value={busca}
           onChange={(e) => aoMudarBusca(e.target.value)}
-          placeholder="Buscar por código ou título do POP…"
+          placeholder="Buscar por código ou nome do POP…"
           className="h-10 pl-9"
         />
       </div>
@@ -732,6 +667,7 @@ function ListaDePops({
               pop={pop}
               favoritado={favoritos.includes(pop.id)}
               podeElaborar={podeElaborar}
+              setores={setores}
               onAbrir={onAbrir}
               onEditar={aoEditar}
               onDuplicar={aoDuplicar}
@@ -760,13 +696,18 @@ function ListaDePops({
 interface CampoProps {
   rotulo: string;
   className?: string;
+  /** Quando true, mostra um * vermelho ao lado do rótulo (campo obrigatório). */
+  obrigatorio?: boolean;
   children: ReactNode;
 }
 
-function Campo({ rotulo, className, children }: CampoProps) {
+function Campo({ rotulo, className, obrigatorio, children }: CampoProps) {
   return (
     <div className={cn("space-y-1.5", className)}>
-      <Label className="text-[13px] font-medium text-[#1F2937]">{rotulo}</Label>
+      <Label className="text-[13px] font-medium text-[#1F2937]">
+        {rotulo}
+        {obrigatorio ? <span className="ml-0.5 text-[#DC2626]" aria-hidden="true">*</span> : null}
+      </Label>
       {children}
     </div>
   );
@@ -795,7 +736,59 @@ function camposDoPop(pop: Pop): EntradaPop {
     linksRelacionados: pop.linksRelacionados ?? [],
     observacoes: pop.observacoes ?? "",
     etapas: pop.etapas ?? [],
+    setoresResponsaveis: pop.setoresResponsaveis ?? [],
+    visualizadores: pop.visualizadores ?? [],
   };
+}
+
+/**
+ * Sugere o próximo código sequencial da área/setor (ex.: `FIS-03`) a partir do
+ * prefixo do setor escolhido e dos códigos já usados.
+ */
+function codigoSugerido(prefixo: string, codigosExistentes: string[]): string {
+  const usados = codigosExistentes
+    .filter((codigo) => codigo.startsWith(`${prefixo}-`))
+    .map((codigo) => Number.parseInt(codigo.slice(prefixo.length + 1), 10))
+    .filter((numero) => Number.isFinite(numero));
+  const proximo = (usados.length > 0 ? Math.max(...usados) : 0) + 1;
+  return `${prefixo}-${String(proximo).padStart(2, "0")}`;
+}
+
+interface SeletorSetoresProps {
+  setores: SetorPop[];
+  selecionados: string[];
+  aoAlternar: (id: string) => void;
+}
+
+/** Seleção múltipla de setores/unidades (Setores responsáveis e ACESSO). */
+function SeletorSetores({ setores, selecionados, aoAlternar }: SeletorSetoresProps) {
+  if (setores.length === 0) {
+    return <p className="text-[12px] text-[#94A3B8]">Nenhum setor cadastrado ainda.</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] p-2.5">
+      {setores.map((setor) => {
+        const ativo = selecionados.includes(setor.id);
+        return (
+          <button
+            key={setor.id}
+            type="button"
+            aria-pressed={ativo}
+            onClick={() => aoAlternar(setor.id)}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition",
+              ativo
+                ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+                : "border-[#D9E0EA] bg-white text-[#475569] hover:border-[#1E3A8A]/40",
+            )}
+          >
+            {ativo ? <Check className="h-3 w-3" /> : null}
+            {setor.nome}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Converte o texto do formulário (uma etapa por linha; 2 espaços = subnível). */
@@ -819,6 +812,8 @@ interface PopFormDialogProps {
   pop: Pop | null;
   setores: SetorPop[];
   setorPadrao: string;
+  /** Códigos já usados no portal, para sugerir a sequência da área/setor. */
+  codigosExistentes: string[];
   onFechar: () => void;
   onSalvo: () => void;
 }
@@ -828,6 +823,7 @@ function PopFormDialog({
   pop,
   setores,
   setorPadrao,
+  codigosExistentes,
   onFechar,
   onSalvo,
 }: PopFormDialogProps) {
@@ -836,6 +832,7 @@ function PopFormDialog({
 
   const [textoEtapas, setTextoEtapas] = useState("");
   const [textoLinks, setTextoLinks] = useState("");
+  const [observacaoRevisao, setObservacaoRevisao] = useState("");
   const [anexoNovo, setAnexoNovo] = useState<File | null>(null);
 
   useEffect(() => {
@@ -843,6 +840,7 @@ function PopFormDialog({
       setEntrada(pop ? camposDoPop(pop) : { ...ENTRADA_PADRAO, setorId: setorPadrao });
       setTextoEtapas(textoDasEtapas(pop?.etapas));
       setTextoLinks((pop?.linksRelacionados ?? []).join("\n"));
+      setObservacaoRevisao("");
       setAnexoNovo(null);
       setSalvando(false);
     }
@@ -852,9 +850,35 @@ function PopFormDialog({
     setEntrada((atual) => ({ ...atual, [campo]: valor }));
   }
 
+  /** Liga/desliga um setor de uma lista (responsáveis ou autorizados a ver). */
+  function alternarSetor(campo: "setoresResponsaveis" | "visualizadores", id: string) {
+    setEntrada((atual) => {
+      const lista = atual[campo] ?? [];
+      const nova = lista.includes(id) ? lista.filter((item) => item !== id) : [...lista, id];
+      const atualizado: EntradaPop = { ...atual, [campo]: nova };
+      // O primeiro setor responsável define o vínculo do POP no banco e, ao
+      // criar um POP novo, sugere o próximo código sequencial da área.
+      if (campo === "setoresResponsaveis") {
+        atualizado.setorId = nova[0] ?? setorPadrao;
+        if (!pop && nova.length > 0 && atual.codigo.trim() === "") {
+          const prefixo = setores.find((setor) => setor.id === nova[0])?.prefixo;
+          if (prefixo) atualizado.codigo = codigoSugerido(prefixo, codigosExistentes);
+        }
+      }
+      return atualizado;
+    });
+  }
+
+  const geraNovaRevisao =
+    pop !== null && (pop.status === STATUS_POP.VIGENTE || pop.status === STATUS_POP.REVISADO);
+
   async function salvar() {
     if (!entrada.codigo.trim() || !entrada.titulo.trim()) {
-      toast.error("Preencha o código e o título do POP");
+      toast.error("Preencha o código e o nome do POP");
+      return;
+    }
+    if ((entrada.setoresResponsaveis ?? []).length === 0) {
+      toast.error("Selecione ao menos um setor responsável pelo processo");
       return;
     }
     setSalvando(true);
@@ -869,10 +893,10 @@ function PopFormDialog({
       };
       let popSalvo: Pop;
       if (pop) {
-        popSalvo = await atualizarPop(pop.id, dados);
+        popSalvo = await atualizarPop(pop.id, dados, observacaoRevisao);
         toast.success(
           popSalvo.status === STATUS_POP.REVISANDO
-            ? "POP atualizado — entrou em revisão e precisa ser aprovado novamente"
+            ? `POP atualizado — ${rotuloRevisao(popSalvo.revisao)} gerada, aguardando as aprovações`
             : "POP atualizado com sucesso",
         );
       } else {
@@ -900,32 +924,18 @@ function PopFormDialog({
           <DialogDescription>
             {pop
               ? "Ajuste os dados do procedimento e salve as alterações."
-              : "Cadastre o procedimento operacional padrão."}
+              : "Cadastre o procedimento operacional padrão."}{" "}
+            <span className="text-[#DC2626]">*</span> Campos obrigatórios.
           </DialogDescription>
-          {pop && (pop.status === STATUS_POP.VIGENTE || pop.status === STATUS_POP.REVISADO) ? (
+          {geraNovaRevisao ? (
             <p className="mt-2 rounded-lg bg-[#FEF3C7] px-3 py-2 text-[12.5px] leading-relaxed text-[#92400E]">
-              {`Este POP está ${pop.status === STATUS_POP.VIGENTE ? "vigente" : "revisado"}. Ao salvar, ele passará para EM REVISÃO e precisará ser aprovado de novo (líder do setor e liderança da Qualidade) para voltar a valer.`}
+              {`Este POP está ${pop?.status === STATUS_POP.VIGENTE ? "vigente" : "revisado"}. Ao salvar, o mesmo código é mantido e será gerada a ${rotuloRevisao((pop?.revisao ?? 1) + 1)}: a versão anterior (${rotuloRevisao(pop?.revisao ?? 1)}) permanece no histórico, para consulta apenas do gestor, e a nova versão passa a valer para os setores e unidades definidos em "Quem pode visualizar".`}
             </p>
           ) : null}
         </DialogHeader>
 
         <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
-          <Campo rotulo="Setor">
-            <Select value={entrada.setorId} onValueChange={(v) => definir("setorId", v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {setores.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Código">
+          <Campo rotulo="Código (sequencial por área/setor)" obrigatorio>
             <Input
               value={entrada.codigo}
               onChange={(e) => definir("codigo", e.target.value)}
@@ -933,7 +943,18 @@ function PopFormDialog({
             />
           </Campo>
 
-          <Campo rotulo="Título" className="sm:col-span-2">
+          <Campo rotulo="Revisão vigente">
+            <div className="flex min-h-9 flex-wrap items-center gap-2 rounded-md border border-[#E9EEF5] bg-[#F8FAFC] px-3 py-1.5 text-[12.5px] text-[#475569]">
+              <Tag cor={COR_REVISAO}>{rotuloRevisao(pop?.revisao ?? 1)}</Tag>
+              <span>
+                {pop
+                  ? `Vigente desde ${formatarDataRevisao(pop.dataRevisao)}`
+                  : "A Revisão 01 é criada automaticamente ao salvar"}
+              </span>
+            </div>
+          </Campo>
+
+          <Campo rotulo="Nome do POP" className="sm:col-span-2" obrigatorio>
             <Input
               value={entrada.titulo}
               onChange={(e) => definir("titulo", e.target.value)}
@@ -941,202 +962,85 @@ function PopFormDialog({
             />
           </Campo>
 
-          <Campo rotulo="Descrição" className="sm:col-span-2">
+          <Campo rotulo="Objetivo / Quando utilizar" className="sm:col-span-2">
             <Textarea
-              value={entrada.descricao}
-              onChange={(e) => definir("descricao", e.target.value)}
-              placeholder="Resuma o procedimento e o que ele padroniza."
+              value={entrada.objetivo ?? ""}
+              onChange={(e) => definir("objetivo", e.target.value)}
+              placeholder="Ex.: Realizar o lançamento da movimentação de provisões financeiras... Utilize este POP sempre que..."
               className="min-h-[80px]"
             />
           </Campo>
 
-          <Campo rotulo="Departamento">
-            <Input
-              value={entrada.departamento}
-              onChange={(e) => definir("departamento", e.target.value)}
-              placeholder="Ex.: Fiscal"
+          <Campo rotulo="Setores responsáveis do processo" className="sm:col-span-2" obrigatorio>
+            <SeletorSetores
+              setores={setores}
+              selecionados={entrada.setoresResponsaveis ?? []}
+              aoAlternar={(id) => alternarSetor("setoresResponsaveis", id)}
             />
+            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+              O primeiro setor selecionado é o vínculo do POP com a grade de setores.
+            </p>
           </Campo>
 
-          <Campo rotulo="Categoria">
-            <Select value={entrada.categoria} onValueChange={(v) => definir("categoria", v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORIAS.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {rotuloDoValor(opcao)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Frequência">
-            <Select value={entrada.frequencia} onValueChange={(v) => definir("frequencia", v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FREQUENCIAS.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {rotuloDoValor(opcao)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Prazo de referência">
-            <Select
-              value={entrada.prazoReferencia}
-              onValueChange={(v) => definir("prazoReferencia", v)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PRAZOS_REFERENCIA.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {rotuloDoValor(opcao)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Regime aplicável">
-            <Select value={entrada.regime} onValueChange={(v) => definir("regime", v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {REGIMES.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {rotuloDoValor(opcao)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Dificuldade">
-            <Select value={entrada.dificuldade} onValueChange={(v) => definir("dificuldade", v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DIFICULDADES.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {rotuloDoValor(opcao)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Cargo responsável">
-            <Select
-              value={entrada.cargoResponsavel}
-              onValueChange={(v) => definir("cargoResponsavel", v)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CARGOS_RESPONSAVEIS.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {rotuloDoValor(opcao)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Dia de início do prazo">
-            <Input
-              type="number"
-              min={1}
-              max={31}
-              value={entrada.diaInicio ?? ""}
-              onChange={(e) =>
-                definir("diaInicio", e.target.value === "" ? null : Number(e.target.value))
-              }
-              placeholder="Ex.: 5"
+          <Campo
+            rotulo="Quem pode visualizar — ACESSO (setores e unidades)"
+            className="sm:col-span-2"
+          >
+            <SeletorSetores
+              setores={setores}
+              selecionados={entrada.visualizadores ?? []}
+              aoAlternar={(id) => alternarSetor("visualizadores", id)}
             />
+            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+              Somente os setores e unidades marcados aqui enxergam esta revisão. Sem nenhuma seleção,
+              valem as regras atuais de divulgação do portal.
+            </p>
           </Campo>
 
-          <Campo rotulo="Meta (dia ideal de conclusão)">
-            <Input
-              type="number"
-              min={1}
-              max={31}
-              value={entrada.metaDia ?? ""}
-              onChange={(e) =>
-                definir("metaDia", e.target.value === "" ? null : Number(e.target.value))
-              }
-              placeholder="Ex.: 12"
-            />
-          </Campo>
-
-          <Campo rotulo="Prazo legal (data limite)" className="sm:col-span-2">
-            <Input
-              type="date"
-              value={entrada.prazoLegal ?? ""}
-              onChange={(e) => definir("prazoLegal", e.target.value || null)}
-            />
-          </Campo>
-
-          <Campo rotulo="Objetivo" className="sm:col-span-2">
-            <Textarea
-              value={entrada.objetivo ?? ""}
-              onChange={(e) => definir("objetivo", e.target.value)}
-              placeholder="Ex.: Realizar o lançamento da movimentação de provisões financeiras..."
-              className="min-h-[60px]"
-            />
-          </Campo>
-
-          <Campo rotulo="Materiais e Sistemas Necessários" className="sm:col-span-2">
-            <Textarea
-              value={entrada.materiaisSistemas ?? ""}
-              onChange={(e) => definir("materiaisSistemas", e.target.value)}
-              placeholder="Ex.: Software Domínio, Software de Comunicação..."
-              className="min-h-[60px]"
-            />
-          </Campo>
-
-          <Campo rotulo="Documentos Gerados" className="sm:col-span-2">
-            <Textarea
-              value={entrada.documentosGerados ?? ""}
-              onChange={(e) => definir("documentosGerados", e.target.value)}
-              placeholder="Ex.: Arquivo TXT"
-              className="min-h-[50px]"
-            />
-          </Campo>
-
-          <Campo rotulo="Links Relacionados (um por linha)" className="sm:col-span-2">
+          <Campo rotulo="Links vinculados (um por linha)" className="sm:col-span-2">
             <Textarea
               value={textoLinks}
               onChange={(e) => setTextoLinks(e.target.value)}
               placeholder={"https://youtu.be/...\nhttps://..."}
               className="min-h-[60px]"
             />
+            <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+              Outros POPs, vídeos, sistemas, ferramentas e documentos relacionados.
+            </p>
           </Campo>
 
-          <Campo rotulo="Observações" className="sm:col-span-2">
+          <Campo rotulo="Materiais necessários" className="sm:col-span-2">
             <Textarea
-              value={entrada.observacoes ?? ""}
-              onChange={(e) => definir("observacoes", e.target.value)}
-              placeholder="Observações, boas práticas e pontos de atenção."
-              className="min-h-[100px]"
+              value={entrada.materiaisSistemas ?? ""}
+              onChange={(e) => definir("materiaisSistemas", e.target.value)}
+              placeholder="Ex.: Software Domínio, Software de Comunicação, planilha de controle..."
+              className="min-h-[60px]"
             />
           </Campo>
 
-          <Campo
-            rotulo="Etapas do procedimento (uma por linha; 2 espaços = subpasso)"
-            className="sm:col-span-2"
-          >
+          {pop ? (
+            <Campo
+              rotulo={
+                geraNovaRevisao
+                  ? `Observação da revisão (será gravada na ${rotuloRevisao(pop.revisao + 1)})`
+                  : "Observação da revisão em andamento"
+              }
+              className="sm:col-span-2"
+            >
+              <Textarea
+                value={observacaoRevisao}
+                onChange={(e) => setObservacaoRevisao(e.target.value)}
+                placeholder="Ex.: Alterado o passo 3 — inclusão da conferência do arquivo TXT; atualizado o link do vídeo."
+                className="min-h-[70px]"
+              />
+              <p className="mt-1 text-[11.5px] text-[#94A3B8]">
+                Registro objetivo do que foi alterado nesta versão. Aparece no histórico de
+                modificações do POP.
+              </p>
+            </Campo>
+          ) : null}
+
+          <Campo rotulo="Etapas do procedimento (uma por linha; 2 espaços = subpasso)" className="sm:col-span-2">
             <Textarea
               value={textoEtapas}
               onChange={(e) => setTextoEtapas(e.target.value)}
@@ -1318,49 +1222,49 @@ function PopEtapas({ etapas }: { etapas: PopEtapa[] }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Ciência do POP: "Li e Concordo" / "Li e DISCORDO!"                         */
+/* Leitura do POP: botões "Lido" e "Sugerir melhoria"                          */
 /* -------------------------------------------------------------------------- */
 
-interface SecaoCienciaProps {
+interface SecaoLeituraSugestaoProps {
   leitura: PopLeitura | null;
   todasLeituras: PopLeitura[];
-  composerAberto: boolean;
-  justificativa: string;
+  sugestoes: PopSugestao[];
+  sugestaoAberta: boolean;
+  sugestao: string;
   enviando: boolean;
-  aoMudarJustificativa: (valor: string) => void;
-  aoAbrirComposer: () => void;
-  aoCancelarComposer: () => void;
-  aoConfirmar: (decisao: DecisaoLeitura) => void;
+  aoMudarSugestao: (valor: string) => void;
+  aoAbrirSugestao: () => void;
+  aoCancelarSugestao: () => void;
+  aoRegistrarLido: () => void;
+  aoEnviarSugestao: () => void;
 }
 
-function SecaoCiencia({
+function SecaoLeituraSugestao({
   leitura,
   todasLeituras,
-  composerAberto,
-  justificativa,
+  sugestoes,
+  sugestaoAberta,
+  sugestao,
   enviando,
-  aoMudarJustificativa,
-  aoAbrirComposer,
-  aoCancelarComposer,
-  aoConfirmar,
-}: SecaoCienciaProps) {
-  const concordancias = todasLeituras.filter((l) => l.decisao === "concordo").length;
-  const discordancias = todasLeituras.filter((l) => l.decisao === "discordo").length;
+  aoMudarSugestao,
+  aoAbrirSugestao,
+  aoCancelarSugestao,
+  aoRegistrarLido,
+  aoEnviarSugestao,
+}: SecaoLeituraSugestaoProps) {
+  const jaLeu = leitura !== null && leitura.decisao !== "discordo";
+  const leitores = todasLeituras.filter((l) => l.decisao !== "discordo");
 
   return (
     <section className="mt-5 border-t border-[#E9EEF5] pt-5">
       <div className="flex flex-wrap items-center gap-3">
-        {leitura?.decisao === "concordo" ? (
+        {jaLeu ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ECFDF5] px-3 py-1.5 text-[12px] font-semibold text-[#047857]">
-            <ThumbsUp className="h-3.5 w-3.5" /> Li e concordo
-          </span>
-        ) : leitura?.decisao === "discordo" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF2F2] px-3 py-1.5 text-[12px] font-semibold text-[#B91C1C]">
-            <ThumbsDown className="h-3.5 w-3.5" /> Li e discordo
+            <Check className="h-3.5 w-3.5" /> Leitura registrada
           </span>
         ) : (
           <span className="text-[12.5px] text-[#64748B]">
-            Após a leitura deste POP, registre sua ciência:
+            Após a leitura deste POP, registre o seu "Lido":
           </span>
         )}
 
@@ -1368,46 +1272,47 @@ function SecaoCiencia({
           <Button
             type="button"
             size="sm"
-            disabled={enviando || composerAberto}
-            onClick={() => aoConfirmar("concordo")}
+            disabled={enviando || sugestaoAberta}
+            onClick={aoRegistrarLido}
             className="bg-[#047857] text-white hover:bg-[#059669]"
           >
-            <ThumbsUp className="h-4 w-4" /> Li e Concordo
+            <Check className="h-4 w-4" /> Lido
           </Button>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            disabled={enviando || composerAberto}
-            onClick={aoAbrirComposer}
-            className="border-[#FCA5A5] text-[#B91C1C] hover:bg-[#FEF2F2]"
+            disabled={enviando}
+            onClick={aoAbrirSugestao}
+            className="border-[#C7D2E4] text-[#1E3A8A] hover:bg-[#EEF2FF]"
           >
-            <ThumbsDown className="h-4 w-4" /> Li e DISCORDO!
+            <Lightbulb className="h-4 w-4" /> Sugerir melhoria
           </Button>
         </div>
 
         <span className="text-[12px] text-[#94A3B8]">
-          {concordancias} concordam · {discordancias} discordam
+          {leitores.length} {leitores.length === 1 ? "leitura" : "leituras"} · {sugestoes.length}{" "}
+          {sugestoes.length === 1 ? "sugestão" : "sugestões"}
         </span>
       </div>
 
-      {composerAberto ? (
-        <div className="mt-3 rounded-xl border border-[#FCA5A5] bg-[#FEF2F2]/60 p-4">
-          <Label className="text-[13px] font-semibold text-[#7F1D1D]">
-            Justifique a sua discordância
+      {sugestaoAberta ? (
+        <div className="mt-3 rounded-xl border border-[#C7D2E4] bg-[#F8FAFC] p-4">
+          <Label className="text-[13px] font-semibold text-[#1E3A8A]">
+            Sugira uma melhoria para este POP
           </Label>
           <Textarea
-            value={justificativa}
-            onChange={(e) => aoMudarJustificativa(e.target.value)}
-            placeholder="Descreva o ponto do POP com o qual você discorda e a sua sugestão. Esta mensagem será enviada ao Coordenador da Qualidade e ao time de Qualidade."
-            className="mt-1.5 min-h-[110px] border-[#FCA5A5] bg-white"
+            value={sugestao}
+            onChange={(e) => aoMudarSugestao(e.target.value)}
+            placeholder="Descreva a alteração ou melhoria que você propõe no procedimento. O Gestor da Qualidade e o time de Qualidade recebem esta sugestão."
+            className="mt-1.5 min-h-[110px] border-[#C7D2E4] bg-white"
           />
           <div className="mt-2.5 flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={aoCancelarComposer}
+              onClick={aoCancelarSugestao}
               disabled={enviando}
             >
               Cancelar
@@ -1416,42 +1321,46 @@ function SecaoCiencia({
               type="button"
               size="sm"
               disabled={enviando}
-              onClick={() => aoConfirmar("discordo")}
-              className="bg-[#B91C1C] text-white hover:bg-[#DC2626]"
+              onClick={aoEnviarSugestao}
+              className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
             >
               {enviando ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Send className="h-4 w-4" />
+                <Lightbulb className="h-4 w-4" />
               )}
-              Enviar discordância
+              Enviar sugestão
             </Button>
           </div>
         </div>
       ) : null}
 
-      {leitura?.decisao === "discordo" && leitura.justificativa ? (
-        <p className="mt-2 rounded-lg bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#7F1D1D]">
-          <span className="font-semibold">Sua justificativa:</span> {leitura.justificativa}
-        </p>
+      {leitores.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {leitores.map((l) => (
+            <span
+              key={l.id}
+              className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[11.5px] font-medium text-[#047857]"
+            >
+              <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
+            </span>
+          ))}
+        </div>
       ) : null}
 
-      {todasLeituras.filter((l) => l.decisao === "discordo").length > 0 ? (
+      {sugestoes.length > 0 ? (
         <div className="mt-3 space-y-1.5">
-          {todasLeituras
-            .filter((l) => l.decisao === "discordo")
-            .map((l) => (
-              <div key={l.id} className="rounded-lg border border-[#FECACA] bg-white px-3 py-2">
-                <p className="text-[12px] font-semibold text-[#7F1D1D]">
-                  {l.usuarioNome || l.usuarioEmail} discordou
-                </p>
-                {l.justificativa ? (
-                  <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#334155]">
-                    {l.justificativa}
-                  </p>
-                ) : null}
-              </div>
-            ))}
+          {sugestoes.map((item) => (
+            <div key={item.id} className="rounded-lg border border-[#D9E0EA] bg-white px-3 py-2">
+              <p className="text-[12px] font-semibold text-[#1E3A8A]">
+                <Lightbulb className="mr-1 inline h-3 w-3" />
+                {item.usuarioNome || item.usuarioEmail} sugeriu
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#334155]">
+                {item.sugestao}
+              </p>
+            </div>
+          ))}
         </div>
       ) : null}
     </section>
@@ -1515,14 +1424,18 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
 
   const [leitura, setLeitura] = useState<PopLeitura | null>(null);
   const [todasLeituras, setTodasLeituras] = useState<PopLeitura[]>([]);
-  const [composerAberto, setComposerAberto] = useState(false);
-  const [justificativa, setJustificativa] = useState("");
+  const [sugestoes, setSugestoes] = useState<PopSugestao[]>([]);
+  const [revisoes, setRevisoes] = useState<PopRevisao[]>([]);
+  const [sugestaoAberta, setSugestaoAberta] = useState(false);
+  const [sugestao, setSugestao] = useState("");
   const [enviando, setEnviando] = useState(false);
+
+  const podeVerAnteriores = podeVerVersoesAnteriores(sessao);
 
   useEffect(() => {
     setLeitura(null);
-    setComposerAberto(false);
-    setJustificativa("");
+    setSugestaoAberta(false);
+    setSugestao("");
   }, [popExibido.id]);
 
   useEffect(() => {
@@ -1541,33 +1454,63 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
     };
   }, [email, nome, popExibido.id]);
 
-  async function registrar(decisao: DecisaoLeitura) {
+  // Sugestões de melhoria e histórico de modificações do POP aberto.
+  useEffect(() => {
+    let ativo = true;
+    void Promise.all([listarSugestoesPop(popExibido.id), listarRevisoesPop(popExibido.id)])
+      .then(([listaSugestoes, listaRevisoes]) => {
+        if (!ativo) return;
+        setSugestoes(listaSugestoes);
+        setRevisoes(listaRevisoes);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [popExibido.id]);
+
+  /** Botão "Lido": registra a ciência do colaborador na revisão vigente. */
+  async function registrarLido() {
     if (!email) {
       toast.error("Entre no portal para registrar sua leitura");
       return;
     }
-    if (decisao === "discordo" && justificativa.trim() === "") {
-      toast.error("Escreva a justificativa da sua discordância");
+    setEnviando(true);
+    try {
+      await registrarLeitura(popExibido.id, { email, nome }, "lido");
+      const [minhas, todas] = await Promise.all([
+        carregarLeiturasDoUsuario(email),
+        listarLeiturasPop(popExibido.id),
+      ]);
+      setLeitura(minhas[popExibido.id] ?? null);
+      setTodasLeituras(todas);
+      toast.success(`Leitura registrada na ${rotuloRevisao(popExibido.revisao)}`);
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível registrar sua leitura");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  /** Botão "Sugerir melhoria": envia a proposta à Qualidade. */
+  async function enviarSugestao() {
+    if (!email) {
+      toast.error("Entre no portal para sugerir uma melhoria");
+      return;
+    }
+    if (sugestao.trim() === "") {
+      toast.error("Escreva a sua sugestão antes de enviar");
       return;
     }
     setEnviando(true);
     try {
-      await registrarLeitura(pop.id, { email, nome }, decisao, justificativa.trim());
-      const [minhas, todas] = await Promise.all([
-        carregarLeiturasDoUsuario(email),
-        listarLeiturasPop(pop.id),
-      ]);
-      setLeitura(minhas[pop.id] ?? null);
-      setTodasLeituras(todas);
-      setComposerAberto(false);
-      setJustificativa("");
-      toast.success(
-        decisao === "concordo"
-          ? "Registro salvo: você leu e concordou com este POP"
-          : "Discordância registrada e enviada à Qualidade",
-      );
+      await enviarSugestaoPop(popExibido.id, { email, nome }, sugestao);
+      setSugestoes(await listarSugestoesPop(popExibido.id));
+      setSugestaoAberta(false);
+      setSugestao("");
+      toast.success("Sugestão enviada ao Gestor da Qualidade");
     } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não foi possível registrar sua leitura");
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível enviar a sugestão");
     } finally {
       setEnviando(false);
     }
@@ -1591,9 +1534,14 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
           </h2>
           <StatusBadge status={popExibido.status} />
         </div>
-        {pop.descricao ? (
-          <p className="mt-2 text-[13.5px] leading-relaxed text-[#64748B]">{pop.descricao}</p>
-        ) : null}
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          <Tag cor={COR_REVISAO} rotulo="Revisão">
+            {rotuloRevisao(popExibido.revisao)}
+          </Tag>
+          <Tag cor={COR_NEUTRA} rotulo="Data da revisão">
+            {formatarDataRevisao(popExibido.dataRevisao)}
+          </Tag>
+        </div>
 
         {popExibido.status !== STATUS_POP.VIGENTE ? (
           <div className="mt-4 space-y-2 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
@@ -1650,28 +1598,28 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
         ) : null}
 
         <div className="mt-5 space-y-3 border-t border-[#E9EEF5] pt-5">
-          <LinhaDetalhe rotulo="Objetivo">{pop.objetivo || pop.descricao}</LinhaDetalhe>
-          <LinhaDetalhe rotulo="Departamento">{pop.departamento}</LinhaDetalhe>
-          <LinhaDetalhe rotulo="Cargo Responsável">
-            {rotuloDoValor(pop.cargoResponsavel)}
+          <LinhaDetalhe rotulo="Objetivo / Quando utilizar">
+            <span className="whitespace-pre-wrap">{pop.objetivo || pop.descricao}</span>
           </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Periodicidade">{rotuloDoValor(pop.frequencia)}</LinhaDetalhe>
-          <LinhaDetalhe rotulo="Data Início">
-            {pop.diaInicio !== null ? String(pop.diaInicio) : "—"}
+          <LinhaDetalhe rotulo="Setores responsáveis do processo">
+            {(pop.setoresResponsaveis ?? []).length > 0
+              ? nomesDosSetores(pop.setoresResponsaveis, setores).join(", ")
+              : "—"}
           </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Data Meta">
-            {pop.metaDia !== null ? String(pop.metaDia) : "—"}
+          <LinhaDetalhe rotulo="Quem pode visualizar (ACESSO)">
+            {(pop.visualizadores ?? []).length > 0
+              ? nomesDosSetores(pop.visualizadores, setores).join(", ")
+              : "Todos os setores conforme as regras de divulgação do portal"}
           </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Competência">{rotuloDoValor(pop.prazoReferencia)}</LinhaDetalhe>
-          <LinhaDetalhe rotulo="Regime Tributário">{rotuloDoValor(pop.regime)}</LinhaDetalhe>
-          <LinhaDetalhe rotulo="Complexidade">{rotuloDoValor(pop.dificuldade)}</LinhaDetalhe>
-          <LinhaDetalhe rotulo="Materiais e Sistemas Necessários">
-            {pop.materiaisSistemas}
+          <LinhaDetalhe rotulo="Materiais necessários">
+            <span className="whitespace-pre-wrap">{pop.materiaisSistemas}</span>
           </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Documentos Gerados">{pop.documentosGerados}</LinhaDetalhe>
+          <LinhaDetalhe rotulo="Revisão">
+            {`${rotuloRevisao(popExibido.revisao)} — ${formatarDataRevisao(popExibido.dataRevisao)}`}
+          </LinhaDetalhe>
           {(pop.linksRelacionados ?? []).length > 0 ? (
             <div className="text-[13.5px] leading-relaxed text-[#334155]">
-              <RotuloDetalhe>Links Relacionados</RotuloDetalhe>
+              <RotuloDetalhe>Links vinculados</RotuloDetalhe>
               <ul className="mt-1 space-y-1">
                 {(pop.linksRelacionados ?? []).map((link) => (
                   <li key={link} className="flex items-center gap-1.5">
@@ -1689,9 +1637,6 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
               </ul>
             </div>
           ) : null}
-          <LinhaDetalhe rotulo="Observações">
-            <span className="whitespace-pre-wrap">{pop.observacoes}</span>
-          </LinhaDetalhe>
         </div>
 
         {pop.etapas && pop.etapas.length > 0 ? (
@@ -1707,21 +1652,186 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
 
         <PopAnexoVisualizador pop={pop} />
 
-        <SecaoCiencia
+        <SecaoLeituraSugestao
           leitura={leitura}
           todasLeituras={todasLeituras}
-          composerAberto={composerAberto}
-          justificativa={justificativa}
+          sugestoes={sugestoes}
+          sugestaoAberta={sugestaoAberta}
+          sugestao={sugestao}
           enviando={enviando}
-          aoMudarJustificativa={setJustificativa}
-          aoAbrirComposer={() => setComposerAberto(true)}
-          aoCancelarComposer={() => {
-            setComposerAberto(false);
-            setJustificativa("");
+          aoMudarSugestao={setSugestao}
+          aoAbrirSugestao={() => setSugestaoAberta(true)}
+          aoCancelarSugestao={() => {
+            setSugestaoAberta(false);
+            setSugestao("");
           }}
-          aoConfirmar={(decisao) => void registrar(decisao)}
+          aoRegistrarLido={() => void registrarLido()}
+          aoEnviarSugestao={() => void enviarSugestao()}
         />
+
+        <HistoricoModificacoes
+          pop={popExibido}
+          revisoes={revisoes}
+          podeVerAnteriores={podeVerAnteriores}
+        />
+
+        <footer className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-[#E9EEF5] pt-4">
+          <p className="text-[12px] font-semibold text-[#1E293B]">
+            {`${rotuloRevisao(popExibido.revisao)} — ${formatarDataRevisao(popExibido.dataRevisao)}`}
+          </p>
+          {popExibido.observacaoRevisao ? (
+            <p className="text-[12px] text-[#64748B]">{popExibido.observacaoRevisao}</p>
+          ) : null}
+        </footer>
       </article>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Histórico de modificações (revisões do POP)                                */
+/* -------------------------------------------------------------------------- */
+
+interface HistoricoModificacoesProps {
+  pop: Pop;
+  revisoes: PopRevisao[];
+  /** Somente o gestor consulta o conteúdo das versões anteriores. */
+  podeVerAnteriores: boolean;
+}
+
+function HistoricoModificacoes({ pop, revisoes, podeVerAnteriores }: HistoricoModificacoesProps) {
+  const [versaoAberta, setVersaoAberta] = useState<PopRevisao | null>(null);
+
+  return (
+    <section className="mt-5 border-t border-[#E9EEF5] pt-5">
+      <h3 className="inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-wide text-[#1E293B]">
+        <History className="h-4 w-4 text-[#1E3A8A]" /> Histórico de modificações
+      </h3>
+
+      <div className="mt-3 overflow-hidden rounded-xl border border-[#E9EEF5]">
+        <table className="w-full border-collapse text-left">
+          <thead className="bg-[#F8FAFC]">
+            <tr className="text-[11px] uppercase tracking-wide text-[#64748B]">
+              <th className="px-3 py-2 font-semibold">Revisão</th>
+              <th className="px-3 py-2 font-semibold">Data da revisão</th>
+              <th className="px-3 py-2 font-semibold">Observação da revisão</th>
+              <th className="px-3 py-2 font-semibold">Versão</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-t border-[#E9EEF5] bg-white">
+              <td className="px-3 py-2 text-[12.5px] font-semibold text-[#1E3A8A]">
+                {rotuloRevisao(pop.revisao)}
+              </td>
+              <td className="px-3 py-2 text-[12.5px] text-[#334155]">
+                {formatarDataRevisao(pop.dataRevisao)}
+              </td>
+              <td className="px-3 py-2 text-[12.5px] text-[#334155]">
+                {pop.observacaoRevisao || "—"}
+              </td>
+              <td className="px-3 py-2">
+                <span className="rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[11px] font-semibold text-[#047857]">
+                  Vigente
+                </span>
+              </td>
+            </tr>
+            {revisoes.map((revisao) => (
+              <tr key={revisao.id} className="border-t border-[#E9EEF5] bg-white">
+                <td className="px-3 py-2 text-[12.5px] font-semibold text-[#475569]">
+                  {rotuloRevisao(revisao.revisao)}
+                </td>
+                <td className="px-3 py-2 text-[12.5px] text-[#334155]">
+                  {formatarDataRevisao(revisao.dataRevisao)}
+                </td>
+                <td className="px-3 py-2 text-[12.5px] text-[#334155]">
+                  {revisao.observacao || "—"}
+                </td>
+                <td className="px-3 py-2">
+                  {podeVerAnteriores ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVersaoAberta(revisao)}
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Ver versão
+                    </Button>
+                  ) : (
+                    <span className="text-[11.5px] text-[#94A3B8]">Consulta do gestor</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {!podeVerAnteriores ? (
+        <p className="mt-2 text-[11.5px] text-[#94A3B8]">
+          As revisões anteriores ficam arquivadas para consulta apenas do gestor. Esta é a versão
+          vigente, disponível aos setores e unidades definidos em "Quem pode visualizar".
+        </p>
+      ) : null}
+
+      <Dialog
+        open={versaoAberta !== null}
+        onOpenChange={(abre) => (abre ? undefined : setVersaoAberta(null))}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {pop.codigo} — {versaoAberta ? rotuloRevisao(versaoAberta.revisao) : ""}
+            </DialogTitle>
+            <DialogDescription>
+              {`Versão arquivada em ${formatarDataRevisao(versaoAberta?.dataRevisao)} — consulta exclusiva do gestor.`}
+            </DialogDescription>
+          </DialogHeader>
+          <VersaoArquivada conteudo={versaoAberta?.conteudo ?? {}} />
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Versão arquivada (consulta do gestor)                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Conteúdo de uma revisão anterior (somente leitura, para o gestor). */
+function VersaoArquivada({ conteudo }: { conteudo: ConteudoRevisaoPop }) {
+  const links = conteudo.links ?? [];
+  const etapas = conteudo.etapas ?? [];
+  return (
+    <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+      <LinhaDetalhe rotulo="Nome do POP">{conteudo.titulo ?? ""}</LinhaDetalhe>
+      <LinhaDetalhe rotulo="Objetivo / Quando utilizar">
+        <span className="whitespace-pre-wrap">{conteudo.objetivo ?? ""}</span>
+      </LinhaDetalhe>
+      <LinhaDetalhe rotulo="Materiais necessários">
+        <span className="whitespace-pre-wrap">{conteudo.materiais ?? ""}</span>
+      </LinhaDetalhe>
+      {links.length > 0 ? (
+        <div className="text-[13.5px] leading-relaxed text-[#334155]">
+          <RotuloDetalhe>Links vinculados</RotuloDetalhe>
+          <ul className="mt-1 space-y-1">
+            {links.map((link) => (
+              <li key={link} className="break-all text-[#1E3A8A]">
+                {link}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {etapas.length > 0 ? (
+        <div>
+          <p className="text-[12.5px] font-bold uppercase tracking-wide text-[#1E293B]">
+            Procedimento
+          </p>
+          <div className="mt-2">
+            <PopEtapas etapas={etapas} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2172,6 +2282,7 @@ function Pops() {
         aoCriar={abrirCriacao}
         onAbrir={aoAbrirPop}
         podeElaborar={podeElaborar}
+        setores={setores}
         aoEditar={abrirEdicao}
         aoDuplicar={(p) => void duplicar(p)}
         aoExcluir={(p) => setPopExcluindo(p)}
@@ -2191,6 +2302,7 @@ function Pops() {
         pop={popEmEdicao}
         setores={setores}
         setorPadrao={setorSelecionado?.id ?? setores[0]?.id ?? ENTRADA_PADRAO.setorId}
+        codigosExistentes={pops.map((item) => item.codigo)}
         onFechar={() => setFormAberto(false)}
         onSalvo={buscarDados}
       />

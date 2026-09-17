@@ -385,6 +385,53 @@ export type Database = {
           },
         ];
       };
+      pop_revisoes: {
+        Row: {
+          codigo: string;
+          conteudo: Json;
+          created_at: string;
+          criado_por: string;
+          criado_por_nome: string;
+          data_revisao: string;
+          id: string;
+          observacao: string;
+          pop_id: string;
+          revisao: number;
+        };
+        Insert: {
+          codigo?: string;
+          conteudo?: Json;
+          created_at?: string;
+          criado_por?: string;
+          criado_por_nome?: string;
+          data_revisao?: string;
+          id?: string;
+          observacao?: string;
+          pop_id: string;
+          revisao: number;
+        };
+        Update: {
+          codigo?: string;
+          conteudo?: Json;
+          created_at?: string;
+          criado_por?: string;
+          criado_por_nome?: string;
+          data_revisao?: string;
+          id?: string;
+          observacao?: string;
+          pop_id?: string;
+          revisao?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pop_revisoes_pop_id_fkey";
+            columns: ["pop_id"];
+            isOneToOne: false;
+            referencedRelation: "pops";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       pop_setores: {
         Row: {
           categoria: string;
@@ -414,6 +461,47 @@ export type Database = {
           prefixo?: string;
         };
         Relationships: [];
+      };
+      pop_sugestoes: {
+        Row: {
+          created_at: string;
+          id: string;
+          pop_id: string;
+          status: string;
+          sugestao: string;
+          updated_at: string;
+          usuario_email: string;
+          usuario_nome: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          pop_id: string;
+          status?: string;
+          sugestao: string;
+          updated_at?: string;
+          usuario_email: string;
+          usuario_nome?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          pop_id?: string;
+          status?: string;
+          sugestao?: string;
+          updated_at?: string;
+          usuario_email?: string;
+          usuario_nome?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pop_sugestoes_pop_id_fkey";
+            columns: ["pop_id"];
+            isOneToOne: false;
+            referencedRelation: "pops";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       pop_visualizacoes: {
         Row: {
@@ -467,6 +555,7 @@ export type Database = {
           created_at: string;
           criado_por: string;
           criado_por_nome: string;
+          data_revisao: string;
           departamento: string;
           descricao: string;
           dia_inicio: number | null;
@@ -480,14 +569,18 @@ export type Database = {
           materiais_sistemas: string;
           meta_dia: number | null;
           objetivo: string;
+          observacao_revisao: string;
           observacoes: string;
           prazo_legal: string | null;
           prazo_referencia: string;
           regime: string;
+          revisao: number;
           setor_id: string;
+          setores_responsaveis: string[];
           status: string;
           titulo: string;
           updated_at: string;
+          visualizadores: string[];
         };
         Insert: {
           anotacoes?: number;
@@ -508,6 +601,7 @@ export type Database = {
           created_at?: string;
           criado_por?: string;
           criado_por_nome?: string;
+          data_revisao?: string;
           departamento?: string;
           descricao?: string;
           dia_inicio?: number | null;
@@ -521,14 +615,18 @@ export type Database = {
           materiais_sistemas?: string;
           meta_dia?: number | null;
           objetivo?: string;
+          observacao_revisao?: string;
           observacoes?: string;
           prazo_legal?: string | null;
           prazo_referencia?: string;
           regime?: string;
+          revisao?: number;
           setor_id: string;
+          setores_responsaveis?: string[];
           status?: string;
           titulo: string;
           updated_at?: string;
+          visualizadores?: string[];
         };
         Update: {
           anotacoes?: number;
@@ -549,6 +647,7 @@ export type Database = {
           created_at?: string;
           criado_por?: string;
           criado_por_nome?: string;
+          data_revisao?: string;
           departamento?: string;
           descricao?: string;
           dia_inicio?: number | null;
@@ -562,14 +661,18 @@ export type Database = {
           materiais_sistemas?: string;
           meta_dia?: number | null;
           objetivo?: string;
+          observacao_revisao?: string;
           observacoes?: string;
           prazo_legal?: string | null;
           prazo_referencia?: string;
           regime?: string;
+          revisao?: number;
           setor_id?: string;
+          setores_responsaveis?: string[];
           status?: string;
           titulo?: string;
           updated_at?: string;
+          visualizadores?: string[];
         };
         Relationships: [
           {

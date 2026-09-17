@@ -6,13 +6,16 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
-import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Json, Tables, TablesInsert } from "@/integrations/supabase/types";
 import { getSession, type UserSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR } from "@/lib/niveis-acesso";
-import { veSomenteLiberados } from "@/lib/permissoes";
+import { temAcessoTotalPops, veSomenteLiberados } from "@/lib/permissoes";
 
 type PopRow = Tables<"pops">;
 type PopInsert = TablesInsert<"pops">;
+type PopRevisaoInsert = TablesInsert<"pop_revisoes">;
+type PopSugestaoRow = Tables<"pop_sugestoes">;
+type PopSugestaoInsert = TablesInsert<"pop_sugestoes">;
 type PopSetorRow = Tables<"pop_setores">;
 type PopAnotacaoRow = Tables<"pop_anotacoes">;
 type PopAnotacaoInsert = TablesInsert<"pop_anotacoes">;
@@ -61,6 +64,16 @@ export interface Pop {
   favoritos: number;
   anotacoes: number;
   arquivo: string | null;
+  /** Revisão vigente (1 = Revisão 01). O código é mantido a cada nova versão. */
+  revisao: number;
+  /** Data da revisão vigente, no formato `aaaa-mm-dd`. */
+  dataRevisao: string | null;
+  /** O que foi alterado na revisão vigente (alimenta o histórico de modificações). */
+  observacaoRevisao: string;
+  /** Setores responsáveis pelo processo (ids de `public.pop_setores`). */
+  setoresResponsaveis: string[];
+  /** Quem pode visualizar (ACESSO): ids dos setores/unidades autorizados. */
+  visualizadores: string[];
   /** Objetivo do procedimento (abertura do POP). */
   objetivo?: string;
   /** Materiais e sistemas necessários. */
@@ -108,8 +121,12 @@ export interface PopAnexo {
   tamanho: number | null;
 }
 
-/** Decisão registrada na leitura de um POP. */
-export type DecisaoLeitura = "concordo" | "discordo";
+/**
+ * Decisão registrada na leitura de um POP.
+ * `lido` é o botão atual ("Lido"); `concordo`/`discordo` são os registros
+ * antigos ("Li e Concordo" / "Li e DISCORDO!"), mantidos no banco.
+ */
+export type DecisaoLeitura = "lido" | "concordo" | "discordo";
 
 /** Leitura/ciência de um usuário sobre um POP. */
 export interface PopLeitura {
@@ -119,6 +136,47 @@ export interface PopLeitura {
   usuarioNome: string;
   decisao: DecisaoLeitura;
   justificativa: string;
+  createdAt: string;
+}
+
+/** Uma revisão anterior do POP (histórico de modificações). */
+export interface PopRevisao {
+  id: string;
+  popId: string;
+  codigo: string;
+  /** Número da revisão arquivada (1 = Revisão 01). */
+  revisao: number;
+  /** Data em que a revisão esteve vigente (`aaaa-mm-dd`). */
+  dataRevisao: string | null;
+  /** O que foi alterado naquela revisão. */
+  observacao: string;
+  /** Snapshot do documento naquela revisão (conteúdo completo). */
+  conteudo: ConteudoRevisaoPop;
+  criadoPor: string;
+  criadoPorNome: string;
+  createdAt: string;
+}
+
+/** Conteúdo guardado no snapshot de uma revisão. */
+export interface ConteudoRevisaoPop {
+  titulo?: string;
+  objetivo?: string;
+  materiais?: string;
+  links?: string[];
+  etapas?: PopEtapa[];
+  setoresResponsaveis?: string[];
+  visualizadores?: string[];
+  [chave: string]: unknown;
+}
+
+/** Sugestão de melhoria enviada por um colaborador em um POP. */
+export interface PopSugestao {
+  id: string;
+  popId: string;
+  usuarioEmail: string;
+  usuarioNome: string;
+  sugestao: string;
+  status: string;
   createdAt: string;
 }
 
@@ -171,6 +229,9 @@ export type EntradaPop = Omit<
   | "favoritos"
   | "anotacoes"
   | "status"
+  | "revisao"
+  | "dataRevisao"
+  | "observacaoRevisao"
   | "criadoPor"
   | "criadoPorNome"
   | "aprovadoProcessoPor"
@@ -237,14 +298,20 @@ export const CARGOS_RESPONSAVEIS = [
 ] as const;
 
 export const CATEGORIAS = [
+  "DIRECAO",
   "FISCAL",
   "CONTABIL",
-  "PESSOAL",
-  "FINANCEIRO",
-  "LEGALIZACAO",
   "QUALIDADE",
+  "COMERCIAL",
   "TI",
-  "DIRECAO",
+  "RH",
+  "FINANCEIRO",
+  "BPO",
+  "MARKETING",
+  "SUCESSO",
+  "TECNICO",
+  "PESSOAL",
+  "LEGALIZACAO",
   "GERAL",
 ] as const;
 
@@ -284,6 +351,12 @@ const ROTULOS: Record<string, string> = {
   QUALIDADE: "QUALIDADE",
   TI: "TI",
   DIRECAO: "DIREÇÃO",
+  RH: "RH",
+  COMERCIAL: "COMERCIAL",
+  BPO: "BPO FINANCEIRO",
+  MARKETING: "MARKETING M7",
+  SUCESSO: "SUCESSO DO CLIENTE",
+  TECNICO: "TÉCNICO",
   GERAL: "GERAL",
   FISCAL: "FISCAL",
   PENDENTE_APROVACAO_LIDER_PROCESSO: "PENDENTE APROVAÇÃO LIDER DO PROCESSO",
@@ -316,6 +389,8 @@ export const ENTRADA_PADRAO: EntradaPop = {
   metaDia: null,
   prazoLegal: null,
   arquivo: null,
+  setoresResponsaveis: [],
+  visualizadores: [],
 };
 
 /* -------------------------------------------------------------------------- */
@@ -351,6 +426,13 @@ function popDoRow(row: PopRow): Pop {
     favoritos: row.favoritos,
     anotacoes: row.anotacoes,
     arquivo: row.arquivo,
+    // Campos da ficha em revisões (migration 20260917000000). Quando ela ainda
+    // não foi aplicada, os valores caem nos padrões e nada quebra.
+    revisao: typeof row.revisao === "number" && row.revisao > 0 ? row.revisao : 1,
+    dataRevisao: row.data_revisao ?? null,
+    observacaoRevisao: row.observacao_revisao ?? "",
+    setoresResponsaveis: row.setores_responsaveis ?? [],
+    visualizadores: row.visualizadores ?? [],
     objetivo: row.objetivo,
     materiaisSistemas: row.materiais_sistemas,
     documentosGerados: row.documentos_gerados,
@@ -454,6 +536,8 @@ function popParaInsercao(entrada: EntradaPop): PopInsert {
     links_relacionados: entrada.linksRelacionados ?? [],
     observacoes: entrada.observacoes ?? "",
     etapas: (entrada.etapas ?? []) as unknown as NonNullable<PopInsert["etapas"]>,
+    setores_responsaveis: entrada.setoresResponsaveis ?? [],
+    visualizadores: entrada.visualizadores ?? [],
   };
 }
 
@@ -583,8 +667,24 @@ export function ehSetorQualidade(sessao: UserSession | null | undefined): boolea
   return normalizarSetor(sessao?.setor) === "qualidade";
 }
 
-/** Quem pode criar/editar POPs: apenas o setor da Qualidade. */
+/**
+ * Nome normalizado do setor a partir do id guardado em `pops.visualizadores`.
+ * Ids desconhecidos são comparados como vieram (permite gravar unidades).
+ */
+function setorDeId(id: string, setores: SetorPop[]): string {
+  const nome = setores.find((setor) => setor.id === id)?.nome ?? id;
+  return normalizarSetor(nome);
+}
+
+/** Nomes dos setores/unidades de uma lista de ids (para exibição). */
+export function nomesDosSetores(ids: string[], setores: SetorPop[]): string[] {
+  return ids.map((id) => setores.find((setor) => setor.id === id)?.nome ?? id);
+}
+
+/** Quem pode criar/editar/excluir POPs: admins e gestores, além do setor da Qualidade. */
 export function podeElaborarPops(sessao: UserSession | null | undefined): boolean {
+  if (!sessao) return false;
+  if (sessao.role === "admin" || sessao.role === "gestor") return true;
   return ehSetorQualidade(sessao);
 }
 
@@ -595,7 +695,11 @@ export function podeElaborarPops(sessao: UserSession | null | undefined): boolea
 export function podeAprovarLiderQualidade(sessao: UserSession | null | undefined): boolean {
   if (!sessao) return false;
   if (sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
-  return sessao.role === "gestor" || sessao.nivelAcesso === "Gestor da Qualidade";
+  return (
+    sessao.role === "admin" ||
+    sessao.role === "gestor" ||
+    sessao.nivelAcesso === "Gestor da Qualidade"
+  );
 }
 
 /**
@@ -609,6 +713,7 @@ export function podeAprovarLiderProcesso(
   nomeSetorDoPop: string | null | undefined,
 ): boolean {
   if (!sessao || sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
+  if (sessao.role === "admin") return true;
   const ehLiderDeSetor = sessao.nivelAcesso === "Líder de setor";
   if (pop.setorId === "geral") return ehLiderDeSetor || podeAprovarLiderQualidade(sessao);
   return ehLiderDeSetor && normalizarSetor(sessao.setor) === normalizarSetor(nomeSetorDoPop);
@@ -640,6 +745,9 @@ async function criarPopCloud(entrada: EntradaPop): Promise<Pop> {
     .insert({
       ...popParaInsercao(entrada),
       status: STATUS_POP.PENDENTE_LIDER_PROCESSO,
+      revisao: 1,
+      data_revisao: hojeIso(),
+      observacao_revisao: "Versão inicial do procedimento.",
       criado_por: autor.id,
       criado_por_nome: autor.nome,
     })
@@ -650,6 +758,53 @@ async function criarPopCloud(entrada: EntradaPop): Promise<Pop> {
   return popDoRow(data);
 }
 
+/** Data de hoje no formato `aaaa-mm-dd`. */
+function hojeIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Snapshot do documento guardado no histórico de modificações. */
+function conteudoParaHistorico(pop: Pop): ConteudoRevisaoPop {
+  return {
+    titulo: pop.titulo,
+    objetivo: pop.objetivo ?? "",
+    materiais: pop.materiaisSistemas ?? "",
+    links: pop.linksRelacionados ?? [],
+    etapas: pop.etapas ?? [],
+    setoresResponsaveis: pop.setoresResponsaveis,
+    visualizadores: pop.visualizadores,
+    descricao: pop.descricao,
+    documentosGerados: pop.documentosGerados ?? "",
+    observacoes: pop.observacoes ?? "",
+  };
+}
+
+/**
+ * Arquiva a revisão que está sendo substituída.
+ *
+ * O código do POP é mantido; a versão anterior permanece no histórico
+ * (`public.pop_revisoes`) para consulta apenas do gestor, e a nova versão
+ * passa a valer para os setores e unidades definidos em "Quem pode visualizar".
+ */
+async function arquivarRevisao(pop: Pop, autor: { id: string; nome: string }): Promise<void> {
+  const client = exigirCloud();
+  const { error } = await client.from("pop_revisoes").upsert(
+    {
+      pop_id: pop.id,
+      codigo: pop.codigo,
+      revisao: pop.revisao,
+      data_revisao: pop.dataRevisao ?? hojeIso(),
+      observacao: pop.observacaoRevisao || "Versão inicial do procedimento.",
+      conteudo: conteudoParaHistorico(pop) as unknown as Json,
+      criado_por: autor.id,
+      criado_por_nome: autor.nome,
+    },
+    { onConflict: "pop_id,revisao" },
+  );
+  // Sem a tabela (migration pendente) a edição continua funcionando normalmente.
+  if (error && !tabelaAusente(error)) throw traduzErro(error);
+}
+
 /** Status após uma edição: vigente/revisado voltam ao início da revisão. */
 function statusAposEdicao(statusAtual: StatusPop): StatusPop {
   if (statusAtual === STATUS_POP.VIGENTE || statusAtual === STATUS_POP.REVISADO) {
@@ -658,10 +813,20 @@ function statusAposEdicao(statusAtual: StatusPop): StatusPop {
   return statusAtual;
 }
 
-async function atualizarPopCloud(id: string, entrada: EntradaPop): Promise<Pop> {
+async function atualizarPopCloud(
+  id: string,
+  entrada: EntradaPop,
+  observacaoRevisao = "",
+): Promise<Pop> {
   const atual = await buscarPopCloud(id);
   const status = statusAposEdicao(atual.status);
   const atualizacao: PopInsert = { ...popParaInsercao(entrada), status };
+
+  // Editar um POP VIGENTE (ou já revisado) gera uma NOVA REVISÃO: o código é
+  // mantido, a versão anterior vai para o histórico e a nova passa a valer.
+  const geraNovaRevisao =
+    atual.status === STATUS_POP.VIGENTE || atual.status === STATUS_POP.REVISADO;
+
   if (status === STATUS_POP.REVISANDO) {
     atualizacao.aprovado_processo_por = "";
     atualizacao.aprovado_processo_nome = "";
@@ -670,6 +835,17 @@ async function atualizarPopCloud(id: string, entrada: EntradaPop): Promise<Pop> 
     atualizacao.aprovado_qualidade_nome = "";
     atualizacao.aprovado_qualidade_em = null;
   }
+
+  if (geraNovaRevisao) {
+    await arquivarRevisao(atual, autorDaSessao());
+    atualizacao.revisao = atual.revisao + 1;
+    atualizacao.data_revisao = hojeIso();
+    atualizacao.observacao_revisao =
+      observacaoRevisao.trim() || "Revisão sem alterações descritas.";
+  } else if (observacaoRevisao.trim() !== "") {
+    atualizacao.observacao_revisao = observacaoRevisao.trim();
+  }
+
   const client = exigirCloud();
   const { data, error } = await client
     .from("pops")
@@ -742,8 +918,19 @@ export async function criarPop(entrada: EntradaPop): Promise<Pop> {
   return criarPopCloud(entrada);
 }
 
-export async function atualizarPop(id: string, entrada: EntradaPop): Promise<Pop> {
-  return atualizarPopCloud(id, entrada);
+/**
+ * Salva as alterações de um POP.
+ *
+ * @param observacaoRevisao o que mudou nesta revisão (aparece no histórico de
+ *   modificações). Quando o POP está vigente, a versão anterior é arquivada e
+ *   o número da revisão avança, mantendo o mesmo código.
+ */
+export async function atualizarPop(
+  id: string,
+  entrada: EntradaPop,
+  observacaoRevisao = "",
+): Promise<Pop> {
+  return atualizarPopCloud(id, entrada, observacaoRevisao);
 }
 
 export async function excluirPop(id: string): Promise<void> {
@@ -776,8 +963,124 @@ export async function duplicarPop(origem: Pop): Promise<Pop> {
     linksRelacionados: origem.linksRelacionados ?? [],
     observacoes: origem.observacoes ?? "",
     etapas: origem.etapas ?? [],
+    setoresResponsaveis: origem.setoresResponsaveis,
+    visualizadores: origem.visualizadores,
   };
   return criarPop(entrada);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Revisões do POP (histórico de modificações)                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Quem pode consultar as versões anteriores de um POP: apenas o gestor —
+ * Administrador, Gestor da Qualidade (perfil "gestor") e o nível de acesso
+ * "Gestor da Qualidade". Os demais vêem somente a revisão vigente.
+ */
+export function podeVerVersoesAnteriores(sessao: UserSession | null | undefined): boolean {
+  if (!sessao) return false;
+  if (sessao.role === "admin" || sessao.role === "gestor") return true;
+  return sessao.nivelAcesso === "Gestor da Qualidade";
+}
+
+function revisaoDoRow(row: Tables<"pop_revisoes">): PopRevisao {
+  return {
+    id: row.id,
+    popId: row.pop_id,
+    codigo: row.codigo,
+    revisao: row.revisao,
+    dataRevisao: row.data_revisao,
+    observacao: row.observacao,
+    conteudo: (row.conteudo ?? {}) as ConteudoRevisaoPop,
+    criadoPor: row.criado_por,
+    criadoPorNome: row.criado_por_nome,
+    createdAt: row.created_at,
+  };
+}
+
+/** Revisões anteriores arquivadas de um POP, da mais recente para a mais antiga. */
+export async function listarRevisoesPop(popId: string): Promise<PopRevisao[]> {
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("pop_revisoes")
+    .select("*")
+    .eq("pop_id", popId)
+    .order("revisao", { ascending: false });
+  if (error) {
+    if (tabelaAusente(error)) return [];
+    throw traduzErro(error);
+  }
+  return (data ?? []).map(revisaoDoRow);
+}
+
+/** Data da revisão pronta para exibir (ex.: `17/09/2026`). */
+export function formatarDataRevisao(valor: string | null | undefined): string {
+  if (!valor) return "—";
+  const [ano, mes, dia] = valor.slice(0, 10).split("-");
+  if (!ano || !mes || !dia) return valor;
+  return `${dia}/${mes}/${ano}`;
+}
+
+/** Rótulo da revisão no formato oficial do documento (ex.: `Revisão 02`). */
+export function rotuloRevisao(numero: number): string {
+  return `Revisão ${String(numero).padStart(2, "0")}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sugestões de melhoria (botão "Sugerir melhoria")                            */
+/* -------------------------------------------------------------------------- */
+
+function sugestaoDoRow(row: PopSugestaoRow): PopSugestao {
+  return {
+    id: row.id,
+    popId: row.pop_id,
+    usuarioEmail: row.usuario_email,
+    usuarioNome: row.usuario_nome,
+    sugestao: row.sugestao,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+/** Sugestões de melhoria já enviadas para um POP (mais recentes primeiro). */
+export async function listarSugestoesPop(popId: string): Promise<PopSugestao[]> {
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("pop_sugestoes")
+    .select("*")
+    .eq("pop_id", popId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (tabelaAusente(error)) return [];
+    throw traduzErro(error);
+  }
+  return (data ?? []).map(sugestaoDoRow);
+}
+
+/**
+ * Envia uma sugestão de melhoria para o POP. O banco avisa automaticamente o
+ * Gestor da Qualidade e o setor Qualidade (trigger da migration 20260917000000).
+ */
+export async function enviarSugestaoPop(
+  popId: string,
+  usuario: UsuarioFavorito,
+  sugestao: string,
+): Promise<void> {
+  const texto = sugestao.trim();
+  if (!texto) throw new Error("Escreva a sugestão antes de enviar.");
+  const email = usuario.email.trim().toLowerCase();
+  if (!email) throw new Error("Entre no portal para sugerir uma melhoria.");
+
+  const registro: PopSugestaoInsert = {
+    pop_id: popId,
+    usuario_email: email,
+    usuario_nome: usuario.nome,
+    sugestao: texto,
+  };
+  const client = exigirCloud();
+  const { error } = await client.from("pop_sugestoes").insert(registro);
+  if (error) throw traduzErro(error);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -844,13 +1147,22 @@ const SETOR_PARA_PREFIXO: Record<string, string> = {
   fiscal: "FIS",
   contabil: "CON",
   contábil: "CON",
-  pessoal: "RH",
+  pessoal: "PES",
   rh: "RH",
   financeiro: "FIN",
+  "bpo financeiro": "BPO",
+  bpo: "BPO",
+  comercial: "COM",
+  marketing: "MKT",
+  "marketing m7": "MKT",
+  "sucesso do cliente": "SUC",
+  sucesso: "SUC",
   legalizacao: "LEG",
   legalização: "LEG",
   qualidade: "QUA",
   ti: "TI",
+  "ti/desenvolvimento": "TI",
+  desenvolvimento: "TI",
   tecnico: "TEC",
   técnico: "TEC",
   direcao: "DIR",
@@ -907,6 +1219,21 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
         pops = pops.filter((pop) => pop.codigo.startsWith(prefixo) || pop.codigo.startsWith("GER"));
       }
     }
+
+    // "Quem pode visualizar" (ACESSO): quando o POP define setores/unidades
+    // autorizados, só eles enxergam o documento. Sem definição, nada muda.
+    if (!temAcessoTotalPops(session)) {
+      const meuSetor = normalizarSetor(session.setor);
+      const minhaUnidade = normalizarSetor(session.unidade);
+      pops = pops.filter((pop) => {
+        const autorizados = pop.visualizadores ?? [];
+        if (autorizados.length === 0) return true;
+        return autorizados
+          .map((id) => setorDeId(id, base.setores))
+          .some((nome) => nome === meuSetor || nome === minhaUnidade);
+      });
+    }
+
     return { ...base, pops };
   } catch {
     // Sem a tabela de liberações (migration pendente): segue sem filtro extra.
@@ -1173,7 +1500,7 @@ export async function urlAssinadaDoAnexo(caminho: string): Promise<string> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* "Li e Concordo" / "Li e DISCORDO!"                                         */
+/* Ciência do POP: botão "Lido" (e registros antigos de concordo/discordo)     */
 /* -------------------------------------------------------------------------- */
 
 /** Leitura do usuário informado em cada POP (mapa popId -> leitura). */
@@ -1213,9 +1540,10 @@ export async function listarLeiturasPop(popId: string): Promise<PopLeitura[]> {
 }
 
 /**
- * Registra (ou atualiza) a ciência do usuário sobre o POP.
- * Ao discordar, o banco notifica automaticamente o Coordenador da Qualidade e
- * os colaboradores do setor Qualidade (trigger da migration 20260916020000).
+ * Registra (ou atualiza) a ciência do usuário sobre o POP — botão "Lido".
+ * As decisões antigas (`concordo`/`discordo`) continuam aceitas e, ao discordar,
+ * o banco notifica o Coordenador da Qualidade e o setor Qualidade (trigger da
+ * migration 20260916020000).
  */
 export async function registrarLeitura(
   popId: string,
@@ -1228,7 +1556,13 @@ export async function registrarLeitura(
 
   const client = exigirCloud();
   const { error } = await client.from("pop_leituras").upsert(
-    { pop_id: popId, usuario_email: email, usuario_nome: usuario.nome, decisao, justificativa },
+    {
+      pop_id: popId,
+      usuario_email: email,
+      usuario_nome: usuario.nome,
+      decisao,
+      justificativa: decisao === "discordo" ? justificativa : "",
+    },
     {
       onConflict: "pop_id,usuario_email",
     },
@@ -1237,15 +1571,22 @@ export async function registrarLeitura(
 }
 
 function leituraDoRow(row: PopLeituraRow): PopLeitura {
+  const decisao: DecisaoLeitura =
+    row.decisao === "discordo" ? "discordo" : row.decisao === "lido" ? "lido" : "concordo";
   return {
     id: row.id,
     popId: row.pop_id,
     usuarioEmail: row.usuario_email,
     usuarioNome: row.usuario_nome,
-    decisao: row.decisao === "discordo" ? "discordo" : "concordo",
+    decisao,
     justificativa: row.justificativa,
     createdAt: row.created_at,
   };
+}
+
+/** Quantas pessoas já registraram leitura (botão "Lido" e registros antigos). */
+export function contarLeituras(leituras: PopLeitura[]): number {
+  return leituras.length;
 }
 
 /* -------------------------------------------------------------------------- */

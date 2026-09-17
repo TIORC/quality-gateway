@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FileText, Paperclip, Plus, UploadCloud } from "lucide-react";
+import { Edit3, FileText, Paperclip, Plus, Trash2, UploadCloud } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CampoMencao } from "@/components/campo-mencao";
 import { PanelShell } from "@/components/panel-shell";
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { getSession, isAdminSession } from "@/lib/auth";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 
@@ -54,15 +55,28 @@ interface PoliticaItem {
 function Politicas() {
   const catalogo = useCatalogoOrganizacional();
   const [novaPolitica, setNovaPolitica] = useState(false);
+  const [politicaEmEdicao, setPoliticaEmEdicao] = useState<PoliticaItem | null>(null);
+  const [politicaParaExcluir, setPoliticaParaExcluir] = useState<PoliticaItem | null>(null);
   const [itens, setItens] = useState<PoliticaItem[]>([]);
+
+  const sessao = getSession();
+  const podeGerenciar = isAdminSession(sessao);
 
   function listaDaAba(valor: string) {
     if (valor === "todas") return itens;
     return [];
   }
 
-  function adicionarPolitica(dados: Omit<PoliticaItem, "id">) {
-    setItens((atual) => [{ id: novaId(), ...dados }, ...atual]);
+  function salvarPolitica(politicaId: string | null, dados: Omit<PoliticaItem, "id">) {
+    setItens((atual) =>
+      politicaId
+        ? atual.map((item) => (item.id === politicaId ? { id: politicaId, ...dados } : item))
+        : [{ id: novaId(), ...dados }, ...atual],
+    );
+  }
+
+  function removerPolitica(id: string) {
+    setItens((atual) => atual.filter((item) => item.id !== id));
   }
 
   return (
@@ -100,23 +114,75 @@ function Politicas() {
 
         {ABAS.map((aba) => (
           <TabsContent key={aba.valor} value={aba.valor}>
-            <ListaPoliticas itens={listaDaAba(aba.valor)} onNova={() => setNovaPolitica(true)} />
+            <ListaPoliticas
+              itens={listaDaAba(aba.valor)}
+              onNova={() => setNovaPolitica(true)}
+              podeGerenciar={podeGerenciar}
+              onEditar={(item) => setPoliticaEmEdicao(item)}
+              onExcluir={(item) => setPoliticaParaExcluir(item)}
+            />
           </TabsContent>
         ))}
       </Tabs>
 
-      <NovaPoliticaDialog
-        aberto={novaPolitica}
+      <PoliticaDialog
+        aberto={novaPolitica || politicaEmEdicao !== null}
+        politica={politicaEmEdicao}
         opcoesSetores={catalogo.setores}
         colaboradores={catalogo.colaboradores}
-        onFechar={() => setNovaPolitica(false)}
-        onCriar={adicionarPolitica}
+        onFechar={() => {
+          setNovaPolitica(false);
+          setPoliticaEmEdicao(null);
+        }}
+        onSalvar={salvarPolitica}
       />
+
+      <Dialog
+        open={politicaParaExcluir !== null}
+        onOpenChange={(abre) => (abre ? undefined : setPoliticaParaExcluir(null))}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir política?</DialogTitle>
+            <DialogDescription>
+              {politicaParaExcluir?.codigo} — {politicaParaExcluir?.titulo}. Esta ação não pode ser
+              desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPoliticaParaExcluir(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#B91C1C] text-white hover:bg-[#DC2626]"
+              onClick={() => {
+                if (politicaParaExcluir) removerPolitica(politicaParaExcluir.id);
+                setPoliticaParaExcluir(null);
+              }}
+            >
+              Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PanelShell>
   );
 }
 
-function ListaPoliticas({ itens, onNova }: { itens: PoliticaItem[]; onNova: () => void }) {
+function ListaPoliticas({
+  itens,
+  onNova,
+  podeGerenciar,
+  onEditar,
+  onExcluir,
+}: {
+  itens: PoliticaItem[];
+  onNova: () => void;
+  podeGerenciar: boolean;
+  onEditar: (item: PoliticaItem) => void;
+  onExcluir: (item: PoliticaItem) => void;
+}) {
   if (itens.length === 0) {
     return (
       <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
@@ -163,6 +229,31 @@ function ListaPoliticas({ itens, onNova }: { itens: PoliticaItem[]; onNova: () =
               <span className="max-w-[240px] truncate">{item.arquivo}</span>
             </span>
           ) : null}
+
+          {podeGerenciar ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-[#64748B]"
+                aria-label={`Editar ${item.titulo}`}
+                onClick={() => onEditar(item)}
+              >
+                <Edit3 className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-[#64748B] hover:text-rose-600"
+                aria-label={`Excluir ${item.titulo}`}
+                onClick={() => onExcluir(item)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -183,21 +274,23 @@ function Campo({ rotulo, children }: CampoProps) {
   );
 }
 
-interface NovaPoliticaDialogProps {
+interface PoliticaDialogProps {
   aberto: boolean;
+  politica: PoliticaItem | null;
   opcoesSetores: string[];
   colaboradores: Colaborador[];
   onFechar: () => void;
-  onCriar: (dados: Omit<PoliticaItem, "id">) => void;
+  onSalvar: (politicaId: string | null, dados: Omit<PoliticaItem, "id">) => void;
 }
 
-function NovaPoliticaDialog({
+function PoliticaDialog({
   aberto,
+  politica,
   opcoesSetores,
   colaboradores,
   onFechar,
-  onCriar,
-}: NovaPoliticaDialogProps) {
+  onSalvar,
+}: PoliticaDialogProps) {
   const [codigo, setCodigo] = useState("PL-QUA-008");
   const [titulo, setTitulo] = useState("");
   const [sobreOCriterio, setSobreOCriterio] = useState("");
@@ -215,23 +308,22 @@ function NovaPoliticaDialog({
     );
   }
 
-  function limpar() {
-    setCodigo("PL-QUA-008");
-    setTitulo("");
-    setSobreOCriterio("");
-    setSetores([]);
-    setComite([]);
-    setPrazoResposta("10/09/2026");
-    setProximaRevisao("10/09/2027");
-    setArquivo(null);
-  }
-
   useEffect(() => {
-    if (!aberto) limpar();
-  }, [aberto]);
+    const carregar = politica !== null;
+    setCodigo(carregar && politica.codigo ? politica.codigo : "PL-QUA-008");
+    setTitulo(carregar ? (politica.titulo ?? "") : "");
+    setSobreOCriterio(carregar ? (politica.doQueTrata ?? "") : "");
+    setSetores(carregar ? (politica.setores ?? []) : []);
+    setComite(
+      carregar ? colaboradores.filter((c) => (politica.comite ?? []).includes(c.nome)) : [],
+    );
+    setPrazoResposta(carregar ? (politica.prazoResposta ?? "") : "10/09/2026");
+    setProximaRevisao(carregar ? (politica.proximaRevisao ?? "") : "10/09/2027");
+    setArquivo(null);
+  }, [aberto, politica, colaboradores]);
 
   function enviar() {
-    onCriar({
+    onSalvar(politica?.id ?? null, {
       codigo,
       titulo,
       doQueTrata: sobreOCriterio,
@@ -239,9 +331,8 @@ function NovaPoliticaDialog({
       comite: comite.map((colaborador) => colaborador.nome),
       prazoResposta,
       proximaRevisao,
-      arquivo: arquivo?.name ?? null,
+      arquivo: arquivo?.name ?? politica?.arquivo ?? null,
     });
-    limpar();
     onFechar();
   }
 
@@ -249,9 +340,11 @@ function NovaPoliticaDialog({
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Nova política</DialogTitle>
+          <DialogTitle>{politica ? "Editar política" : "Nova política"}</DialogTitle>
           <DialogDescription>
-            Cadastre a política, defina o escopo e envie para o comitê de aprovação.
+            {politica
+              ? "Ajuste os dados da política e salve as alterações."
+              : "Cadastre a política, defina o escopo e envie para o comitê de aprovação."}
           </DialogDescription>
         </DialogHeader>
 
@@ -373,7 +466,7 @@ function NovaPoliticaDialog({
             onClick={enviar}
             className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
           >
-            Criar política
+            {politica ? "Salvar alterações" : "Criar política"}
           </Button>
         </DialogFooter>
       </DialogContent>
