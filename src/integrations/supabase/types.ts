@@ -342,6 +342,85 @@ export type Database = {
         };
         Relationships: [];
       };
+      politica_leituras: {
+        Row: {
+          id: string;
+          politica_id: string;
+          usuario_email: string;
+          usuario_nome: string;
+          decisao: "lido" | "concordo" | "discordo";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          politica_id: string;
+          usuario_email: string;
+          usuario_nome?: string;
+          decisao?: "lido" | "concordo" | "discordo";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          politica_id?: string;
+          usuario_email?: string;
+          usuario_nome?: string;
+          decisao?: "lido" | "concordo" | "discordo";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "politica_leituras_politica_id_fkey";
+            columns: ["politica_id"];
+            isOneToOne: false;
+            referencedRelation: "politicas";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      politica_sugestoes: {
+        Row: {
+          id: string;
+          politica_id: string;
+          usuario_email: string;
+          usuario_nome: string;
+          sugestao: string;
+          status: "aberta" | "em_analise" | "aplicada" | "recusada";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          politica_id: string;
+          usuario_email: string;
+          usuario_nome?: string;
+          sugestao: string;
+          status?: "aberta" | "em_analise" | "aplicada" | "recusada";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          politica_id?: string;
+          usuario_email?: string;
+          usuario_nome?: string;
+          sugestao?: string;
+          status?: "aberta" | "em_analise" | "aplicada" | "recusada";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "politica_sugestoes_politica_id_fkey";
+            columns: ["politica_id"];
+            isOneToOne: false;
+            referencedRelation: "politicas";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       pop_anotacoes: {
         Row: {
           autor_email: string;

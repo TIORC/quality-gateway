@@ -35,6 +35,7 @@ import {
   Users,
   Wallet,
   Wrench,
+  CheckCircle2,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -2202,7 +2203,12 @@ function Pops() {
 
   const popsDoSetor = useMemo(() => {
     if (setorEhTodos || !setorSelecionado) return pops;
-    return pops.filter((p) => p.setorId === setorSelecionado.id);
+    const id = setorSelecionado.id;
+    // POP com vários setores responsáveis aparece no card de cada um deles;
+    // sem array preenchido (POPs antigos), vale o `setor_id`.
+    return pops.filter((p) =>
+      p.setoresResponsaveis.length > 0 ? p.setoresResponsaveis.includes(id) : p.setorId === id,
+    );
   }, [pops, setorEhTodos, setorSelecionado]);
 
   const termo = busca.trim().toLowerCase();

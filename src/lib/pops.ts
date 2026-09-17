@@ -400,11 +400,19 @@ export const ENTRADA_PADRAO: EntradaPop = {
 /* Acesso a dados — Lovable Cloud (Supabase)                                  */
 /* -------------------------------------------------------------------------- */
 
-/** Conta, por `setor_id`, quantos POPs existem. */
+/**
+ * Conta, por setor, quantos POPs existem. Um POP com vários setores
+ * responsáveis é contado em cada um deles; sem array preenchido (POPs
+ * antigos), cai sobre `setor_id`.
+ */
 export function contarPopsPorSetor(pops: Pop[]): Record<string, number> {
   const contagem: Record<string, number> = {};
   for (const pop of pops) {
-    contagem[pop.setorId] = (contagem[pop.setorId] ?? 0) + 1;
+    for (const id of new Set(
+      pop.setoresResponsaveis.length > 0 ? pop.setoresResponsaveis : [pop.setorId],
+    )) {
+      contagem[id] = (contagem[id] ?? 0) + 1;
+    }
   }
   return contagem;
 }
@@ -570,7 +578,11 @@ async function listarPopsCloud(setorId: string | "todos"): Promise<Pop[]> {
     .select("*", { count: "exact" })
     .order("codigo", { ascending: true });
 
-  if (setorId !== "todos") query = query.eq("setor_id", setorId);
+  if (setorId !== "todos") {
+    // Um POP pode ter vários setores responsáveis; filtra também pelo array
+    // (contém o setor em `setores_responsaveis`) além do `setor_id`.
+    query = query.or(`setor_id.eq.${setorId},setores_responsaveis.cs.{${setorId}}`);
+  }
 
   const { data, error } = await query;
   if (error) throw traduzErro(error);
@@ -1087,6 +1099,51 @@ export async function enviarSugestaoPop(
   const client = exigirCloud();
   const { error } = await client.from("pop_sugestoes").insert(registro);
   if (error) throw traduzErro(error);
+}
+
+/**
+ * Marca uma sugestão de POP como concluída (status = "aplicada").
+ * Grava no banco e o autor recebe notificação.
+ */
+export async function marcarSugestaoConcluidaPop(
+  sugestaoId: string,
+  usuario: UsuarioFavorito,
+): Promise<void> {
+  const email = usuario.email.trim().toLowerCase();
+  if (!email) throw new Error("Entre no portal para gerenciar sugestões.");
+
+  const client = exigirCloud();
+  const { error } = await client
+    .from("pop_sugestoes")
+    .update({ status: "aplicada" } as never)
+    .eq("id", sugestaoId);
+  if (error) throw traduzErro(error);
+
+  // Notifica o autor da sugestão
+  const { data: sugestao } = await (client
+    .from("pop_sugestoes")
+    .select("usuario_email, usuario_nome, sugestao, pop_id")
+    .eq("id", sugestaoId)
+    .maybeSingle() as unknown as Promise<{ data: { usuario_email: string; usuario_nome: string; sugestao: string; pop_id: string } | null }>);
+
+  if (sugestao) {
+    const { data: pop } = await (client
+      .from("pops")
+      .select("codigo, titulo")
+      .eq("id", sugestao.pop_id)
+      .maybeSingle() as unknown as Promise<{ data: { codigo: string; titulo: string } | null }>);
+
+    await (client.from("notificacoes").insert({
+      destinatario_email: sugestao.usuario_email,
+      destinatario_nome: sugestao.usuario_nome,
+      titulo: `Sugestão aplicada: ${pop?.codigo ?? "POP"}`,
+      mensagem: `${usuario.nome} marcou sua sugestão "${sugestao.sugestao.substring(0, 50)}${sugestao.sugestao.length > 50 ? "..." : ""}" como aplicada no POP ${pop?.codigo ?? ""}.`,
+      tipo: "sugestao_aplicada",
+      pop_id: sugestao.pop_id,
+      autor_nome: usuario.nome,
+      autor_email: email,
+    } as never) as unknown as Promise<unknown>);
+  }
 }
 
 /* -------------------------------------------------------------------------- */

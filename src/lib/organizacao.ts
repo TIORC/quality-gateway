@@ -47,7 +47,7 @@ export interface Empresa {
   filial: string;
 }
 
-function traduzErro(erro: unknown): Error {
+export function traduzErro(erro: unknown): Error {
   if (erro && typeof erro === "object" && "message" in erro) {
     return new Error(String((erro as { message: unknown }).message));
   }
@@ -55,7 +55,7 @@ function traduzErro(erro: unknown): Error {
 }
 
 /** Indica que a tabela ainda não existe no Cloud (migration não aplicada). */
-function tabelaAusente(erro: unknown): boolean {
+export function tabelaAusente(erro: unknown): boolean {
   if (!erro || typeof erro !== "object") return false;
   const info = erro as { code?: unknown; message?: unknown };
   const codigo = typeof info.code === "string" ? info.code : "";

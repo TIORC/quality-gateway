@@ -11,6 +11,7 @@ import {
   Plus,
   Trash2,
   UploadCloud,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -39,7 +40,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { supabase } from "@/integrations/supabase/client";
-import { getSession, isAdminSession } from "@/lib/auth";
+import { getSession, isAdminSession, type UserSession } from "@/lib/auth";
 import { organizacaoDisponivel } from "@/lib/organizacao";
 import {
   BUCKET_ANEXOS,
@@ -52,14 +53,56 @@ import { cn, mascaraDataBr } from "@/lib/utils";
 import {
   atualizarPolitica,
   carregarPoliticas,
+  carregarLeiturasPoliticaDoUsuario,
   criarPolitica,
+  enviarSugestaoPolitica,
   excluirPolitica,
+  listarLeiturasPolitica,
+  listarSugestoesPolitica,
   politicasDisponiveis,
+  registrarLeituraPolitica,
+  marcarSugestaoConcluidaPolitica,
   type ParecerPolitica,
   type PoliticaAnexo,
   type PoliticaItem,
+  type PoliticaLeitura,
+  type PoliticaSugestao,
   type SugestaoPolitica,
 } from "@/lib/politicas";
+
+/** Verifica se o usuário pode ver a seção de sugestões de melhoria.
+ * Perfis habilitados: Coordenador da Qualidade, Desenvolvedor, Administrador e o próprio autor.
+ */
+function podeVerSugestoes(sessao: UserSession | null, autorEmail: string): boolean {
+  if (!sessao) return false;
+  const emailNormalizado = sessao.email.toLowerCase();
+  const autorNormalizado = autorEmail.toLowerCase();
+
+  // Coordenador da Qualidade
+  if (sessao.cargo === "Coordenador da Qualidade") return true;
+  // Administrador (Gabriel como desenvolvedor/administrador)
+  if (sessao.role === "admin") return true;
+  // Desenvolvedor
+  if (sessao.cargo.toLowerCase().includes("desenvolvedor")) return true;
+  // O próprio autor da sugestão
+  if (emailNormalizado === autorNormalizado) return true;
+  return false;
+}
+
+/** Verifica se o usuário pode marcar sugestões como concluídas.
+ * Perfis habilitados: Coordenador da Qualidade, Desenvolvedor, Administrador.
+ */
+function podeConcluirSugestoes(sessao: UserSession | null): boolean {
+  if (!sessao) return false;
+  // Coordenador da Qualidade
+  if (sessao.cargo === "Coordenador da Qualidade") return true;
+  // Administrador (Gabriel como desenvolvedor/administrador)
+  if (sessao.role === "admin") return true;
+  // Desenvolvedor
+  if (sessao.cargo.toLowerCase().includes("desenvolvedor")) return true;
+  return false;
+}
+/** Verifica se o usuário pode ver a seção de sugestões de melhoria. */
 
 export const Route = createFileRoute("/politicas")({
   head: () => ({
@@ -972,13 +1015,131 @@ function PoliticaDetalhe({ politica, podeGerenciar, onFechar, onEditar, onParece
   onParecer: (id: string, parecer: ParecerPolitica | null) => void;
   onSugestao: (id: string, texto: string) => void;
 }) {
+  const sessao = getSession();
   const [mostrarSugestao, setMostrarSugestao] = useState(false);
   const [textoSugestao, setTextoSugestao] = useState("");
+  const [leituras, setLeituras] = useState<PoliticaLeitura[]>([]);
+  const [sugestoes, setSugestoes] = useState<PoliticaSugestao[]>([]);
+  const [enviando, setEnviando] = useState(false);
+  const [marcandoSugestao, setMarcandoSugestao] = useState<string | null>(null);
   const politicaId = politica.id;
-  useEffect(() => { setMostrarSugestao(false); setTextoSugestao(""); }, [politicaId]);
   const item = politica;
-  function confirmarLeitura() { onParecer(item.id, { tipo: "concordo", clausula: "", motivo: "", data: dataHojeBr() }); }
-  function enviarSugestao() { if (!textoSugestao.trim()) return; onSugestao(item.id, textoSugestao); setTextoSugestao(""); setMostrarSugestao(false); }
+
+  // Filtra sugestões visíveis para o usuário atual
+  const sugestoesVisiveis = useMemo(() => {
+    return sugestoes.filter((s) => podeVerSugestoes(sessao, s.usuarioEmail));
+  }, [sugestoes, sessao]);
+
+  // Carrega leituras e sugestões do Cloud (tabelas dedicadas)
+  useEffect(() => {
+    if (!politicasDisponiveis()) return;
+    let ativo = true;
+    Promise.all([
+      listarLeiturasPolitica(politicaId),
+      listarSugestoesPolitica(politicaId),
+    ])
+      .then(([l, s]) => {
+        if (ativo) {
+          setLeituras(l);
+          setSugestoes(s);
+        }
+      })
+      .catch(() => {
+        if (!ativo) return;
+        setLeituras([]);
+        setSugestoes([]);
+      });
+    return () => { ativo = false; };
+  }, [politicaId]);
+
+  function confirmarLeitura() {
+    // Primeiro salva no banco (tabela politica_leituras), depois atualiza o estado local via onParecer
+    const usuario = sessao ? { email: sessao.email, nome: sessao.nome } : { email: "", nome: "" };
+    if (!usuario.email) {
+      toast.error("Entre no portal para registrar sua leitura");
+      return;
+    }
+    setEnviando(true);
+    registrarLeituraPolitica(politicaId, usuario, "lido")
+      .then(() => {
+        // Recarrega as leituras e atualiza o parecer local
+        return listarLeiturasPolitica(politicaId).then((novas) => {
+          setLeituras(novas);
+          onParecer(politicaId, { tipo: "concordo", clausula: "", motivo: "", data: dataHojeBr() });
+        });
+      })
+      .catch((erro) => {
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível registrar sua leitura");
+      })
+      .finally(() => setEnviando(false));
+  }
+
+  function enviarSugestao() {
+    if (!textoSugestao.trim()) return;
+    const usuario = sessao ? { email: sessao.email, nome: sessao.nome } : { email: "", nome: "" };
+    if (!usuario.email) {
+      toast.error("Entre no portal para sugerir uma melhoria");
+      return;
+    }
+    setEnviando(true);
+    enviarSugestaoPolitica(politicaId, usuario, textoSugestao)
+      .then(() => {
+        setTextoSugestao("");
+        setMostrarSugestao(false);
+        onSugestao(politicaId, textoSugestao);
+        return listarSugestoesPolitica(politicaId);
+      })
+      .then((novas) => setSugestoes(novas))
+      .catch((erro) => {
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível enviar a sugestão");
+      })
+      .finally(() => setEnviando(false));
+  }
+
+  function concluirSugestao(sugestaoId: string) {
+    if (!sessao) {
+      toast.error("Entre no portal para concluir a sugestão");
+      return;
+    }
+    setMarcandoSugestao(sugestaoId);
+    marcarSugestaoConcluidaPolitica(sugestaoId, { email: sessao.email, nome: sessao.nome })
+      .then(() => {
+        toast.success("Sugestão marcada como concluída!");
+        return listarSugestoesPolitica(politicaId);
+      })
+      .then((novas) => setSugestoes(novas))
+      .catch((erro) => {
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível concluir a sugestão");
+      })
+      .finally(() => setMarcandoSugestao(null));
+  }
+
+  // Leituras registradas (Cloud + fallback do parecer antigo, sem duplicar o usuário atual)
+  const todasLeituras = useMemo(() => {
+    const emailAtual = (sessao?.email ?? "").trim().toLowerCase();
+    const cloud = leituras.filter((l) => l.decisao !== "discordo");
+    const jaRegistrouNoCloud = cloud.some(
+      (l) => l.usuarioEmail.trim().toLowerCase() === emailAtual,
+    );
+    const json =
+      item.parecer && item.parecer.tipo !== "discordo" && !jaRegistrouNoCloud
+        ? [
+            {
+              id: "json",
+              politicaId,
+              usuarioEmail: sessao?.email ?? "",
+              usuarioNome: sessao?.nome ?? "",
+              decisao: item.parecer.tipo,
+              createdAt: item.parecer.data,
+            },
+          ]
+        : [];
+    return [...cloud, ...json];
+  }, [leituras, item.parecer, politicaId, sessao?.email, sessao?.nome]);
+
+  const leitores = todasLeituras;
+  const jaLeu = leitores.length > 0 || (!!item.parecer && item.parecer.tipo === "discordo");
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -1022,28 +1183,54 @@ function PoliticaDetalhe({ politica, podeGerenciar, onFechar, onEditar, onParece
           <DetalheItem rotulo="Status" valor={item.status} />
           <PoliticaAnexoVisualizador anexo={item.anexo} />
           <div className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
-            <p className="text-[13px] font-semibold text-[#1F2937]">Seu parecer</p>
-            {item.parecer ? (
+            <p className="text-[13px] font-semibold text-[#1F2937]">Ciência / Leituras</p>
+            {jaLeu ? (
               <p className="mt-1 text-[13px] text-[#475569]">
-                {item.parecer.tipo === "concordo" ? (<><span className="font-semibold text-emerald-700">Lido</span> em {item.parecer.data}.</>) : (<><span className="font-semibold text-rose-700">Discordo</span> em {item.parecer.data} — {item.parecer.clausula} · {item.parecer.motivo}</>)}{" "}
-                <button type="button" className="font-medium text-[#1E3A8A] hover:underline" onClick={() => onParecer(item.id, null)}>desfazer</button>
+                <span className="font-semibold text-emerald-700">Lido</span>{" "}
+                {leitores.length} {leitores.length === 1 ? "leitura" : "leituras"} registradas
               </p>
-            ) : (<p className="mt-1 text-xs text-[#64748B]">Registre aqui que leu a política, ou sugira uma melhoria.</p>)}
+            ) : (
+              <p className="mt-1 text-xs text-[#64748B]">Registre aqui que leu a política, ou sugira uma melhoria.</p>
+            )}
+            {leitores.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {leitores.slice(0, 5).map((l) => (
+                  <span key={l.id} className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]">
+                    <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
+                  </span>
+                ))}
+                {leitores.length > 5 && (
+                  <span className="text-[11px] text-[#64748B]">+{leitores.length - 5} mais</span>
+                )}
+              </div>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmarLeitura}><Check className="h-4 w-4" />LIDO</Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarSugestao((v) => !v)}><Lightbulb className="h-4 w-4" />Sugerir Melhoria</Button>
+              <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmarLeitura} disabled={enviando}><Check className="h-4 w-4" />LIDO</Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarSugestao((v) => !v)} disabled={enviando}><Lightbulb className="h-4 w-4" />Sugerir Melhoria</Button>
             </div>
             {mostrarSugestao ? (
               <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-white p-3">
                 <Label className="text-[13px] font-medium">Sugestão de melhoria</Label>
                 <Textarea value={textoSugestao} onChange={(e) => setTextoSugestao(e.target.value)} placeholder="Descreva sua sugestão (vale mesmo se você concorda)." className="min-h-[70px]" />
                 <div className="flex gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={() => setMostrarSugestao(false)}>Cancelar</Button>
-                  <Button type="button" size="sm" className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" onClick={enviarSugestao} disabled={!textoSugestao.trim()}>Enviar sugestão</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setMostrarSugestao(false)} disabled={enviando}>Cancelar</Button>
+                  <Button type="button" size="sm" className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" onClick={enviarSugestao} disabled={!textoSugestao.trim() || enviando}>{enviando ? "Enviando..." : "Enviar sugestão"}</Button>
                 </div>
               </div>
             ) : null}
-            {item.sugestoes.length > 0 ? (
+            {sugestoes.length > 0 ? (
+              <div className="mt-3 space-y-1.5">
+                {sugestoes.map((s) => (
+                  <div key={s.id} className="rounded-lg border border-[#D9E0EA] bg-white p-2.5">
+                    <p className="text-[12px] font-semibold text-[#1F2937]">
+                      <Lightbulb className="mr-1 inline h-3 w-3 text-amber-500" />
+                      {s.usuarioNome || s.usuarioEmail} sugeriu
+                    </p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#475569]">{s.sugestao}</p>
+                  </div>
+                ))}
+              </div>
+            ) : item.sugestoes.length > 0 ? (
               <ul className="mt-3 space-y-1.5">{item.sugestoes.map((s) => (<li key={s.id} className="rounded-lg bg-white p-2 text-xs text-[#475569] ring-1 ring-[#E9EEF5]"><span className="font-semibold text-[#1F2937]">Sugestão · {s.data}:</span> {s.texto}</li>))}</ul>
             ) : null}
           </div>

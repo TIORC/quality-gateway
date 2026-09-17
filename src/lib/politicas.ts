@@ -6,10 +6,10 @@
  * gravadas no formato `dd/mm/aaaa` (texto), coerente com o restante da aba.
  */
 
-import { supabase } from "@/integrations/supabase/client";
-import type { PoliticaInsert, PoliticaRow } from "@/integrations/supabase/db-types";
-import { organizacaoDisponivel } from "@/lib/organizacao";
-import type { Pop } from "@/lib/pops";
+import { exigirCloud } from "@/integrations/supabase/client";
+import type { PoliticaInsert, PoliticaLeituraRow, PoliticaLeituraInsert, PoliticaRow, PoliticaSugestaoRow, PoliticaSugestaoInsert } from "@/integrations/supabase/db-types";
+import { organizacaoDisponivel, tabelaAusente, traduzErro } from "@/lib/organizacao";
+import type { Pop, UsuarioFavorito } from "@/lib/pops";
 
 /* -------------------------------------------------------------------------- */
 /* Domínio                                                                    */
@@ -127,43 +127,47 @@ function politicaParaInsercao(item: PoliticaItem): PoliticaInsert {
 
 /** Lista as políticas cadastradas, ordenadas pelo código. */
 export async function carregarPoliticas(): Promise<PoliticaItem[]> {
-  const { data, error } = await supabase
+  const client = exigirCloud();
+  const { data, error } = await client
     .from("politicas")
     .select("*")
     .order("codigo", { ascending: true });
-  if (error) throw traduzirErro(error);
+  if (error) throw traduzErro(error);
   return (data ?? []).map(politicaDoRow);
 }
 
 /** Cria uma política no banco e devolve o registro persistido. */
 export async function criarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
-  const { data, error } = await supabase
+  const client = exigirCloud();
+  const { data, error } = await client
     .from("politicas")
     .insert(politicaParaInsercao(item))
     .select()
     .single();
-  if (error) throw traduzirErro(error);
+  if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível criar a política.");
   return politicaDoRow(data);
 }
 
 /** Atualiza uma política no banco e devolve o registro persistido. */
 export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
-  const { data, error } = await supabase
+  const client = exigirCloud();
+  const { data, error } = await client
     .from("politicas")
     .update(politicaParaInsercao(item))
     .eq("id", item.id)
     .select()
     .single();
-  if (error) throw traduzirErro(error);
+  if (error) throw traduzErro(error);
   if (!data) throw new Error("Política não encontrada.");
   return politicaDoRow(data);
 }
 
 /** Remove uma política do banco. */
 export async function excluirPolitica(id: string): Promise<void> {
-  const { error } = await supabase.from("politicas").delete().eq("id", id);
-  if (error) throw traduzirErro(error);
+  const client = exigirCloud();
+  const { error } = await client.from("politicas").delete().eq("id", id);
+  if (error) throw traduzErro(error);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -264,4 +268,210 @@ export function documentosVencidosOuProximos(
 /** `true` quando o Lovable Cloud está configurado (fonte de dados das políticas). */
 export function politicasDisponiveis(): boolean {
   return organizacaoDisponivel();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ciência da política: botão "Lido" (e registros de parecer)                */
+/* -------------------------------------------------------------------------- */
+
+/** Leitura do usuário informado em cada política (mapa politicaId -> leitura). */
+export async function carregarLeiturasPoliticaDoUsuario(
+  email: string,
+): Promise<Record<string, PoliticaLeitura>> {
+  const emailNormalizado = email.trim().toLowerCase();
+  if (!emailNormalizado) return {};
+
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("politica_leituras")
+    .select("*")
+    .eq("usuario_email", emailNormalizado);
+  if (error) {
+    if (tabelaAusente(error)) return {};
+    throw traduzErro(error);
+  }
+  const mapa: Record<string, PoliticaLeitura> = {};
+  for (const row of data ?? []) mapa[row.politica_id] = leituraPoliticaDoRow(row);
+  return mapa;
+}
+
+/** Leituras registradas em uma política (painel de ciência do detalhe). */
+export async function listarLeiturasPolitica(politicaId: string): Promise<PoliticaLeitura[]> {
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("politica_leituras")
+    .select("*")
+    .eq("politica_id", politicaId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (tabelaAusente(error)) return [];
+    throw traduzErro(error);
+  }
+  return (data ?? []).map(leituraPoliticaDoRow);
+}
+
+/**
+ * Registra (ou atualiza) a ciência do usuário sobre a política — botão "Lido".
+ */
+export async function registrarLeituraPolitica(
+  politicaId: string,
+  usuario: UsuarioFavorito,
+  decisao: "lido" | "concordo" | "discordo",
+): Promise<void> {
+  const email = usuario.email.trim().toLowerCase();
+  if (!email) throw new Error("Entre no portal para registrar sua leitura.");
+
+  const client = exigirCloud();
+  const { error } = await client.from("politica_leituras").upsert(
+    {
+      politica_id: politicaId,
+      usuario_email: email,
+      usuario_nome: usuario.nome,
+      decisao,
+    },
+    {
+      onConflict: "politica_id,usuario_email",
+    },
+  );
+  if (error) throw traduzErro(error);
+}
+
+function leituraPoliticaDoRow(row: PoliticaLeituraRow): PoliticaLeitura {
+  const decisao: "lido" | "concordo" | "discordo" =
+    row.decisao === "discordo" ? "discordo" : row.decisao === "lido" ? "lido" : "concordo";
+  return {
+    id: row.id,
+    politicaId: row.politica_id,
+    usuarioEmail: row.usuario_email,
+    usuarioNome: row.usuario_nome,
+    decisao,
+    createdAt: row.created_at,
+  };
+}
+
+/** Quantas pessoas já registraram leitura da política. */
+export function contarLeiturasPolitica(leituras: PoliticaLeitura[]): number {
+  return leituras.length;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sugestões de melhoria (botão "Sugerir melhoria")                           */
+/* -------------------------------------------------------------------------- */
+
+function sugestaoPoliticaDoRow(row: PoliticaSugestaoRow): PoliticaSugestao {
+  return {
+    id: row.id,
+    politicaId: row.politica_id,
+    usuarioEmail: row.usuario_email,
+    usuarioNome: row.usuario_nome,
+    sugestao: row.sugestao,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+/** Sugestões de melhoria já enviadas para uma política (mais recentes primeiro). */
+export async function listarSugestoesPolitica(politicaId: string): Promise<PoliticaSugestao[]> {
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("politica_sugestoes")
+    .select("*")
+    .eq("politica_id", politicaId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (tabelaAusente(error)) return [];
+    throw traduzErro(error);
+  }
+  return (data ?? []).map(sugestaoPoliticaDoRow);
+}
+
+/**
+ * Envia uma sugestão de melhoria para a política. O banco avisa automaticamente
+ * o Gestor da Qualidade e o setor Qualidade (trigger da migration).
+ */
+export async function enviarSugestaoPolitica(
+  politicaId: string,
+  usuario: UsuarioFavorito,
+  sugestao: string,
+): Promise<void> {
+  const texto = sugestao.trim();
+  if (!texto) throw new Error("Escreva a sugestão antes de enviar.");
+  const email = usuario.email.trim().toLowerCase();
+  if (!email) throw new Error("Entre no portal para sugerir uma melhoria.");
+
+  const registro: PoliticaSugestaoInsert = {
+    politica_id: politicaId,
+    usuario_email: email,
+    usuario_nome: usuario.nome,
+    sugestao: texto,
+  };
+  const client = exigirCloud();
+  const { error } = await client.from("politica_sugestoes").insert(registro);
+  if (error) throw traduzErro(error);
+}
+
+export async function marcarSugestaoConcluidaPolitica(
+  sugestaoId: string,
+  usuario: UsuarioFavorito,
+): Promise<void> {
+  const email = usuario.email.trim().toLowerCase();
+  if (!email) throw new Error("Entre no portal para gerenciar sugestões.");
+
+  const client = exigirCloud();
+
+  // Atualiza o status para "aplicada" (compat: updated_at pode não existir)
+  const { error } = await client
+    .from("politica_sugestoes")
+    .update({ status: "aplicada" } as never)
+    .eq("id", sugestaoId);
+  if (error) throw traduzErro(error);
+
+  // Notifica o autor da sugestão
+  const { data: sugestao } = await (client
+    .from("politica_sugestoes")
+    .select("usuario_email, usuario_nome, sugestao, politica_id")
+    .eq("id", sugestaoId)
+    .maybeSingle() as unknown as Promise<{ data: { usuario_email: string; usuario_nome: string; sugestao: string; politica_id: string } | null }>);
+
+  if (sugestao) {
+    const { data: politica } = await (client
+      .from("politicas")
+      .select("codigo, titulo")
+      .eq("id", sugestao.politica_id)
+      .maybeSingle() as unknown as Promise<{ data: { codigo: string; titulo: string } | null }>);
+
+    await (client.from("notificacoes").insert({
+      destinatario_email: sugestao.usuario_email,
+      destinatario_nome: sugestao.usuario_nome,
+      titulo: `Sugestão aplicada: ${politica?.codigo ?? "POLÍTICA"}`,
+      mensagem: `${usuario.nome} marcou sua sugestão "${sugestao.sugestao.substring(0, 50)}${sugestao.sugestao.length > 50 ? "..." : ""}" como aplicada na política ${politica?.codigo ?? ""}.`,
+      tipo: "sugestao_aplicada",
+      pop_id: null,
+      autor_nome: usuario.nome,
+      autor_email: email,
+    } as never) as unknown as Promise<unknown>);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tipos públicos                                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface PoliticaLeitura {
+  id: string;
+  politicaId: string;
+  usuarioEmail: string;
+  usuarioNome: string;
+  decisao: "lido" | "concordo" | "discordo";
+  createdAt: string;
+}
+
+export interface PoliticaSugestao {
+  id: string;
+  politicaId: string;
+  usuarioEmail: string;
+  usuarioNome: string;
+  sugestao: string;
+  status: string;
+  createdAt: string;
 }
