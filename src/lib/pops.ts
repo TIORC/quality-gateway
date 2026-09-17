@@ -8,8 +8,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json, Tables, TablesInsert } from "@/integrations/supabase/types";
 import { getSession, type UserSession } from "@/lib/auth";
-import { NIVEIS_FILTRAM_POR_SETOR } from "@/lib/niveis-acesso";
+import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
 import { temAcessoTotalPops, veSomenteLiberados } from "@/lib/permissoes";
+import { popDoSetorDoUsuario } from "@/lib/setor-documentos";
 
 type PopRow = Tables<"pops">;
 type PopInsert = TablesInsert<"pops">;
@@ -691,15 +692,6 @@ export async function carregarPops(): Promise<{
   return { setores, pops: aplicarContadores(pops, contadores) };
 }
 
-/** Nome de setor normalizado (sem acentos, minúsculo) para comparações. */
-function normalizarSetor(nome: string | null | undefined): string {
-  return (nome ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
 /** Indica se o usuário pertence ao setor da Qualidade. */
 export function ehSetorQualidade(sessao: UserSession | null | undefined): boolean {
   return normalizarSetor(sessao?.setor) === "qualidade";
@@ -1173,7 +1165,7 @@ export async function marcarSugestaoConcluidaPop(
 
 /**
  * Ids dos documentos liberados individualmente a um colaborador.
- * @param tipo tipo de documento (hoje, apenas "pop").
+ * @param tipo tipo de documento: "pop" ou "politica".
  */
 export async function listarDocumentosLiberados(
   colaboradorId: string,
@@ -1223,51 +1215,10 @@ export async function salvarLiberacaoDocumentos(
 }
 
 /**
- * Mapa pragmático do nome do setor organizacional para o prefixo dos POPs
- * (ex.: "Fiscal" → "FIS"). Comparação por `pop.codigo.startsWith(prefixo)`.
- * Quando não há mapeamento, o POP não é filtrado.
- */
-const SETOR_PARA_PREFIXO: Record<string, string> = {
-  fiscal: "FIS",
-  contabil: "CON",
-  contábil: "CON",
-  pessoal: "PES",
-  rh: "RH",
-  financeiro: "FIN",
-  "bpo financeiro": "BPO",
-  bpo: "BPO",
-  comercial: "COM",
-  marketing: "MKT",
-  "marketing m7": "MKT",
-  "sucesso do cliente": "SUC",
-  sucesso: "SUC",
-  legalizacao: "LEG",
-  legalização: "LEG",
-  qualidade: "QUA",
-  ti: "TI",
-  "ti/desenvolvimento": "TI",
-  desenvolvimento: "TI",
-  tecnico: "TEC",
-  técnico: "TEC",
-  direcao: "DIR",
-  direção: "DIR",
-  geral: "GER",
-};
-
-function prefixoDoSetor(nomeSetor: string): string | null {
-  const chave = nomeSetor
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  return SETOR_PARA_PREFIXO[chave] ?? null;
-}
-
-/**
  * Carrega setores e POPs considerando o nível de acesso da sessão:
  * - "Colaborador de outra unidade": somente os POPs liberados individualmente.
- * - "Colaborador" / "Líder de setor": somente POPs do setor do colaborador
- *   (quando houver mapeamento de prefixo).
+ * - "Colaborador" / "Líder de setor" / "Desenvolvedor": POPs do setor do
+ *   colaborador e gerais (GER-*), mesmo sem prefixo mapeado.
  * - Demais níveis (ou sem sessão): sem filtro.
  */
 export async function carregarPopsAcessiveis(session: UserSession | null): Promise<{
@@ -1294,14 +1245,11 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
       return { ...base, pops: pops.filter((pop) => ids.has(pop.id)) };
     }
 
-    // Colaboradores e líderes seguem vendo apenas o próprio setor (e o "Geral");
+    // Colaboradores, líderes e desenvolvedores veem apenas o próprio setor (e gerais);
     // o setor da Qualidade vê todos os setores.
-    if (!setorQualidade) {
-      const filtramPorSetor = NIVEIS_FILTRAM_POR_SETOR.has(session.nivelAcesso);
-      const prefixo = filtramPorSetor ? prefixoDoSetor(session.setor ?? "") : null;
-      if (prefixo) {
-        pops = pops.filter((pop) => pop.codigo.startsWith(prefixo) || pop.codigo.startsWith("GER"));
-      }
+    if (!setorQualidade && NIVEIS_FILTRAM_POR_SETOR.has(session.nivelAcesso)) {
+      const setorUsuario = session.setor ?? "";
+      pops = pops.filter((pop) => popDoSetorDoUsuario(pop, setorUsuario, base.setores));
     }
 
     // "Quem pode visualizar" (ACESSO): quando o POP define setores/unidades

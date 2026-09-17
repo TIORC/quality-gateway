@@ -8,8 +8,12 @@
 
 import { exigirCloud } from "@/integrations/supabase/client";
 import type { PoliticaInsert, PoliticaLeituraRow, PoliticaLeituraInsert, PoliticaRow, PoliticaSugestaoRow, PoliticaSugestaoInsert } from "@/integrations/supabase/db-types";
+import type { UserSession } from "@/lib/auth";
+import { NIVEIS_FILTRAM_POR_SETOR } from "@/lib/niveis-acesso";
 import { organizacaoDisponivel, tabelaAusente, traduzErro } from "@/lib/organizacao";
-import type { Pop, UsuarioFavorito } from "@/lib/pops";
+import { temAcessoTotalPops, veSomenteLiberados } from "@/lib/permissoes";
+import { ehSetorQualidade, listarDocumentosLiberados, type Pop, type UsuarioFavorito } from "@/lib/pops";
+import { politicaVisivelPorSetor } from "@/lib/setor-documentos";
 
 /* -------------------------------------------------------------------------- */
 /* Domínio                                                                    */
@@ -134,6 +138,41 @@ export async function carregarPoliticas(): Promise<PoliticaItem[]> {
     .order("codigo", { ascending: true });
   if (error) throw traduzErro(error);
   return (data ?? []).map(politicaDoRow);
+}
+
+/**
+ * Lista políticas visíveis ao usuário conforme nível de acesso e setor:
+ * - Admin, Gestor da Qualidade e setor Qualidade: todas.
+ * - Colaborador de outra unidade: somente liberadas individualmente.
+ * - Colaborador, Líder de setor e Desenvolvedor: do próprio setor e gerais.
+ * - Auxiliar da Qualidade, Diretoria e demais: todas (leitura irrestrita).
+ */
+export async function carregarPoliticasAcessiveis(
+  session: UserSession | null,
+): Promise<PoliticaItem[]> {
+  const todas = await carregarPoliticas();
+  if (!session) return todas;
+
+  try {
+    if (temAcessoTotalPops(session) || ehSetorQualidade(session)) {
+      return todas;
+    }
+
+    if (veSomenteLiberados(session)) {
+      if (!session.colaboradorId) return [];
+      const ids = new Set(await listarDocumentosLiberados(session.colaboradorId, "politica"));
+      return todas.filter((politica) => ids.has(politica.id));
+    }
+
+    if (NIVEIS_FILTRAM_POR_SETOR.has(session.nivelAcesso)) {
+      const setorUsuario = session.setor ?? "";
+      return todas.filter((politica) => politicaVisivelPorSetor(politica, setorUsuario));
+    }
+
+    return todas;
+  } catch {
+    return todas;
+  }
 }
 
 /** Cria uma política no banco e devolve o registro persistido. */

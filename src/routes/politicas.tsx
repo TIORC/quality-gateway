@@ -52,7 +52,7 @@ import {
 import { cn, mascaraDataBr } from "@/lib/utils";
 import {
   atualizarPolitica,
-  carregarPoliticas,
+  carregarPoliticasAcessiveis,
   carregarLeiturasPoliticaDoUsuario,
   criarPolitica,
   enviarSugestaoPolitica,
@@ -168,7 +168,7 @@ function Politicas() {
   useEffect(() => {
     if (!politicasDisponiveis()) return;
     let ativo = true;
-    carregarPoliticas()
+    carregarPoliticasAcessiveis(sessao)
       .then((dados) => {
         if (ativo) setItens(dados);
       })

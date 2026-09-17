@@ -324,7 +324,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-<<<<<<< HEAD
           anexo?: Json | null;
           aplicabilidade?: string;
           codigo?: string;
@@ -427,33 +426,7 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
-      };
-=======
-          anexo?: Json | null
-          aplicabilidade?: string
-          codigo?: string
-          created_at?: string
-          criado_por?: string
-          criado_por_nome?: string
-          data_postagem?: string
-          data_revisao?: string
-          data_vencimento?: string
-          historico?: Json
-          id?: string
-          links?: string[]
-          objetivo?: string
-          observacao_revisao?: string
-          parecer?: Json | null
-          revisao?: number
-          setores?: string[]
-          status?: string
-          sugestoes?: Json
-          titulo?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
->>>>>>> origin/main
+        };
       pop_anotacoes: {
         Row: {
           autor_email: string

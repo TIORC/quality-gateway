@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
 import { criarAcessoColaborador, listarEmailsComLogin, type UserRole } from "@/lib/auth";
 import { NIVEL_SOMENTE_LIBERADOS, NIVEIS_ACESSO } from "@/lib/niveis-acesso";
+import { carregarPoliticas, type PoliticaItem } from "@/lib/politicas";
 import {
   carregarPops,
   listarDocumentosLiberados,
@@ -970,15 +971,18 @@ function ColaboradoresTab({
   );
   const [emailsComLogin, setEmailsComLogin] = useState<string[]>([]);
 
-  // Contagem de documentos liberados (POPs) por colaborador.
+  // Contagem de documentos liberados (POPs e políticas) por colaborador.
   useEffect(() => {
     let ativo = true;
     Promise.all(
       lista.map(async (colaborador) => {
         if (!colaborador.id) return [colaborador.id, 0] as const;
         try {
-          const ids = await listarDocumentosLiberados(colaborador.id, "pop");
-          return [colaborador.id, ids.length] as const;
+          const [pops, politicas] = await Promise.all([
+            listarDocumentosLiberados(colaborador.id, "pop"),
+            listarDocumentosLiberados(colaborador.id, "politica"),
+          ]);
+          return [colaborador.id, pops.length + politicas.length] as const;
         } catch {
           return [colaborador.id, 0] as const;
         }
@@ -1083,7 +1087,7 @@ function ColaboradoresTab({
 
   function salvar(
     colaborador: Colaborador,
-    popIdsLiberados?: string[] | null,
+    liberados?: { pops: string[]; politicas: string[] } | null,
     acesso?: AcessoLogin,
   ) {
     org
@@ -1132,13 +1136,16 @@ function ColaboradoresTab({
     }
 
     // Liberação individual de documentos (quando informada pelo diálogo).
-    if (Array.isArray(popIdsLiberados) && colaborador.id) {
+    if (liberados && colaborador.id) {
       const autor = session?.nome ?? "";
-      salvarLiberacaoDocumentos(colaborador.id, popIdsLiberados, "pop", autor)
+      Promise.all([
+        salvarLiberacaoDocumentos(colaborador.id, liberados.pops, "pop", autor),
+        salvarLiberacaoDocumentos(colaborador.id, liberados.politicas, "politica", autor),
+      ])
         .then(() => {
           setLiberadosPorColaborador((atual) => ({
             ...atual,
-            [colaborador.id]: popIdsLiberados.length,
+            [colaborador.id]: liberados.pops.length + liberados.politicas.length,
           }));
           toast.success("Liberação de documentos atualizada.");
         })
@@ -1632,7 +1639,7 @@ interface GerirColaboradorDialogProps {
   onFechar: () => void;
   onSalvar: (
     colaborador: Colaborador,
-    popIdsLiberados?: string[] | null,
+    liberados?: { pops: string[]; politicas: string[] } | null,
     acesso?: AcessoLogin,
   ) => void;
   podeDarAdministracao: boolean;
@@ -1660,7 +1667,9 @@ function GerirColaboradorDialog({
   );
   // Liberação individual de documentos (quando o nível exige liberação).
   const [popsCatalogo, setPopsCatalogo] = useState<Pop[]>([]);
+  const [politicasCatalogo, setPoliticasCatalogo] = useState<PoliticaItem[]>([]);
   const [popIdsLiberados, setPopIdsLiberados] = useState<string[]>([]);
+  const [politicaIdsLiberados, setPoliticaIdsLiberados] = useState<string[]>([]);
   const [liberacaoCarregando, setLiberacaoCarregando] = useState(false);
   const podeLiberar = nivelAcesso === NIVEL_SOMENTE_LIBERADOS;
   // Criação de acesso de login: somente para sessão de admin.
@@ -1675,12 +1684,16 @@ function GerirColaboradorDialog({
     setLiberacaoCarregando(true);
     Promise.all([
       carregarPops(),
+      carregarPoliticas(),
       listarDocumentosLiberados(colaborador.id, "pop").catch(() => [] as string[]),
+      listarDocumentosLiberados(colaborador.id, "politica").catch(() => [] as string[]),
     ])
-      .then(([catalogo, ids]) => {
+      .then(([catalogoPops, politicas, idsPops, idsPoliticas]) => {
         if (!ativo) return;
-        setPopsCatalogo([...catalogo.pops].sort((a, b) => a.codigo.localeCompare(b.codigo)));
-        setPopIdsLiberados(ids);
+        setPopsCatalogo([...catalogoPops.pops].sort((a, b) => a.codigo.localeCompare(b.codigo)));
+        setPoliticasCatalogo([...politicas].sort((a, b) => a.codigo.localeCompare(b.codigo)));
+        setPopIdsLiberados(idsPops);
+        setPoliticaIdsLiberados(idsPoliticas);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -1691,9 +1704,17 @@ function GerirColaboradorDialog({
     };
   }, [colaborador, podeLiberar]);
 
-  function alternarLiberacao(popId: string) {
+  function alternarLiberacaoPop(popId: string) {
     setPopIdsLiberados((atual) =>
       atual.includes(popId) ? atual.filter((id) => id !== popId) : [...atual, popId],
+    );
+  }
+
+  function alternarLiberacaoPolitica(politicaId: string) {
+    setPoliticaIdsLiberados((atual) =>
+      atual.includes(politicaId)
+        ? atual.filter((id) => id !== politicaId)
+        : [...atual, politicaId],
     );
   }
 
@@ -1736,7 +1757,11 @@ function GerirColaboradorDialog({
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
     const acesso: AcessoLogin | undefined =
       podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso, perfilLogin } : undefined;
-    onSalvar(atualizado, podeLiberar ? popIdsLiberados : null, acesso);
+    onSalvar(
+      atualizado,
+      podeLiberar ? { pops: popIdsLiberados, politicas: politicaIdsLiberados } : null,
+      acesso,
+    );
   }
 
   return (
@@ -1918,39 +1943,71 @@ function GerirColaboradorDialog({
           </Campo>
 
           {podeLiberar ? (
-            <Campo rotulo="Documentos liberados (POPs)">
-              <p className="text-xs leading-relaxed text-[#64748B]">
-                Este nível enxerga somente os POPs marcados abaixo.
-              </p>
-              {liberacaoCarregando ? (
-                <p className="text-[13px] text-[#64748B]">Carregando POPs…</p>
-              ) : popsCatalogo.length === 0 ? (
-                <p className="text-[13px] text-[#94A3B8]">Nenhum POP cadastrado.</p>
-              ) : (
-                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[#E9EEF5] p-2">
-                  {popsCatalogo.map((pop) => (
-                    <label
-                      key={pop.id}
-                      htmlFor={`liberar-pop-${pop.id}`}
-                      className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-[#1F2937] transition hover:bg-[#F8FAFC]"
-                    >
-                      <Checkbox
-                        id={`liberar-pop-${pop.id}`}
-                        checked={popIdsLiberados.includes(pop.id)}
-                        onCheckedChange={() => alternarLiberacao(pop.id)}
-                        className="mt-0.5"
-                      />
-                      <span>
-                        <span className="font-medium">{pop.codigo}</span> — {pop.titulo}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-              <p className="text-[12px] text-[#94A3B8]">
-                {popIdsLiberados.length} documento(s) liberado(s).
-              </p>
-            </Campo>
+            <>
+              <Campo rotulo="Documentos liberados (POPs)">
+                <p className="text-xs leading-relaxed text-[#64748B]">
+                  Este nível enxerga somente os POPs marcados abaixo.
+                </p>
+                {liberacaoCarregando ? (
+                  <p className="text-[13px] text-[#64748B]">Carregando documentos…</p>
+                ) : popsCatalogo.length === 0 ? (
+                  <p className="text-[13px] text-[#94A3B8]">Nenhum POP cadastrado.</p>
+                ) : (
+                  <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[#E9EEF5] p-2">
+                    {popsCatalogo.map((pop) => (
+                      <label
+                        key={pop.id}
+                        htmlFor={`liberar-pop-${pop.id}`}
+                        className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-[#1F2937] transition hover:bg-[#F8FAFC]"
+                      >
+                        <Checkbox
+                          id={`liberar-pop-${pop.id}`}
+                          checked={popIdsLiberados.includes(pop.id)}
+                          onCheckedChange={() => alternarLiberacaoPop(pop.id)}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium">{pop.codigo}</span> — {pop.titulo}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </Campo>
+              <Campo rotulo="Documentos liberados (Políticas)">
+                <p className="text-xs leading-relaxed text-[#64748B]">
+                  Este nível enxerga somente as políticas marcadas abaixo.
+                </p>
+                {liberacaoCarregando ? (
+                  <p className="text-[13px] text-[#64748B]">Carregando documentos…</p>
+                ) : politicasCatalogo.length === 0 ? (
+                  <p className="text-[13px] text-[#94A3B8]">Nenhuma política cadastrada.</p>
+                ) : (
+                  <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[#E9EEF5] p-2">
+                    {politicasCatalogo.map((politica) => (
+                      <label
+                        key={politica.id}
+                        htmlFor={`liberar-politica-${politica.id}`}
+                        className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-[#1F2937] transition hover:bg-[#F8FAFC]"
+                      >
+                        <Checkbox
+                          id={`liberar-politica-${politica.id}`}
+                          checked={politicaIdsLiberados.includes(politica.id)}
+                          onCheckedChange={() => alternarLiberacaoPolitica(politica.id)}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium">{politica.codigo}</span> — {politica.titulo}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[12px] text-[#94A3B8]">
+                  {popIdsLiberados.length + politicaIdsLiberados.length} documento(s) liberado(s).
+                </p>
+              </Campo>
+            </>
           ) : null}
         </div>
 

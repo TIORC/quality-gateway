@@ -25,7 +25,7 @@ import { logout, getSession } from "@/lib/auth";
 import { carregarEmpresaPrincipal, type Empresa } from "@/lib/organizacao";
 import { carregarPopsAcessiveis } from "@/lib/pops";
 import {
-  carregarPoliticas,
+  carregarPoliticasAcessiveis,
   documentosVencidosOuProximos,
   politicasDisponiveis,
   type DocumentoVencimento,
@@ -398,7 +398,9 @@ function Painel() {
         const sessao = getSession();
         const [popsResp, politicasResp] = await Promise.all([
           carregarPopsAcessiveis(sessao).catch(() => ({ setores: [], pops: [] })),
-          politicasDisponiveis() ? carregarPoliticas().catch(() => []) : Promise.resolve([]),
+          politicasDisponiveis()
+            ? carregarPoliticasAcessiveis(sessao).catch(() => [])
+            : Promise.resolve([]),
         ]);
         if (!ativo) return;
         setDocumentosVencendo(documentosVencidosOuProximos(popsResp.pops, politicasResp));
