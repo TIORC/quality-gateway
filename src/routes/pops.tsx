@@ -795,22 +795,6 @@ function SeletorSetores({ setores, selecionados, aoAlternar }: SeletorSetoresPro
   );
 }
 
-/** Converte o texto do formulário (uma etapa por linha; 2 espaços = subnível). */
-function etapasDoTexto(texto: string): PopEtapa[] {
-  return texto
-    .split("\n")
-    .map((linha) => {
-      const recuo = linha.match(/^ */)?.[0].length ?? 0;
-      return { nivel: Math.min(4, Math.floor(recuo / 2)), texto: linha.trim() };
-    })
-    .filter((etapa) => etapa.texto !== "");
-}
-
-/** Devolve as etapas como texto do formulário (2 espaços por nível). */
-function textoDasEtapas(etapas: PopEtapa[] | undefined): string {
-  return (etapas ?? []).map((etapa) => "  ".repeat(etapa.nivel) + etapa.texto).join("\n");
-}
-
 interface PopFormDialogProps {
   aberto: boolean;
   pop: Pop | null;
@@ -834,7 +818,6 @@ function PopFormDialog({
   const [entrada, setEntrada] = useState<EntradaPop>(ENTRADA_PADRAO);
   const [salvando, setSalvando] = useState(false);
 
-  const [textoEtapas, setTextoEtapas] = useState("");
   const [textoLinks, setTextoLinks] = useState("");
   const [observacaoRevisao, setObservacaoRevisao] = useState("");
   const [anexoNovo, setAnexoNovo] = useState<File | null>(null);
@@ -842,7 +825,6 @@ function PopFormDialog({
   useEffect(() => {
     if (aberto) {
       setEntrada(pop ? camposDoPop(pop) : { ...ENTRADA_PADRAO, setorId: setorPadrao });
-      setTextoEtapas(textoDasEtapas(pop?.etapas));
       setTextoLinks((pop?.linksRelacionados ?? []).join("\n"));
       setObservacaoRevisao("");
       setAnexoNovo(null);
@@ -889,7 +871,6 @@ function PopFormDialog({
     try {
       const dados: EntradaPop = {
         ...entrada,
-        etapas: etapasDoTexto(textoEtapas),
         linksRelacionados: textoLinks
           .split("\n")
           .map((link) => link.trim())
@@ -1055,17 +1036,6 @@ function PopFormDialog({
               </p>
             </Campo>
           ) : null}
-
-          <Campo rotulo="Etapas do procedimento (uma por linha; 2 espaços = subpasso)" className="sm:col-span-2">
-            <Textarea
-              value={textoEtapas}
-              onChange={(e) => setTextoEtapas(e.target.value)}
-              placeholder={
-                "Receber o arquivo financeiro da empresa;\n  Caso o cliente tenha enviado: baixar os documentos;\n  Salvar na pasta;\nAnalisar o tipo do arquivo;"
-              }
-              className="min-h-[160px] font-mono text-[12px]"
-            />
-          </Campo>
 
           <Campo
             rotulo={
