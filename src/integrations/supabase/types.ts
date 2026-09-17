@@ -148,13 +148,6 @@ export type Database = {
             referencedRelation: "colaboradores"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "documentos_liberados_documento_id_fkey"
-            columns: ["documento_id"]
-            isOneToOne: false
-            referencedRelation: "pops"
-            referencedColumns: ["id"]
-          },
         ]
       }
       empresas: {
@@ -285,6 +278,85 @@ export type Database = {
         }
         Relationships: []
       }
+      politica_leituras: {
+        Row: {
+          created_at: string
+          decisao: string
+          id: string
+          politica_id: string
+          updated_at: string
+          usuario_email: string
+          usuario_nome: string
+        }
+        Insert: {
+          created_at?: string
+          decisao?: string
+          id?: string
+          politica_id: string
+          updated_at?: string
+          usuario_email: string
+          usuario_nome?: string
+        }
+        Update: {
+          created_at?: string
+          decisao?: string
+          id?: string
+          politica_id?: string
+          updated_at?: string
+          usuario_email?: string
+          usuario_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "politica_leituras_politica_id_fkey"
+            columns: ["politica_id"]
+            isOneToOne: false
+            referencedRelation: "politicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      politica_sugestoes: {
+        Row: {
+          created_at: string
+          id: string
+          politica_id: string
+          status: string
+          sugestao: string
+          updated_at: string
+          usuario_email: string
+          usuario_nome: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          politica_id: string
+          status?: string
+          sugestao: string
+          updated_at?: string
+          usuario_email: string
+          usuario_nome?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          politica_id?: string
+          status?: string
+          sugestao?: string
+          updated_at?: string
+          usuario_email?: string
+          usuario_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "politica_sugestoes_politica_id_fkey"
+            columns: ["politica_id"]
+            isOneToOne: false
+            referencedRelation: "politicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       politicas: {
         Row: {
           anexo: Json | null
@@ -333,109 +405,30 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          anexo?: Json | null;
-          aplicabilidade?: string;
-          codigo?: string;
-          created_at?: string;
-          criado_por?: string;
-          criado_por_nome?: string;
-          data_postagem?: string;
-          data_revisao?: string;
-          data_vencimento?: string;
-          historico?: Json;
-          id?: string;
-          links?: string[];
-          objetivo?: string;
-          observacao_revisao?: string;
-          parecer?: Json | null;
-          revisao?: number;
-          setores?: string[];
-          status?: string;
-          sugestoes?: Json;
-          titulo?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      politica_leituras: {
-        Row: {
-          id: string;
-          politica_id: string;
-          usuario_email: string;
-          usuario_nome: string;
-          decisao: "lido" | "concordo" | "discordo";
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          politica_id: string;
-          usuario_email: string;
-          usuario_nome?: string;
-          decisao?: "lido" | "concordo" | "discordo";
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          politica_id?: string;
-          usuario_email?: string;
-          usuario_nome?: string;
-          decisao?: "lido" | "concordo" | "discordo";
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "politica_leituras_politica_id_fkey";
-            columns: ["politica_id"];
-            isOneToOne: false;
-            referencedRelation: "politicas";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      politica_sugestoes: {
-        Row: {
-          id: string;
-          politica_id: string;
-          usuario_email: string;
-          usuario_nome: string;
-          sugestao: string;
-          status: "aberta" | "em_analise" | "aplicada" | "recusada";
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          politica_id: string;
-          usuario_email: string;
-          usuario_nome?: string;
-          sugestao: string;
-          status?: "aberta" | "em_analise" | "aplicada" | "recusada";
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          politica_id?: string;
-          usuario_email?: string;
-          usuario_nome?: string;
-          sugestao?: string;
-          status?: "aberta" | "em_analise" | "aplicada" | "recusada";
-          created_at?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "politica_sugestoes_politica_id_fkey";
-            columns: ["politica_id"];
-            isOneToOne: false;
-            referencedRelation: "politicas";
-            referencedColumns: ["id"];
-          },
-        ];
-        };
+          anexo?: Json | null
+          aplicabilidade?: string
+          codigo?: string
+          created_at?: string
+          criado_por?: string
+          criado_por_nome?: string
+          data_postagem?: string
+          data_revisao?: string
+          data_vencimento?: string
+          historico?: Json
+          id?: string
+          links?: string[]
+          objetivo?: string
+          observacao_revisao?: string
+          parecer?: Json | null
+          revisao?: number
+          setores?: string[]
+          status?: string
+          sugestoes?: Json
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pop_anotacoes: {
         Row: {
           autor_email: string
