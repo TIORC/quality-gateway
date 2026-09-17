@@ -732,7 +732,7 @@ function camposDoPop(pop: Pop): EntradaPop {
     diaInicio: pop.diaInicio,
     metaDia: pop.metaDia,
     prazoLegal: pop.prazoLegal,
-    dataVencimento: pop.dataVencimento ?? null,
+    dataVencimento: dataIsoParaBr(pop.dataVencimento) || null,
     arquivo: pop.arquivo,
     objetivo: pop.objetivo ?? "",
     materiaisSistemas: pop.materiaisSistemas ?? "",
