@@ -517,6 +517,27 @@ function anotacaoParaInsercao(dados: {
   };
 }
 
+/**
+ * Converte uma data digitada em `dd/mm/aaaa` para `aaaa-mm-dd` (formato aceito
+ * pelo banco). Valores vazios viram `null` e datas já em ISO passam direto.
+ */
+export function dataBrParaIso(valor: string | null | undefined): string | null {
+  const texto = (valor ?? "").trim();
+  if (texto === "") return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const partes = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!partes) return null;
+  return `${partes[3]}-${partes[2]}-${partes[1]}`;
+}
+
+/** Converte `aaaa-mm-dd` para `dd/mm/aaaa` (usado nos formulários). */
+export function dataIsoParaBr(valor: string | null | undefined): string {
+  const texto = (valor ?? "").trim();
+  const partes = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!partes) return texto;
+  return `${partes[3]}/${partes[2]}/${partes[1]}`;
+}
+
 function popParaInsercao(entrada: EntradaPop): PopInsert {
   return {
     setor_id: entrada.setorId,
@@ -532,8 +553,8 @@ function popParaInsercao(entrada: EntradaPop): PopInsert {
     cargo_responsavel: entrada.cargoResponsavel,
     dia_inicio: entrada.diaInicio,
     meta_dia: entrada.metaDia,
-    prazo_legal: entrada.prazoLegal,
-    data_vencimento: entrada.dataVencimento ?? null,
+    prazo_legal: dataBrParaIso(entrada.prazoLegal),
+    data_vencimento: dataBrParaIso(entrada.dataVencimento),
     arquivo: entrada.arquivo,
     objetivo: entrada.objetivo ?? "",
     materiais_sistemas: entrada.materiaisSistemas ?? "",
