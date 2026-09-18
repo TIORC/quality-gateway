@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardList, List, Pencil, Plus, Settings2 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
@@ -96,7 +96,9 @@ function Ocorrencias() {
   const tipos = useAsync(listarTipos, [refreshToken]);
   const ocorrencias = useAsync(listarOcorrencias, [refreshToken]);
   const [listaAoVivo, setListaAoVivo] = useState<Ocorrencia[] | null>(null);
+  const refreshTokenRef = useRef(0);
   const recarregar = () => {
+    refreshTokenRef.current += 1;
     setListaAoVivo(null);
     setRefreshToken((v) => v + 1);
   };
@@ -116,8 +118,13 @@ function Ocorrencias() {
   useEffect(() => {
     if (ocorrencias.loading) return;
     const id = window.setInterval(() => {
+      // Captura a geração da lista no início do poll: se `recarregar()` rodar
+      // enquanto este fetch está em andamento (ex.: ocorrência recém-aberta),
+      // o resultado obsoleto NÃO pode sobrescrever a lista fresca.
+      const geracao = refreshTokenRef.current;
       listarOcorrencias()
         .then((nova) => {
+          if (geracao !== refreshTokenRef.current) return;
           setListaAoVivo(nova);
           void detectarAtrasos(nova, session).catch(() => undefined);
         })
