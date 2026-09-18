@@ -8,7 +8,7 @@ import {
   proximoCodigo, rotuloOrigem, type NovoPlanoInput,
 } from "@/lib/planos-mutar";
 import type { PlanoAcao, StatusAcao } from "@/lib/planos";
-import { STATUS_ACAO_LABELS, formatarPrazo } from "@/lib/planos";
+import { STATUS_ACAO_LABELS, formatarPrazo, formatarTempo } from "@/lib/planos";
 import { listarPlanos } from "@/lib/planos-base";
 
 type Rec = Record<string, unknown>;
@@ -52,6 +52,8 @@ export interface AtualizacaoPlano {
   prazo?: string | null; prioridade?: string; status?: StatusAcao;
   progresso?: number; vinculoTipo?: string; vinculoId?: string;
   anexos?: PlanoAcao["anexos"];
+  checklist?: PlanoAcao["checklist"];
+  tempoSegundos?: number; timerInicio?: string | null;
 }
 
 /** Valor legível para o histórico de alterações. */
@@ -91,6 +93,9 @@ export async function atualizarPlano(plano: PlanoAcao, patch: AtualizacaoPlano, 
   if (patch.vinculoTipo !== undefined) u.vinculo_tipo = patch.vinculoTipo;
   if (patch.vinculoId !== undefined) u.vinculo_id = patch.vinculoId;
   if (patch.anexos !== undefined) u.anexos = patch.anexos;
+  if (patch.checklist !== undefined) u.checklist = patch.checklist;
+  if (patch.tempoSegundos !== undefined) u.tempo_segundos = Math.max(0, Math.round(patch.tempoSegundos));
+  if (patch.timerInicio !== undefined) u.timer_inicio = patch.timerInicio;
   const { data, error } = await client.from("planos_de_acao")
     .update(u).eq("id", plano.id).select("*").single();
   if (error) throw traduzErro(error);
@@ -115,6 +120,14 @@ export async function atualizarPlano(plano: PlanoAcao, patch: AtualizacaoPlano, 
   if (patch.origem !== undefined) registrar("Origem", plano.origem, patch.origem);
   if (patch.vinculoId !== undefined) registrar("Vinculação", plano.vinculoId, patch.vinculoId);
   if (patch.anexos !== undefined) registrar("Anexos", plano.anexos.length, patch.anexos.length);
+  if (patch.checklist !== undefined) {
+    const antes = plano.checklist.filter((i) => i.feito).length;
+    const depois = patch.checklist.filter((i) => i.feito).length;
+    if (antes !== depois || plano.checklist.length !== patch.checklist.length) {
+      registrar("Checklist", `${antes}/${plano.checklist.length} itens`, `${depois}/${patch.checklist.length} itens`);
+    }
+  }
+  if (patch.tempoSegundos !== undefined) registrar("Tempo", formatarTempo(plano.tempoSegundos), formatarTempo(patch.tempoSegundos));
   if (eventos.length) {
     await client.from("plano_historico")
       .insert(eventos.map((e) => ({ plano_id: plano.id, ...autor, ...e })));

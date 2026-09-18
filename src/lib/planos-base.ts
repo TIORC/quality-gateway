@@ -1,10 +1,24 @@
 import { exigirCloud } from "@/integrations/supabase/client";
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
-import type { OrigemAcao, PlanoAcao, StatusAcao } from "@/lib/planos";
+import type { OrigemAcao, PlanoAcao, StatusAcao, ItemChecklist } from "@/lib/planos";
 import { ORIGENS_ACAO_FIXAS, ORIGENS_ATIVAS_PADRAO, STATUS_ACAO } from "@/lib/planos";
 
 export type Linha = Record<string, unknown>;
 export const str = (v: unknown, p = ""): string => (typeof v === "string" ? v : p);
+
+/** Lê o jsonb do checklist tolerando registros antigos/malformados. */
+function lerChecklist(v: unknown): ItemChecklist[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((item) => {
+    const o = item as Record<string, unknown>;
+    const texto = typeof o?.["texto"] === "string" ? o["texto"] : "";
+    if (!texto) return [];
+    return [{
+      id: typeof o["id"] === "string" ? o["id"] : `${texto}-${Math.random().toString(36).slice(2, 8)}`,
+      texto, feito: Boolean(o["feito"]),
+    }];
+  });
+}
 
 export function planoDoRow(row: Record<string, unknown>): PlanoAcao {
   const status = str(row["status"], "aberta");
@@ -22,6 +36,9 @@ export function planoDoRow(row: Record<string, unknown>): PlanoAcao {
     progresso: typeof row["progresso"] === "number" ? row["progresso"] : Number(row["progresso"] ?? 0) || 0,
     vinculoTipo: str(row["vinculo_tipo"]), vinculoId: str(row["vinculo_id"]),
     anexos: Array.isArray(row["anexos"]) ? (row["anexos"] as PlanoAcao["anexos"]) : [],
+    checklist: lerChecklist(row["checklist"]),
+    tempoSegundos: Number(row["tempo_segundos"] ?? 0) || 0,
+    timerInicio: typeof row["timer_inicio"] === "string" ? row["timer_inicio"] : null,
     concluidaEm: typeof row["concluida_em"] === "string" ? row["concluida_em"] : null,
     createdAt: str(row["created_at"]), updatedAt: str(row["updated_at"]),
   };

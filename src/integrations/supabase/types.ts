@@ -349,6 +349,9 @@ export type Database = {
       planos_de_acao: {
         Row: {
           anexos: Json
+          checklist: Json
+          tempo_segundos: number
+          timer_inicio: string | null
           codigo: string
           concluida_em: string | null
           created_at: string
@@ -374,6 +377,9 @@ export type Database = {
         }
         Insert: {
           anexos?: Json
+          checklist?: Json
+          tempo_segundos?: number
+          timer_inicio?: string | null
           codigo?: string
           concluida_em?: string | null
           created_at?: string
@@ -399,6 +405,9 @@ export type Database = {
         }
         Update: {
           anexos?: Json
+          checklist?: Json
+          tempo_segundos?: number
+          timer_inicio?: string | null
           codigo?: string
           concluida_em?: string | null
           created_at?: string

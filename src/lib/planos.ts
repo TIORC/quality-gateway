@@ -92,6 +92,33 @@ export function sugerirStatusPorProgresso(progresso: number, atual: StatusAcao):
 
 export interface OrigemAcao { id: string; nome: string; ativa: boolean; ordem: number; }
 export type AnexoPlano = { nome: string; url?: string; tipo?: string; tamanho?: number };
+/** Item do plano de ação (checklist). O progresso é a % de itens feitos. */
+export type ItemChecklist = { id: string; texto: string; feito: boolean };
+
+/** Progresso automático: % de itens marcados no checklist (0 sem itens). */
+export function progressoDoChecklist(itens: ItemChecklist[]): number {
+  if (itens.length === 0) return 0;
+  const feitos = itens.filter((i) => i.feito).length;
+  return Math.round((feitos / itens.length) * 100);
+}
+
+/** Segundos acumulados do cronômetro, incluindo o tempo em execução agora. */
+export function tempoTotalSegundos(tempoSegundos: number, timerInicio: string | null): number {
+  if (!timerInicio) return tempoSegundos;
+  const t = Date.parse(timerInicio);
+  if (Number.isNaN(t)) return tempoSegundos;
+  return tempoSegundos + Math.max(0, Math.floor((Date.now() - t) / 1000));
+}
+
+/** hh:mm:ss a partir de segundos. */
+export function formatarTempo(segundos: number): string {
+  const s = Math.max(0, Math.floor(segundos));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+}
 
 export interface PlanoAcao {
   id: string; codigo: string; titulo: string; descricao: string;
@@ -100,6 +127,8 @@ export interface PlanoAcao {
   responsavelId: string; responsavelNome: string; responsavelEmail: string;
   seguidores: string[]; seguidoresIds: string[];
   prazo: string | null; progresso: number;
+  checklist: ItemChecklist[];
+  tempoSegundos: number; timerInicio: string | null;
   vinculoTipo: string; vinculoId: string; anexos: AnexoPlano[];
   concluidaEm: string | null; createdAt: string; updatedAt: string;
 }
