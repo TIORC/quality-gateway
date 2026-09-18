@@ -134,6 +134,15 @@ export function ehUsuarioDaQualidade(session: UserSession | null | undefined): b
 }
 
 /**
+ * Administrador do sistema (role `admin` ou nível "Administrador"). Enxerga o
+ * andamento de tudo em leitura, sem as permissões de gestão da Qualidade.
+ */
+export function ehAdministrador(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return session.role === "admin" || session.nivelAcesso === "Administrador";
+}
+
+/**
  * Regra geral do portal: quem não é do setor da Qualidade não pode criar,
  * editar ou excluir conteúdo (com as exceções de abrir ocorrência e sugerir
  * melhorias). Fica apenas em leitura, salvo o que o gestor da Qualidade
@@ -258,4 +267,3 @@ export function filtrarPlanosVisiveis<T extends PlanoParticipacao & { setor: str
   if (!session) return [];
   return planos.filter((plano) => vePlanoNaLista(session, plano));
 }
-

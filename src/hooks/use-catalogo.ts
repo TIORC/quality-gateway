@@ -11,6 +11,8 @@ export interface CatalogoOrganizacional {
   colaboradores: Colaborador[];
   /** Nomes dos setores cadastrados. */
   setores: string[];
+  /** Nomes dos cargos cadastrados (across setores). */
+  cargos: string[];
   /** Nomes das unidades cadastradas. */
   unidades: string[];
   carregando: boolean;
@@ -26,6 +28,7 @@ export function useCatalogoOrganizacional(): CatalogoOrganizacional {
   const [estado, setEstado] = useState<CatalogoOrganizacional>({
     colaboradores: [],
     setores: [],
+    cargos: [],
     unidades: [],
     carregando: true,
     disponivel: organizacaoDisponivel(),
@@ -44,6 +47,7 @@ export function useCatalogoOrganizacional(): CatalogoOrganizacional {
         setEstado({
           colaboradores,
           setores: setoresECargos.map((setor) => setor.nome),
+          cargos: setoresECargos.flatMap((setor) => setor.cargos.map((cargo) => cargo.nome)),
           unidades: unidades.map((unidade) => unidade.nome),
           carregando: false,
           disponivel: true,

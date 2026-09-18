@@ -7,13 +7,34 @@
 import type { UserSession } from "@/lib/auth";
 import { traduzErro } from "@/lib/organizacao";
 import {
-  ACOES_ETAPA_LABELS, MACRO_ETAPAS, MACRO_ETAPA_LABELS, calcularPrazoEtapa, idCurto,
-  ordenarSubetapas, proximoNumero, subetapaDe,
-  type AnexoOcorrencia, type AcaoEtapa, type CampoFormulario, type MacroEtapa,
-  type MacroFluxo, type Ocorrencia, type Respostas, type SubetapaFluxo, type TipoOcorrencia,
+  ACOES_ETAPA_LABELS,
+  MACRO_ETAPAS,
+  MACRO_ETAPA_LABELS,
+  PROCEDENCIA_LABELS,
+  calcularPrazoEtapa,
+  idCurto,
+  ocorrenciaAtrasada,
+  ordenarSubetapas,
+  proximoNumero,
+  subetapaDe,
+  type AnexoOcorrencia,
+  type AcaoEtapa,
+  type CampoFormulario,
+  type MacroEtapa,
+  type MacroFluxo,
+  type Ocorrencia,
+  type ProcedenciaOcorrencia,
+  type Respostas,
+  type SubetapaFluxo,
+  type TipoOcorrencia,
 } from "@/lib/ocorrencias";
 import {
-  cloud, listarFluxos, listarFormularios, listarOcorrencias, ocorrenciaDoRow, str,
+  cloud,
+  listarFluxos,
+  listarFormularios,
+  listarOcorrencias,
+  ocorrenciaDoRow,
+  str,
   type EventoLinha,
 } from "@/lib/ocorrencias-base";
 
@@ -28,10 +49,12 @@ function autorDe(sessao: UserSession | null) {
 }
 
 async function registrarHistorico(
-  ocorrenciaId: string, autor: Rec,
+  ocorrenciaId: string,
+  autor: Rec,
   evento: Omit<EventoLinha, "ocorrencia_id" | "autor_id" | "autor_nome" | "autor_email">,
 ): Promise<void> {
-  const { error } = await cloud().from("ocorrencia_historico")
+  const { error } = await cloud()
+    .from("ocorrencia_historico")
     .insert({ ocorrencia_id: ocorrenciaId, ...autor, ...evento });
   if (error) throw traduzErro(error);
 }
@@ -44,17 +67,23 @@ async function notificar(
   const validos = itens.filter((i) => i.email.includes("@"));
   if (!validos.length) return;
   try {
-    await cloud().from("notificacoes").insert(validos.map((i) => ({
-      destinatario_email: i.email.toLowerCase(),
-      destinatario_nome: i.nome,
-      titulo: i.titulo,
-      mensagem: i.mensagem,
-      tipo: "ocorrencia_etapa",
-      plano_id: null,
-      autor_nome: autor["autor_nome"],
-      autor_email: autor["autor_email"],
-    })));
-  } catch { /* sem tabela de notificações: ignora */ }
+    await cloud()
+      .from("notificacoes")
+      .insert(
+        validos.map((i) => ({
+          destinatario_email: i.email.toLowerCase(),
+          destinatario_nome: i.nome,
+          titulo: i.titulo,
+          mensagem: i.mensagem,
+          tipo: "ocorrencia_etapa",
+          plano_id: null,
+          autor_nome: autor["autor_nome"],
+          autor_email: autor["autor_email"],
+        })),
+      );
+  } catch {
+    /* sem tabela de notificações: ignora */
+  }
 }
 
 function nomeDoEmail(email: string): string {
@@ -77,11 +106,93 @@ export async function carregarFluxoAtivo(tipoId: string, versao: number): Promis
 }
 
 export async function carregarFormularioAtivo(
-  tipoId: string, versao: number,
+  tipoId: string,
+  versao: number,
 ): Promise<CampoFormulario[]> {
   const versoes = await listarFormularios(tipoId).catch(() => []);
   const escolhida = versoes.find((f) => f.versao === versao) ?? versoes[versoes.length - 1];
   return escolhida?.campos ?? [];
+}
+
+export interface VersoesPublicadas {
+  formularioVersao: number;
+  fluxoVersao: number;
+  campos: CampoFormulario[];
+  etapas: MacroFluxo[];
+}
+
+/** Últimas versões publicadas de formulário e fluxo de um tipo. */
+export async function carregarUltimasVersoes(tipoId: string): Promise<VersoesPublicadas> {
+  const [formularios, fluxos] = await Promise.all([
+    listarFormularios(tipoId).catch(() => []),
+    listarFluxos(tipoId).catch(() => []),
+  ]);
+  const formulario = formularios[formularios.length - 1];
+  const fluxo = fluxos[fluxos.length - 1];
+  return {
+    formularioVersao: formulario?.versao ?? 1,
+    fluxoVersao: fluxo?.versao ?? 1,
+    campos: formulario?.campos ?? [],
+    etapas: fluxo?.etapas ?? MACRO_ETAPAS.map((macro) => ({ macro, subetapas: [] })),
+  };
+}
+
+/**
+ * Registra uma única notificação/evento de atraso por ocorrência em que o
+ * prazo da etapa atual já estourou (idempotente: ignora as já sinalizadas).
+ */
+export async function detectarAtrasos(
+  ocorrencias: Ocorrencia[],
+  sessao: UserSession | null,
+): Promise<number> {
+  const atrasadas = ocorrencias.filter((o) => o.status !== "encerrada" && ocorrenciaAtrasada(o));
+  if (atrasadas.length === 0) return 0;
+  const autor = autorDe(sessao);
+  let registrados = 0;
+  try {
+    const { data } = await cloud()
+      .from("ocorrencia_historico")
+      .select("ocorrencia_id, macro, acao")
+      .in(
+        "ocorrencia_id",
+        atrasadas.map((o) => o.id),
+      );
+    const jaSinalizado = new Set<string>();
+    for (const r of data ?? []) {
+      const linha = r as Rec;
+      if (linha["acao"] === "Atraso") {
+        jaSinalizado.add(`${linha["ocorrencia_id"]}::${linha["macro"]}`);
+      }
+    }
+    for (const o of atrasadas) {
+      const chave = `${o.id}::${o.macroAtual}`;
+      if (jaSinalizado.has(chave)) continue;
+      await registrarHistorico(o.id, autor, {
+        acao: "Atraso de prazo",
+        macro: o.macroAtual,
+        subetapa: o.subetapaAtualNome,
+        de: "",
+        para: "Atrasado",
+        comentario: "Prazo da etapa foi estourado e a tratativa segue pendente.",
+        anexos: [],
+      });
+      await notificar(
+        [
+          {
+            email: o.abertaPorEmail,
+            nome: o.abertaPorNome,
+            titulo: `Ocorrência ${o.numero} está atrasada`,
+            mensagem: `${o.titulo} · etapa ${MACRO_ETAPA_LABELS[o.macroAtual]} com prazo estourado.`,
+          },
+        ],
+        autor,
+      ).catch(() => undefined);
+      registrados += 1;
+    }
+  } catch {
+    /* sem tabela de histórico: segue sem sinalizar */
+  }
+  return registrados;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -97,41 +208,52 @@ export interface AbrirOcorrenciaInput {
 }
 
 export async function abrirOcorrencia(
-  input: AbrirOcorrenciaInput, sessao: UserSession | null,
+  input: AbrirOcorrenciaInput,
+  sessao: UserSession | null,
 ): Promise<Ocorrencia> {
   const existentes = await listarOcorrencias().catch(() => []);
   const numero = proximoNumero(existentes);
   const autor = autorDe(sessao);
   const macro: MacroEtapa = "abertura";
-  const { data, error } = await cloud().from("ocorrencias").insert({
-    numero,
-    titulo: input.titulo.trim(),
-    tipo_id: input.tipo.id,
-    tipo_nome: input.tipo.nome,
-    tipo_cor: input.tipo.cor,
-    formulario_versao: input.formularioVersao,
-    fluxo_versao: input.fluxoVersao,
-    respostas: input.respostas,
-    macro_atual: macro,
-    subetapa_atual_id: "",
-    subetapa_atual_nome: MACRO_ETAPA_LABELS[macro],
-    status: "em_andamento",
-    aberta_por_id: str(autor["autor_id"]),
-    aberta_por_nome: str(autor["autor_nome"]),
-    aberta_por_email: str(autor["autor_email"]),
-    aberta_por_setor: sessao?.setor ?? "",
-    responsavel_id: "",
-    responsavel_nome: input.tipo.setorPadrao,
-    responsavel_email: "",
-    prazo_etapa: calcularPrazoEtapa(input.tipo.slaDias[macro]),
-    etapa_entrou_em: new Date().toISOString(),
-  }).select("*").single();
+  const { data, error } = await cloud()
+    .from("ocorrencias")
+    .insert({
+      numero,
+      titulo: input.titulo.trim(),
+      tipo_id: input.tipo.id,
+      tipo_nome: input.tipo.nome,
+      tipo_cor: input.tipo.cor,
+      formulario_versao: input.formularioVersao,
+      fluxo_versao: input.fluxoVersao,
+      respostas: input.respostas,
+      macro_atual: macro,
+      subetapa_atual_id: "",
+      subetapa_atual_nome: MACRO_ETAPA_LABELS[macro],
+      status: "em_andamento",
+      procedencia: "pendente",
+      aberta_por_id: str(autor["autor_id"]),
+      aberta_por_nome: str(autor["autor_nome"]),
+      aberta_por_email: str(autor["autor_email"]),
+      aberta_por_setor: sessao?.setor ?? "",
+      responsavel_id: "",
+      responsavel_nome: input.tipo.setorPadrao,
+      responsavel_email: "",
+      prazo_etapa: calcularPrazoEtapa(input.tipo.slaDias[macro]),
+      etapa_entrou_em: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
   if (error) throw traduzErro(error);
   const o = data as Rec;
 
   await registrarHistorico(o["id"] as string, autor, {
-    acao: "Criação", macro, subetapa: "", de: "",
-    para: `Aberta como ${numero}`, comentario: "", anexos: [],
+    acao: "Criação",
+    macro,
+    subetapa: "",
+    de: "",
+    para: `Aberta como ${numero}`,
+    comentario: "",
+    anexos: [],
   });
 
   // Encarregado da primeira etapa do fluxo (se houver) é avisado.
@@ -140,14 +262,21 @@ export async function abrirOcorrencia(
     const sub = primeiraSubetapa(fluxo, "apuracao");
     if (sub?.notificar) {
       const email = sub.responsavel.email ?? "";
-      await notificar([{
-        email,
-        nome: sub.responsavel.nome || nomeDoEmail(email),
-        titulo: `Ocorrência ${numero} entrou em ${MACRO_ETAPA_LABELS["apuracao"]}`,
-        mensagem: `${input.titulo} · responsável: ${sub.responsavel.nome || "a definir"} · prazo ${sub.prazoDias}d`,
-      }], autor);
+      await notificar(
+        [
+          {
+            email,
+            nome: sub.responsavel.nome || nomeDoEmail(email),
+            titulo: `Ocorrência ${numero} entrou em ${MACRO_ETAPA_LABELS["apuracao"]}`,
+            mensagem: `${input.titulo} · responsável: ${sub.responsavel.nome || "a definir"} · prazo ${sub.prazoDias}d`,
+          },
+        ],
+        autor,
+      );
     }
-  } catch { /* fluxo ainda sem versões: segue */ }
+  } catch {
+    /* fluxo ainda sem versões: segue */
+  }
 
   return ocorrenciaDoRow(o);
 }
@@ -162,12 +291,15 @@ function rotuloEtapa(macro: MacroEtapa, sub: SubetapaFluxo | null): string {
 
 /** Entra na etapa (macro+subetapa), calcula prazo, grava histórico e notifica. */
 async function entrarEm(
-  o: Ocorrencia, macro: MacroEtapa, sub: SubetapaFluxo | null,
-  autor: Rec, acaoHistorico: string, comentario: string, anexos: AnexoOcorrencia[],
+  o: Ocorrencia,
+  macro: MacroEtapa,
+  sub: SubetapaFluxo | null,
+  autor: Rec,
+  acaoHistorico: string,
+  comentario: string,
+  anexos: AnexoOcorrencia[],
 ): Promise<void> {
-  const prazo = sub
-    ? calcularPrazoEtapa(sub.prazoDias)
-    : calcularPrazoEtapa(30); // macro sem subetapa: 30 dias padrão
+  const prazo = sub ? calcularPrazoEtapa(sub.prazoDias) : calcularPrazoEtapa(30); // macro sem subetapa: 30 dias padrão
   const patch: Rec = {
     macro_atual: macro,
     subetapa_atual_id: sub?.id ?? "",
@@ -183,44 +315,63 @@ async function entrarEm(
   if (error) throw traduzErro(error);
 
   await registrarHistorico(o.id, autor, {
-    acao: acaoHistorico, macro, subetapa: sub?.nome ?? "",
-    de: rotuloEtapa(o.macroAtual, null), para: rotuloEtapa(macro, sub),
-    comentario, anexos,
+    acao: acaoHistorico,
+    macro,
+    subetapa: sub?.nome ?? "",
+    de: rotuloEtapa(o.macroAtual, null),
+    para: rotuloEtapa(macro, sub),
+    comentario,
+    anexos,
   });
 
   if (sub?.notificar) {
     const email = sub.responsavel.email ?? "";
-    const alvo = email
-      ? [{ email, nome: sub.responsavel.nome || nomeDoEmail(email) }]
-      : [];
+    const alvo = email ? [{ email, nome: sub.responsavel.nome || nomeDoEmail(email) }] : [];
     // Solicitante acompanha a viagem do "metrô" (visão simplificada).
     alvo.push({ email: o.abertaPorEmail, nome: o.abertaPorNome });
-    await notificar(alvo.map((d) => ({
-      email: d.email,
-      nome: d.nome,
-      titulo: `Ocorrência ${o.numero} está em ${MACRO_ETAPA_LABELS[macro]}`,
-      mensagem: `${o.titulo} · etapa: ${rotuloEtapa(macro, sub)} · previsão: ${prazo ?? "sem prazo"}`,
-    })), autor);
+    await notificar(
+      alvo.map((d) => ({
+        email: d.email,
+        nome: d.nome,
+        titulo: `Ocorrência ${o.numero} está em ${MACRO_ETAPA_LABELS[macro]}`,
+        mensagem: `${o.titulo} · etapa: ${rotuloEtapa(macro, sub)} · previsão: ${prazo ?? "sem prazo"}`,
+      })),
+      autor,
+    );
   }
 }
 
 /** Encerra formalmente a ocorrência. */
 async function encerrar(o: Ocorrencia, autor: Rec, motivo: string): Promise<void> {
-  const { error } = await cloud().from("ocorrencias").update({
-    status: "encerrada", encerrada_em: new Date().toISOString(),
-    prazo_etapa: null,
-  }).eq("id", o.id);
+  const { error } = await cloud()
+    .from("ocorrencias")
+    .update({
+      status: "encerrada",
+      encerrada_em: new Date().toISOString(),
+      prazo_etapa: null,
+    })
+    .eq("id", o.id);
   if (error) throw traduzErro(error);
   await registrarHistorico(o.id, autor, {
-    acao: "Encerramento", macro: o.macroAtual, subetapa: o.subetapaAtualNome,
-    de: rotuloEtapa(o.macroAtual, null), para: "Encerrada",
-    comentario: motivo, anexos: [],
+    acao: "Encerramento",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: rotuloEtapa(o.macroAtual, null),
+    para: "Encerrada",
+    comentario: motivo,
+    anexos: [],
   });
-  await notificar([{
-    email: o.abertaPorEmail, nome: o.abertaPorNome,
-    titulo: `Ocorrência ${o.numero} foi encerrada`,
-    mensagem: `${o.titulo} · ${motivo}`,
-  }], autor).catch(() => undefined);
+  await notificar(
+    [
+      {
+        email: o.abertaPorEmail,
+        nome: o.abertaPorNome,
+        titulo: `Ocorrência ${o.numero} foi encerrada`,
+        mensagem: `${o.titulo} · ${motivo}`,
+      },
+    ],
+    autor,
+  ).catch(() => undefined);
 }
 
 export interface AcaoPayload {
@@ -235,7 +386,10 @@ export interface AcaoPayload {
  * `etapas` é o fluxo travado na ocorrência (versão fixa).
  */
 export async function agirNaOcorrencia(
-  o: Ocorrencia, etapas: MacroFluxo[], payload: AcaoPayload, sessao: UserSession | null,
+  o: Ocorrencia,
+  etapas: MacroFluxo[],
+  payload: AcaoPayload,
+  sessao: UserSession | null,
 ): Promise<Ocorrencia> {
   const autor = autorDe(sessao);
   const comentario = payload.comentario?.trim() ?? "";
@@ -246,8 +400,10 @@ export async function agirNaOcorrencia(
       ...o.respostas,
       [`__etapa_${o.macroAtual}_${o.subetapaAtualId}`]: payload.respostasEtapa,
     };
-    const { error } = await cloud().from("ocorrencias")
-      .update({ respostas: mescladas }).eq("id", o.id);
+    const { error } = await cloud()
+      .from("ocorrencias")
+      .update({ respostas: mescladas })
+      .eq("id", o.id);
     if (error) throw traduzErro(error);
     o = { ...o, respostas: mescladas };
   }
@@ -255,7 +411,9 @@ export async function agirNaOcorrencia(
   const macroAtual = o.macroAtual;
   const atual = subetapaDe(etapas, macroAtual, o.subetapaAtualId);
   const ordenadas = ordenarSubetapas(etapas);
-  const idx = ordenadas.findIndex((x) => x.macro === macroAtual && x.subetapa.id === (atual?.id ?? ""));
+  const idx = ordenadas.findIndex(
+    (x) => x.macro === macroAtual && x.subetapa.id === (atual?.id ?? ""),
+  );
   const proxima = idx >= 0 ? ordenadas[idx + 1] : undefined;
   const anterior = idx > 0 ? ordenadas[idx - 1] : undefined;
 
@@ -269,32 +427,69 @@ export async function agirNaOcorrencia(
     if (atual?.reprovarPara === "encerrar") {
       await encerrar(o, autor, comentario || "Reprovada na etapa.");
     } else if (anterior) {
-      await entrarEm(o, anterior.macro, anterior.subetapa, autor, "Reprovação (retorno)", comentario, anexos);
+      await entrarEm(
+        o,
+        anterior.macro,
+        anterior.subetapa,
+        autor,
+        "Reprovação (retorno)",
+        comentario,
+        anexos,
+      );
     } else {
       // Sem etapa anterior: volta para o solicitante ajustar (macro de abertura).
-      await entrarEm(o, "abertura", null, autor, "Reprovação (retorno ao solicitante)", comentario, anexos);
+      await entrarEm(
+        o,
+        "abertura",
+        null,
+        autor,
+        "Reprovação (retorno ao solicitante)",
+        comentario,
+        anexos,
+      );
     }
   } else if (payload.acao === "solicitar_info") {
     await registrarHistorico(o.id, autor, {
-      acao: ACOES_ETAPA_LABELS[payload.acao], macro: macroAtual, subetapa: atual?.nome ?? "",
-      de: "", para: o.abertaPorNome || "solicitante",
-      comentario, anexos,
+      acao: ACOES_ETAPA_LABELS[payload.acao],
+      macro: macroAtual,
+      subetapa: atual?.nome ?? "",
+      de: "",
+      para: o.abertaPorNome || "solicitante",
+      comentario,
+      anexos,
     });
-    await notificar([{
-      email: o.abertaPorEmail, nome: o.abertaPorNome,
-      titulo: `Informação solicitada na ocorrência ${o.numero}`,
-      mensagem: `${o.titulo} · ${comentario || "há pendências a esclarecer."}`,
-    }], autor).catch(() => undefined);
+    await notificar(
+      [
+        {
+          email: o.abertaPorEmail,
+          nome: o.abertaPorNome,
+          titulo: `Informação solicitada na ocorrência ${o.numero}`,
+          mensagem: `${o.titulo} · ${comentario || "há pendências a esclarecer."}`,
+        },
+      ],
+      autor,
+    ).catch(() => undefined);
   } else if (payload.acao === "escalar") {
     await registrarHistorico(o.id, autor, {
-      acao: "Escalado para a Qualidade", macro: macroAtual, subetapa: atual?.nome ?? "",
-      de: "", para: "Qualidade", comentario, anexos,
+      acao: "Escalado para a Qualidade",
+      macro: macroAtual,
+      subetapa: atual?.nome ?? "",
+      de: "",
+      para: "Qualidade",
+      comentario,
+      anexos,
     });
-    await notificar([{
-      email: o.abertaPorEmail, nome: o.abertaPorNome,
-      titulo: `Ocorrência ${o.numero} foi escalada`,
-      mensagem: `${o.titulo} · ${comentario || "requer atenção da Qualidade."}`,
-    }], autor).catch(() => undefined);
+    await notificar(
+      [
+        {
+          email: o.abertaPorEmail,
+          nome: o.abertaPorNome,
+          titulo: `Ocorrência ${o.numero} foi escalada`,
+          mensagem: `${o.titulo} · ${comentario || "requer atenção da Qualidade."}`,
+        },
+      ],
+      autor,
+    ).catch(() => undefined);
   }
 
   const lista = await listarOcorrencias();
@@ -303,8 +498,12 @@ export async function agirNaOcorrencia(
 
 /** Movimentação manual (Qualidade): joga a ocorrência numa etapa específica. */
 export async function moverPara(
-  o: Ocorrencia, etapas: MacroFluxo[], macro: MacroEtapa, subetapaId: string,
-  sessao: UserSession | null, comentario = "",
+  o: Ocorrencia,
+  etapas: MacroFluxo[],
+  macro: MacroEtapa,
+  subetapaId: string,
+  sessao: UserSession | null,
+  comentario = "",
 ): Promise<void> {
   const sub = subetapaDe(etapas, macro, subetapaId);
   await entrarEm(o, macro, sub, autorDe(sessao), "Movimentação manual", comentario, []);
@@ -312,18 +511,73 @@ export async function moverPara(
 
 /** Comentário/anexo na ocorrência (timeline do histórico). */
 export async function comentarOcorrencia(
-  o: Ocorrencia, texto: string, anexos: AnexoOcorrencia[], sessao: UserSession | null,
+  o: Ocorrencia,
+  texto: string,
+  anexos: AnexoOcorrencia[],
+  sessao: UserSession | null,
 ): Promise<void> {
   const autor = autorDe(sessao);
   await registrarHistorico(o.id, autor, {
-    acao: "Comentário", macro: o.macroAtual, subetapa: o.subetapaAtualNome,
-    de: "", para: "", comentario: texto, anexos,
+    acao: "Comentário",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: "",
+    comentario: texto,
+    anexos,
   });
-  await notificar([{
-    email: o.abertaPorEmail, nome: o.abertaPorNome,
-    titulo: `Novo comentário na ocorrência ${o.numero}`,
-    mensagem: texto || "Anexo adicionado.",
-  }], autor).catch(() => undefined);
+  await notificar(
+    [
+      {
+        email: o.abertaPorEmail,
+        nome: o.abertaPorNome,
+        titulo: `Novo comentário na ocorrência ${o.numero}`,
+        mensagem: texto || "Anexo adicionado.",
+      },
+    ],
+    autor,
+  ).catch(() => undefined);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Julgamento (procedência)                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Registra a decisão do julgamento: procedente ou não-procedente. Essa é a
+ * informação que o solicitante acompanha em tempo real junto ao status.
+ */
+export async function decidirProcedencia(
+  o: Ocorrencia,
+  procedencia: Exclude<ProcedenciaOcorrencia, "pendente">,
+  comentario: string,
+  sessao: UserSession | null,
+): Promise<void> {
+  const autor = autorDe(sessao);
+  const { error } = await cloud().from("ocorrencias").update({ procedencia }).eq("id", o.id);
+  if (error) throw traduzErro(error);
+
+  await registrarHistorico(o.id, autor, {
+    acao: "Julgamento: " + PROCEDENCIA_LABELS[procedencia],
+    macro: "julgamento",
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: PROCEDENCIA_LABELS[procedencia],
+    comentario,
+    anexos: [],
+  });
+
+  await notificar(
+    [
+      {
+        email: o.abertaPorEmail,
+        nome: o.abertaPorNome,
+        titulo: `Julgamento da ocorrência ${o.numero}`,
+        mensagem: `Sua não conformidade foi considerada ${PROCEDENCIA_LABELS[procedencia].toLowerCase()} (${o.titulo}).`,
+      },
+    ],
+    autor,
+  ).catch(() => undefined);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -341,38 +595,59 @@ export interface AvaliacaoInput {
  * macro-etapa de Apuração (conta como reincidência) e avisa os envolvidos.
  */
 export async function avaliarEficacia(
-  o: Ocorrencia, etapas: MacroFluxo[], input: AvaliacaoInput, sessao: UserSession | null,
+  o: Ocorrencia,
+  etapas: MacroFluxo[],
+  input: AvaliacaoInput,
+  sessao: UserSession | null,
 ): Promise<void> {
   const autor = autorDe(sessao);
   const verificacaoEm = calcularPrazoEtapa(input.prazoDias);
-  const { error } = await cloud().from("ocorrencias").update({
-    avaliacao: {
-      prazoDias: input.prazoDias, verificacaoEm,
-      eficaz: input.eficaz, observacao: input.observacao,
-    },
-  }).eq("id", o.id);
+  const { error } = await cloud()
+    .from("ocorrencias")
+    .update({
+      avaliacao: {
+        prazoDias: input.prazoDias,
+        verificacaoEm,
+        eficaz: input.eficaz,
+        observacao: input.observacao,
+      },
+    })
+    .eq("id", o.id);
   if (error) throw traduzErro(error);
 
   await registrarHistorico(o.id, autor, {
     acao: input.eficaz ? "Avaliação de eficácia: eficaz" : "Avaliação de eficácia: INEFICAZ",
-    macro: "avaliacao_eficacia", subetapa: "", de: "",
+    macro: "avaliacao_eficacia",
+    subetapa: "",
+    de: "",
     para: input.eficaz ? "Mantida encerrada" : "Reaberta",
-    comentario: input.observacao, anexos: [],
+    comentario: input.observacao,
+    anexos: [],
   });
 
   if (input.eficaz) return;
 
   // Reabertura automática: volta para Apuração (nova rodada de tratativa).
-  const { error: erroReabrir } = await cloud().from("ocorrencias").update({
-    status: "reaberta",
-    reaberturas: o.reaberturas + 1,
-    encerrada_em: null,
-  }).eq("id", o.id);
+  const { error: erroReabrir } = await cloud()
+    .from("ocorrencias")
+    .update({
+      status: "reaberta",
+      reaberturas: o.reaberturas + 1,
+      encerrada_em: null,
+    })
+    .eq("id", o.id);
   if (erroReabrir) throw traduzErro(erroReabrir);
   const base: Ocorrencia = { ...o, reaberturas: o.reaberturas + 1, status: "reaberta" };
   const apuracao = etapas.find((e) => e.macro === "apuracao");
-  await entrarEm(base, "apuracao", apuracao?.subetapas[0] ?? null, autor,
-    "Reabertura por ineficácia", input.observacao || "Ação não resolveu o problema.", []);
+  await entrarEm(
+    base,
+    "apuracao",
+    apuracao?.subetapas[0] ?? null,
+    autor,
+    "Reabertura por ineficácia",
+    input.observacao || "Ação não resolveu o problema.",
+    [],
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -381,23 +656,26 @@ export async function avaliarEficacia(
 
 const BUCKET = "pop-anexos";
 
-export async function enviarAnexo(
-  ocorrenciaId: string, arquivo: File,
-): Promise<AnexoOcorrencia> {
+export async function enviarAnexo(ocorrenciaId: string, arquivo: File): Promise<AnexoOcorrencia> {
   const extensao = arquivo.name.includes(".") ? arquivo.name.split(".").pop() : "bin";
   const caminho = `ocorrencias/${ocorrenciaId}/${Date.now()}.${(extensao ?? "bin").toLowerCase()}`;
   const { error } = await cloud().storage.from(BUCKET).upload(caminho, arquivo, {
-    contentType: arquivo.type, upsert: false,
+    contentType: arquivo.type,
+    upsert: false,
   });
   if (error) throw traduzErro(error);
   return {
-    nome: arquivo.name, caminho,
-    tipo: arquivo.type, tamanho: arquivo.size,
+    nome: arquivo.name,
+    caminho,
+    tipo: arquivo.type,
+    tamanho: arquivo.size,
   };
 }
 
 export async function urlAssinada(caminho: string): Promise<string> {
-  const { data, error } = await cloud().storage.from(BUCKET).createSignedUrl(caminho, 60 * 5);
+  const { data, error } = await cloud()
+    .storage.from(BUCKET)
+    .createSignedUrl(caminho, 60 * 5);
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível abrir o anexo.");
   return data.signedUrl;

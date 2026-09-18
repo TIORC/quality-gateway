@@ -1,15 +1,32 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, GripVertical, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
-  TIPOS_CAMPO, TIPO_CAMPO_LABELS, idCurto,
-  type CampoFormulario, type Respostas, type TipoCampo,
+  TIPOS_CAMPO,
+  TIPO_CAMPO_LABELS,
+  idCurto,
+  type CampoFormulario,
+  type Respostas,
+  type TipoCampo,
 } from "@/lib/ocorrencias";
 
 export interface FormBuilderProps {
@@ -17,6 +34,10 @@ export interface FormBuilderProps {
   onChangeCampos: (campos: CampoFormulario[]) => void;
   onPublicar: () => Promise<void> | void;
   publicando?: boolean;
+  /** Rótulo do botão principal (ex.: "Salvar campos da etapa" fora do contexto de publicação). */
+  salvarLabel?: string;
+  /** Texto de apoio sob o botão principal. */
+  salvarDica?: string;
 }
 
 function campoBase(tipo: TipoCampo): CampoFormulario {
@@ -59,7 +80,9 @@ function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps)
           <textarea
             className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-[13px]"
             value={(campo.opcoes ?? []).join("\n")}
-            onChange={(e) => atualizar({ opcoes: e.target.value.split("\n").filter((l) => l.trim()) })}
+            onChange={(e) =>
+              atualizar({ opcoes: e.target.value.split("\n").filter((l) => l.trim()) })
+            }
           />
         </div>
       )}
@@ -80,7 +103,9 @@ function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps)
           value={campo.largura ?? "inteira"}
           onValueChange={(v) => atualizar({ largura: v as "inteira" | "metade" })}
         >
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="inteira">Largura inteira</SelectItem>
             <SelectItem value="metade">Meia largura</SelectItem>
@@ -95,7 +120,9 @@ function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps)
             <Input
               type="number"
               value={campo.min ?? ""}
-              onChange={(e) => atualizar({ min: e.target.value === "" ? null : Number(e.target.value) })}
+              onChange={(e) =>
+                atualizar({ min: e.target.value === "" ? null : Number(e.target.value) })
+              }
             />
           </div>
           <div className="space-y-1.5">
@@ -103,7 +130,9 @@ function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps)
             <Input
               type="number"
               value={campo.max ?? ""}
-              onChange={(e) => atualizar({ max: e.target.value === "" ? null : Number(e.target.value) })}
+              onChange={(e) =>
+                atualizar({ max: e.target.value === "" ? null : Number(e.target.value) })
+              }
             />
           </div>
           <div className="col-span-2 space-y-1.5">
@@ -124,19 +153,21 @@ function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps)
           value={campo.condicao?.campoId ?? ""}
           onValueChange={(v) =>
             atualizar({
-              condicao: v
-                ? { campoId: v, valor: campo.condicao?.valor ?? "" }
-                : null,
+              condicao: v ? { campoId: v, valor: campo.condicao?.valor ?? "" } : null,
             })
           }
         >
-          <SelectTrigger><SelectValue placeholder="Sempre visível" /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue placeholder="Sempre visível" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value={""}>Sempre visível</SelectItem>
             {campos
               .filter((c) => c.id !== campo.id && (c.tipo === "select" || c.tipo === "checkbox"))
               .map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                <SelectItem key={c.id} value={c.id}>
+                  {c.label}
+                </SelectItem>
               ))}
           </SelectContent>
         </Select>
@@ -156,7 +187,14 @@ function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps)
   );
 }
 
-export function FormBuilder({ campos, onChangeCampos, onPublicar, publicando }: FormBuilderProps) {
+export function FormBuilder({
+  campos,
+  onChangeCampos,
+  onPublicar,
+  publicando,
+  salvarLabel,
+  salvarDica,
+}: FormBuilderProps) {
   const [selecionadoId, setSelected] = useState<string | null>(campos[0]?.id ?? null);
   const [preview, setPreview] = useState(false);
   const [respostasPreview, setRespostasPreview] = useState<Respostas>({});
@@ -220,7 +258,7 @@ export function FormBuilder({ campos, onChangeCampos, onPublicar, publicando }: 
           Adicionar campo
         </p>
         <div className="space-y-1.5">
-                    {TIPOS_CAMPO.map((tipo) => (
+          {TIPOS_CAMPO.map((tipo) => (
             <Button
               key={tipo}
               type="button"
@@ -261,7 +299,7 @@ export function FormBuilder({ campos, onChangeCampos, onPublicar, publicando }: 
           <p className="px-2 py-8 text-center text-[13px] text-[#94A3B8]">
             Nenhum campo. Escolha um tipo na paleta para começar.
           </p>
-                ) : (
+        ) : (
           <ul className="space-y-1.5">
             {campos.map((c, i) => (
               <li
@@ -285,20 +323,48 @@ export function FormBuilder({ campos, onChangeCampos, onPublicar, publicando }: 
                     {c.obrigatorio ? " · obrigatório" : ""}
                   </span>
                 </span>
-                <button type="button" aria-label="Subir" className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                  onClick={(e) => { e.stopPropagation(); mover(c.id, -1); }}>
+                <button
+                  type="button"
+                  aria-label="Subir"
+                  className="text-[#94A3B8] hover:text-[#1E3A8A]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    mover(c.id, -1);
+                  }}
+                >
                   <ChevronUp className="h-3.5 w-3.5" />
                 </button>
-                <button type="button" aria-label="Descer" className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                  onClick={(e) => { e.stopPropagation(); mover(c.id, 1); }}>
+                <button
+                  type="button"
+                  aria-label="Descer"
+                  className="text-[#94A3B8] hover:text-[#1E3A8A]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    mover(c.id, 1);
+                  }}
+                >
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
-                <button type="button" aria-label="Duplicar" className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                  onClick={(e) => { e.stopPropagation(); duplicar(c.id); }}>
+                <button
+                  type="button"
+                  aria-label="Duplicar"
+                  className="text-[#94A3B8] hover:text-[#1E3A8A]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    duplicar(c.id);
+                  }}
+                >
                   <Copy className="h-3.5 w-3.5" />
                 </button>
-                <button type="button" aria-label="Excluir" className="text-[#94A3B8] hover:text-[#E11D48]"
-                  onClick={(e) => { e.stopPropagation(); remover(c.id); }}>
+                <button
+                  type="button"
+                  aria-label="Excluir"
+                  className="text-[#94A3B8] hover:text-[#E11D48]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remover(c.id);
+                  }}
+                >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
                 <span className="text-[10px] text-[#CBD5E1]">{i + 1}</span>
@@ -318,9 +384,7 @@ export function FormBuilder({ campos, onChangeCampos, onPublicar, publicando }: 
             Selecione um campo na lista.
           </p>
         ) : (
-          <PropriedadesCampo
-            campo={selecionado} campos={campos} atualizar={atualizar}
-          />
+          <PropriedadesCampo campo={selecionado} campos={campos} atualizar={atualizar} />
         )}
 
         <Button
@@ -329,14 +393,13 @@ export function FormBuilder({ campos, onChangeCampos, onPublicar, publicando }: 
           disabled={publicando}
           onClick={() => void onPublicar()}
         >
-          {publicando ? "Publicando…" : "Publicar nova versão"}
+          {publicando ? "Salvando…" : (salvarLabel ?? "Publicar nova versão")}
         </Button>
         <p className="mt-2 text-[11px] text-[#94A3B8]">
-          Publicar cria uma nova versão — ocorrências já abertas continuam no formulário original.
+          {salvarDica ??
+            "Publicar cria uma nova versão — ocorrências já abertas continuam no formulário original."}
         </p>
       </div>
     </div>
   );
 }
-
-

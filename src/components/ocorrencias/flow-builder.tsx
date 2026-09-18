@@ -1,18 +1,40 @@
 /**
  * Flow Builder — canvas de subetapas dentro das macro-etapas fixas.
  */
-import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, TextCursorInput, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  ACOES_ETAPA, ACOES_ETAPA_LABELS, MACRO_ETAPAS, MACRO_ETAPA_LABELS, MACRO_ETAPA_DESCRICAO,
-  type AcaoEtapa, type MacroEtapa, type MacroFluxo,
-  type ResponsavelEtapa, type SubetapaFluxo, idCurto,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FormBuilder } from "@/components/ocorrencias/form-builder";
+import {
+  ACOES_ETAPA,
+  ACOES_ETAPA_LABELS,
+  MACRO_ETAPAS,
+  MACRO_ETAPA_LABELS,
+  MACRO_ETAPA_DESCRICAO,
+  type AcaoEtapa,
+  type CampoFormulario,
+  type MacroEtapa,
+  type MacroFluxo,
+  type ResponsavelEtapa,
+  type SubetapaFluxo,
+  idCurto,
 } from "@/lib/ocorrencias";
 
 export interface FlowBuilderProps {
@@ -34,16 +56,24 @@ function subetapaVazia(): SubetapaFluxo {
     acoes: ["aprovar", "reprovar", "solicitar_info"] as AcaoEtapa[],
     campos: [],
     notificar: true,
-        reprovarPara: "voltar",
+    reprovarPara: "voltar",
   };
 }
 
 export function FlowBuilder({
-  etapas, onChange, onPublicar, publicando, colaboradores, setores, cargos,
+  etapas,
+  onChange,
+  onPublicar,
+  publicando,
+  colaboradores,
+  setores,
+  cargos,
 }: FlowBuilderProps) {
-  function atualizarSubetapa(
-    macro: MacroEtapa, idx: number, patch: Partial<SubetapaFluxo>,
-  ) {
+  const [camposDialogo, setCamposDialogo] = useState<{ macro: MacroEtapa; idx: number } | null>(
+    null,
+  );
+
+  function atualizarSubetapa(macro: MacroEtapa, idx: number, patch: Partial<SubetapaFluxo>) {
     onChange(
       etapas.map((e) =>
         e.macro === macro
@@ -55,14 +85,16 @@ export function FlowBuilder({
 
   function adicionarSubetapa(macro: MacroEtapa) {
     const existente = etapas.find((e) => e.macro === macro);
-    const setorBase = existente?.subetapas[0]?.responsavel.tipo === "setor"
-      ? existente.subetapas[0].responsavel.nome
-      : "";
-    const nova = { ...subetapaVazia(), responsavel: { tipo: "setor" as const, id: "", nome: setorBase } };
+    const setorBase =
+      existente?.subetapas[0]?.responsavel.tipo === "setor"
+        ? existente.subetapas[0].responsavel.nome
+        : "";
+    const nova = {
+      ...subetapaVazia(),
+      responsavel: { tipo: "setor" as const, id: "", nome: setorBase },
+    };
     onChange(
-      etapas.map((e) =>
-        e.macro === macro ? { ...e, subetapas: [...e.subetapas, nova] } : e,
-      ),
+      etapas.map((e) => (e.macro === macro ? { ...e, subetapas: [...e.subetapas, nova] } : e)),
     );
   }
 
@@ -99,9 +131,16 @@ export function FlowBuilder({
                 >
                   <span className="text-[13px] font-bold">{MACRO_ETAPAS.indexOf(macro) + 1}</span>
                 </span>
-                <p className="text-[13px] font-semibold text-[#1F2937]">{MACRO_ETAPA_LABELS[macro]}</p>
+                <p className="text-[13px] font-semibold text-[#1F2937]">
+                  {MACRO_ETAPA_LABELS[macro]}
+                </p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => adicionarSubetapa(macro)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => adicionarSubetapa(macro)}
+              >
                 <Plus className="h-3.5 w-3.5" />
                 Subetapa
               </Button>
@@ -115,14 +154,46 @@ export function FlowBuilder({
               <ul className="mt-2 space-y-2">
                 {subs.map((s, i) => (
                   <li key={s.id} className="rounded-lg border border-[#E9EEF5] p-3">
-                    <SubetapaEditor s={s} macro={macro} onPatch={(p) => atualizarSubetapa(macro, i, p)} />
+                    <SubetapaEditor
+                      s={s}
+                      macro={macro}
+                      onPatch={(p) => atualizarSubetapa(macro, i, p)}
+                    />
                     <div className="mt-3 flex justify-end gap-1">
-                      <button type="button" aria-label="Subir" className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                        onClick={() => moverSubetapa(macro, i, -1)}><ChevronUp className="h-3.5 w-3.5" /></button>
-                      <button type="button" aria-label="Descer" className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                        onClick={() => moverSubetapa(macro, i, 1)}><ChevronDown className="h-3.5 w-3.5" /></button>
-                      <button type="button" aria-label="Excluir subetapa" className="text-[#94A3B8] hover:text-[#E11D48]"
-                        onClick={() => removerSubetapa(macro, i)}><Trash2 className="h-3.5 w-3.5" /></button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mr-auto"
+                        onClick={() => setCamposDialogo({ macro, idx: i })}
+                      >
+                        <TextCursorInput className="h-3.5 w-3.5" />
+                        Formulário da etapa ({s.campos.length})
+                      </Button>
+                      <button
+                        type="button"
+                        aria-label="Subir"
+                        className="text-[#94A3B8] hover:text-[#1E3A8A]"
+                        onClick={() => moverSubetapa(macro, i, -1)}
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Descer"
+                        className="text-[#94A3B8] hover:text-[#1E3A8A]"
+                        onClick={() => moverSubetapa(macro, i, 1)}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Excluir subetapa"
+                        className="text-[#94A3B8] hover:text-[#E11D48]"
+                        onClick={() => removerSubetapa(macro, i)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -132,16 +203,82 @@ export function FlowBuilder({
         );
       })}
       <div className="flex justify-end gap-2 border-t border-[#E9EEF5] pt-3">
-        <Button type="button" variant="outline" onClick={() => onChange(etapas.map((e) => ({ ...e, subetapas: [] })))}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onChange(etapas.map((e) => ({ ...e, subetapas: [] })))}
+        >
           Limpar subetapas
         </Button>
-        <Button type="button" className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" disabled={publicando}
-          onClick={() => void onPublicar()}>
+        <Button
+          type="button"
+          className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+          disabled={publicando}
+          onClick={() => void onPublicar()}
+        >
           {publicando ? "Publicando…" : "Publicar novo fluxo"}
         </Button>
       </div>
+
+      <SubetapaCamposDialog
+        aberto={camposDialogo !== null}
+        subetapa={
+          camposDialogo
+            ? (etapas.find((e) => e.macro === camposDialogo.macro)?.subetapas[camposDialogo.idx] ??
+              null)
+            : null
+        }
+        onFechar={() => setCamposDialogo(null)}
+        onSalvar={(campos) => {
+          if (camposDialogo) atualizarSubetapa(camposDialogo.macro, camposDialogo.idx, { campos });
+        }}
+      />
     </div>
-    );
+  );
+}
+
+function SubetapaCamposDialog({
+  aberto,
+  subetapa,
+  onFechar,
+  onSalvar,
+}: {
+  aberto: boolean;
+  subetapa: SubetapaFluxo | null;
+  onFechar: () => void;
+  onSalvar: (campos: CampoFormulario[]) => void;
+}) {
+  const [campos, setCampos] = useState<CampoFormulario[]>([]);
+
+  useEffect(() => {
+    if (aberto && subetapa) setCampos(subetapa.campos);
+  }, [aberto, subetapa]);
+
+  return (
+    <Dialog open={aberto} onOpenChange={(a) => !a && onFechar()}>
+      <DialogContent className="max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Formulário da etapa</DialogTitle>
+          <DialogDescription>
+            Campos preenchidos pelo responsável ao agir nesta subetapa. Salvo junto com o fluxo ao
+            publicar.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[65vh] overflow-y-auto pr-1">
+          <FormBuilder
+            campos={campos}
+            onChangeCampos={setCampos}
+            onPublicar={() => {
+              onSalvar(campos);
+              onFechar();
+            }}
+            salvarLabel="Salvar campos da etapa"
+            salvarDica="Faz parte do fluxo ainda não publicado deste tipo de ocorrência."
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 interface SubetapaEditorProps {
@@ -161,8 +298,12 @@ function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
         </div>
         <div className="grid w-32 items-end gap-1.5">
           <Label className="text-[12px]">SLA (dias)</Label>
-          <Input type="number" min={1} value={s.prazoDias}
-            onChange={(e) => onPatch({ prazoDias: Number(e.target.value) || 1 })} />
+          <Input
+            type="number"
+            min={1}
+            value={s.prazoDias}
+            onChange={(e) => onPatch({ prazoDias: Number(e.target.value) || 1 })}
+          />
         </div>
       </div>
 
@@ -173,11 +314,18 @@ function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
             value={s.responsavel.tipo}
             onValueChange={(v) =>
               onPatch({
-                responsavel: { ...s.responsavel, tipo: v as ResponsavelEtapa["tipo"], id: "", nome: "" },
+                responsavel: {
+                  ...s.responsavel,
+                  tipo: v as ResponsavelEtapa["tipo"],
+                  id: "",
+                  nome: "",
+                },
               })
             }
           >
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="pessoa">Pessoa (colaborador)</SelectItem>
               <SelectItem value="cargo">Cargo</SelectItem>
@@ -185,7 +333,13 @@ function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
             </SelectContent>
           </Select>
         </div>
-        <ResponsavelInput s={s} onPatch={onPatch} colaboradores={colaboradores} setores={setores} cargos={cargos} />
+        <ResponsavelInput
+          s={s}
+          onPatch={onPatch}
+          colaboradores={colaboradores}
+          setores={setores}
+          cargos={cargos}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 text-[12px]">
@@ -197,7 +351,7 @@ function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
               onCheckedChange={(v) => {
                 const acoes = s.acoes.includes(a)
                   ? s.acoes.filter((x) => x !== a)
-                  : [...s.acoes, a] as AcaoEtapa[];
+                  : ([...s.acoes, a] as AcaoEtapa[]);
                 onPatch({ acoes });
               }}
             />
@@ -212,7 +366,9 @@ function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
           value={s.reprovarPara}
           onValueChange={(v) => onPatch({ reprovarPara: v as SubetapaFluxo["reprovarPara"] })}
         >
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="voltar">Voltar para etapa anterior</SelectItem>
             <SelectItem value="encerrar">Encerrar ocorrência</SelectItem>
@@ -226,7 +382,7 @@ function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
           onCheckedChange={(v) => onPatch({ notificar: v === true })}
         />
         Notificar ao entrar nesta etapa
-            </label>
+      </label>
     </div>
   );
 }
@@ -241,9 +397,11 @@ interface ResponsavelInputProps {
 
 function ResponsavelInput({ s, onPatch, colaboradores, setores, cargos }: ResponsavelInputProps) {
   const labelNome =
-    s.responsavel.tipo === "pessoa" ? "Colaborador"
-    : s.responsavel.tipo === "cargo" ? "Cargo"
-    : "Setor";
+    s.responsavel.tipo === "pessoa"
+      ? "Colaborador"
+      : s.responsavel.tipo === "cargo"
+        ? "Cargo"
+        : "Setor";
   return (
     <div className="col-span-5 space-y-1.5">
       <Label className="text-[12px]">{labelNome}</Label>
@@ -253,14 +411,23 @@ function ResponsavelInput({ s, onPatch, colaboradores, setores, cargos }: Respon
           onValueChange={(v) => {
             const col = (colaboradores ?? []).find((c) => c.id === v);
             onPatch({
-              responsavel: { tipo: "pessoa", id: v, nome: col?.nome ?? "", email: col?.email ?? "" },
+              responsavel: {
+                tipo: "pessoa",
+                id: v,
+                nome: col?.nome ?? "",
+                email: col?.email ?? "",
+              },
             });
           }}
         >
-          <SelectTrigger><SelectValue placeholder="Selecionar colaborador…" /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue placeholder="Selecionar colaborador…" />
+          </SelectTrigger>
           <SelectContent>
             {(colaboradores ?? []).map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+              <SelectItem key={c.id} value={c.id}>
+                {c.nome}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -270,10 +437,14 @@ function ResponsavelInput({ s, onPatch, colaboradores, setores, cargos }: Respon
           value={s.responsavel.nome}
           onValueChange={(v) => onPatch({ responsavel: { tipo: "setor", id: "", nome: v } })}
         >
-          <SelectTrigger><SelectValue placeholder="Setor" /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue placeholder="Setor" />
+          </SelectTrigger>
           <SelectContent>
             {(setores ?? []).map((sg) => (
-              <SelectItem key={sg} value={sg}>{sg}</SelectItem>
+              <SelectItem key={sg} value={sg}>
+                {sg}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -283,10 +454,14 @@ function ResponsavelInput({ s, onPatch, colaboradores, setores, cargos }: Respon
           value={s.responsavel.nome}
           onValueChange={(v) => onPatch({ responsavel: { tipo: "cargo", id: "", nome: v } })}
         >
-          <SelectTrigger><SelectValue placeholder="Cargo" /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue placeholder="Cargo" />
+          </SelectTrigger>
           <SelectContent>
             {(cargos ?? []).map((cg) => (
-              <SelectItem key={cg} value={cg}>{cg}</SelectItem>
+              <SelectItem key={cg} value={cg}>
+                {cg}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -294,6 +469,3 @@ function ResponsavelInput({ s, onPatch, colaboradores, setores, cargos }: Respon
     </div>
   );
 }
-
-
-

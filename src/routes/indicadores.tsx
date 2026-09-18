@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, Plus } from "lucide-react";
+import { BarChart3, Plus, TrainFront, AlertTriangle } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { useAsync } from "@/hooks/use-async";
+import { listarOcorrencias, listarTipos } from "@/lib/ocorrencias-base";
+import { ocorrenciaAtrasada, type Ocorrencia, type TipoOcorrencia } from "@/lib/ocorrencias";
 import { podeGerenciarConteudo } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 
@@ -146,6 +149,7 @@ function Indicadores() {
           <TabsList>
             <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
             <TabsTrigger value="meu-setor">Meu setor</TabsTrigger>
+            <TabsTrigger value="ocorrencias">Ocorrências</TabsTrigger>
           </TabsList>
 
           <Select defaultValue="todos">
@@ -169,6 +173,10 @@ function Indicadores() {
 
         <TabsContent value="meu-setor">
           <ListaIndicadores onNovo={() => setNovoIndicador(true)} podeGerenciar={podeGerenciar} />
+        </TabsContent>
+
+        <TabsContent value="ocorrencias">
+          <OcorrenciasIndicadores />
         </TabsContent>
       </Tabs>
 
@@ -208,6 +216,150 @@ function ListaIndicadores({
           </Button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function Barra({
+  rotulo,
+  valor,
+  cor,
+  max,
+}: {
+  rotulo: string;
+  valor: number;
+  cor: string;
+  max: number;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-[12px]">
+        <span className="truncate text-[#334155]">{rotulo}</span>
+        <span className="font-semibold text-[#1F2937]">{valor}</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#EEF2F7]">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: max > 0 ? `${Math.max(4, (valor / max) * 100)}%` : "0%",
+            backgroundColor: cor,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OcorrenciasIndicadores() {
+  const ocorrencias = useAsync(listarOcorrencias, []);
+  const tipos = useAsync(listarTipos, []);
+
+  const lista = ocorrencias.data ?? [];
+  const porNomeCor = new Map<string, string>();
+  for (const t of tipos.data ?? []) porNomeCor.set(t.nome, t.cor);
+
+  const total = lista.length;
+  const emAndamento = lista.filter((o) => o.status !== "encerrada").length;
+  const encerradas = lista.filter((o) => o.status === "encerrada").length;
+  const reabertas = lista.filter((o) => o.reaberturas > 0).length;
+  const atrasadas = lista.filter((o) => ocorrenciaAtrasada(o)).length;
+  const noPrazo =
+    emAndamento > 0 ? Math.round(((emAndamento - atrasadas) / emAndamento) * 100) : 100;
+  const reincidencia = total > 0 ? Math.round((reabertas / total) * 100) : 0;
+
+  const porTipo = new Map<string, number>();
+  for (const o of lista) porTipo.set(o.tipoNome, (porTipo.get(o.tipoNome) ?? 0) + 1);
+  const tiposRecorrentes = [...porTipo.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const maxTipo = tiposRecorrentes[0]?.[1] ?? 0;
+
+  const barrasStatus = [
+    { rotulo: "Em andamento", valor: emAndamento, cor: "#1E3A8A" },
+    { rotulo: "Encerradas", valor: encerradas, cor: "#059669" },
+    { rotulo: "Reabertas", valor: reabertas, cor: "#D97706" },
+    { rotulo: "Atrasadas", valor: atrasadas, cor: "#E11D48" },
+  ];
+  const maxStatus = Math.max(...barrasStatus.map((b) => b.valor), 1);
+
+  if (ocorrencias.loading) {
+    return (
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-24 animate-pulse rounded-xl bg-[#F1F5F9]" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Ocorrências abertas"
+          value={String(total)}
+          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937]"
+          accent="#1E3A8A"
+          footer="desde o início da operação"
+        />
+        <SummaryCard
+          label="Em andamento"
+          value={String(emAndamento)}
+          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1E3A8A]"
+          accent="#1E3A8A"
+          footer={`${atrasadas} atrasada(s) na etapa atual`}
+        />
+        <SummaryCard
+          label="No prazo"
+          value={`${noPrazo}%`}
+          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#059669]"
+          accent="#059669"
+          footer="entre as ocorrências em andamento"
+        />
+        <SummaryCard
+          label="Reincidência"
+          value={`${reincidencia}%`}
+          valueClass={`mt-3 text-[30px] font-semibold leading-none ${
+            reincidencia > 0 ? "text-[#D97706]" : "text-[#059669]"
+          }`}
+          accent={reincidencia > 0 ? "#D97706" : "#059669"}
+          footer={`${reabertas} reaberta(s) por ineficácia`}
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+          <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+            <TrainFront className="h-4 w-4" />
+            Linha do metrô — situação
+          </h3>
+          <div className="mt-3 space-y-3">
+            {barrasStatus.map((b) => (
+              <Barra key={b.rotulo} rotulo={b.rotulo} valor={b.valor} cor={b.cor} max={maxStatus} />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+          <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+            <AlertTriangle className="h-4 w-4" />
+            Tipos mais recorrentes
+          </h3>
+          {tiposRecorrentes.length === 0 ? (
+            <p className="mt-3 text-[13px] text-[#94A3B8]">Nenhuma ocorrência registrada ainda.</p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {tiposRecorrentes.map(([nome, qtd]) => (
+                <Barra
+                  key={nome}
+                  rotulo={nome}
+                  valor={qtd}
+                  max={maxTipo}
+                  cor={porNomeCor.get(nome) ?? "#1E3A8A"}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

@@ -9,9 +9,22 @@
 import { exigirCloud } from "@/integrations/supabase/client";
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
 import type {
-  AnexoOcorrencia, AcaoEtapa, CampoFormulario, EventoOcorrencia, FluxoVersao,
-  FormularioVersao, MacroEtapa, MacroFluxo, Ocorrencia, ResponsavelEtapa,
-  ResponsavelTipo, Respostas, StatusOcorrencia, SubetapaFluxo, TipoCampo, TipoOcorrencia,
+  AnexoOcorrencia,
+  AcaoEtapa,
+  CampoFormulario,
+  EventoOcorrencia,
+  FluxoVersao,
+  FormularioVersao,
+  MacroEtapa,
+  MacroFluxo,
+  Ocorrencia,
+  ResponsavelEtapa,
+  ResponsavelTipo,
+  Respostas,
+  StatusOcorrencia,
+  SubetapaFluxo,
+  TipoCampo,
+  TipoOcorrencia,
 } from "@/lib/ocorrencias";
 import { MACRO_ETAPAS } from "@/lib/ocorrencias";
 
@@ -28,7 +41,8 @@ export function cloud(): CloudLivre {
 
 export type Linha = Record<string, unknown>;
 export const str = (v: unknown, p = ""): string => (typeof v === "string" ? v : p);
-export const num = (v: unknown, p = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : p);
+export const num = (v: unknown, p = 0): number =>
+  typeof v === "number" && Number.isFinite(v) ? v : p;
 
 /* -------------------------------------------------------------------------- */
 /* Tipos de ocorrência                                                         */
@@ -58,8 +72,10 @@ export function tipoDoRow(row: Linha): TipoOcorrencia {
 
 export async function listarTipos(): Promise<TipoOcorrencia[]> {
   try {
-    const { data, error } = await cloud().from("ocorrencia_tipos")
-      .select("*").order("ordem", { ascending: true });
+    const { data, error } = await cloud()
+      .from("ocorrencia_tipos")
+      .select("*")
+      .order("ordem", { ascending: true });
     if (error) {
       if (tabelaAusente(error)) return [];
       throw traduzErro(error);
@@ -71,7 +87,9 @@ export async function listarTipos(): Promise<TipoOcorrencia[]> {
   }
 }
 
-export async function salvarTipo(tipo: Partial<TipoOcorrencia> & { nome: string }): Promise<TipoOcorrencia> {
+export async function salvarTipo(
+  tipo: Partial<TipoOcorrencia> & { nome: string },
+): Promise<TipoOcorrencia> {
   const payload: Linha = {
     nome: tipo.nome,
     descricao: tipo.descricao ?? "",
@@ -100,21 +118,25 @@ function camposDeJson(v: unknown): CampoFormulario[] {
     const id = str(o["id"]);
     if (!id) return [];
     const cond = o["condicao"] as Linha | null | undefined;
-    return [{
-      id,
-      tipo: str(o["tipo"], "texto") as TipoCampo,
-      label: str(o["label"], id),
-      placeholder: str(o["placeholder"]),
-      obrigatorio: Boolean(o["obrigatorio"]),
-      opcoes: Array.isArray(o["opcoes"]) ? (o["opcoes"] as string[]) : [],
-      regex: str(o["regex"]),
-      min: typeof o["min"] === "number" ? (o["min"] as number) : null,
-      max: typeof o["max"] === "number" ? (o["max"] as number) : null,
-      largura: str(o["largura"], "inteira") === "metade" ? ("metade" as const) : ("inteira" as const),
-      condicao: cond && str(cond["campoId"])
-        ? { campoId: str(cond["campoId"]), valor: str(cond["valor"]) }
-        : null,
-    }] satisfies CampoFormulario[];
+    return [
+      {
+        id,
+        tipo: str(o["tipo"], "texto") as TipoCampo,
+        label: str(o["label"], id),
+        placeholder: str(o["placeholder"]),
+        obrigatorio: Boolean(o["obrigatorio"]),
+        opcoes: Array.isArray(o["opcoes"]) ? (o["opcoes"] as string[]) : [],
+        regex: str(o["regex"]),
+        min: typeof o["min"] === "number" ? (o["min"] as number) : null,
+        max: typeof o["max"] === "number" ? (o["max"] as number) : null,
+        largura:
+          str(o["largura"], "inteira") === "metade" ? ("metade" as const) : ("inteira" as const),
+        condicao:
+          cond && str(cond["campoId"])
+            ? { campoId: str(cond["campoId"]), valor: str(cond["valor"]) }
+            : null,
+      },
+    ] satisfies CampoFormulario[];
   });
 }
 
@@ -147,18 +169,20 @@ export function fluxoDoRow(row: Linha): FluxoVersao {
         nome: str(respRaw["nome"]),
         email: str(respRaw["email"]),
       };
-      return [{
-        id,
-        nome: str(o["nome"], id),
-        responsavel,
-        prazoDias: num(o["prazoDias"], 5),
-        acoes: (Array.isArray(o["acoes"]) ? o["acoes"] : []).filter(
-          (a): a is AcaoEtapa => typeof a === "string",
-        ) as AcaoEtapa[],
-        campos: camposDeJson(o["campos"]),
-        notificar: o["notificar"] === undefined ? true : Boolean(o["notificar"]),
-        reprovarPara: str(o["reprovarPara"], "voltar") === "encerrar" ? "encerrar" : "voltar",
-      }] satisfies SubetapaFluxo[];
+      return [
+        {
+          id,
+          nome: str(o["nome"], id),
+          responsavel,
+          prazoDias: num(o["prazoDias"], 5),
+          acoes: (Array.isArray(o["acoes"]) ? o["acoes"] : []).filter(
+            (a): a is AcaoEtapa => typeof a === "string",
+          ) as AcaoEtapa[],
+          campos: camposDeJson(o["campos"]),
+          notificar: o["notificar"] === undefined ? true : Boolean(o["notificar"]),
+          reprovarPara: str(o["reprovarPara"], "voltar") === "encerrar" ? "encerrar" : "voltar",
+        },
+      ] satisfies SubetapaFluxo[];
     });
     return { macro: macro as MacroEtapa, subetapas };
   });
@@ -180,8 +204,10 @@ async function listarVersoes<T>(
   doRow: (r: Linha) => T,
 ): Promise<T[]> {
   try {
-    const { data, error } = await cloud().from(tabela)
-      .select("*").eq("tipo_id", tipoId)
+    const { data, error } = await cloud()
+      .from(tabela)
+      .select("*")
+      .eq("tipo_id", tipoId)
       .order("versao", { ascending: true });
     if (error) {
       if (tabelaAusente(error)) return [];
@@ -204,32 +230,48 @@ export function listarFluxos(tipoId: string): Promise<FluxoVersao[]> {
 
 /** Publica nova versão do formulário do tipo (versões anteriores preservadas). */
 export async function publicarFormulario(
-  tipoId: string, campos: CampoFormulario[], sessao: { nome: string; email: string },
+  tipoId: string,
+  campos: CampoFormulario[],
+  sessao: { nome: string; email: string },
 ): Promise<FormularioVersao> {
   const existentes = await listarFormularios(tipoId);
   const versao = existentes.reduce((m, f) => Math.max(m, f.versao), 0) + 1;
-  const { data, error } = await cloud().from("ocorrencia_formularios")
+  const { data, error } = await cloud()
+    .from("ocorrencia_formularios")
     .insert({
-      tipo_id: tipoId, versao, campos, publicada: true,
-      criado_por_nome: sessao.nome, criado_por_email: sessao.email,
+      tipo_id: tipoId,
+      versao,
+      campos,
+      publicada: true,
+      criado_por_nome: sessao.nome,
+      criado_por_email: sessao.email,
     })
-    .select("*").single();
+    .select("*")
+    .single();
   if (error) throw traduzErro(error);
   return formularioDoRow(data as Linha);
 }
 
 /** Publica nova versão do fluxo do tipo. */
 export async function publicarFluxo(
-  tipoId: string, etapas: MacroFluxo[], sessao: { nome: string; email: string },
+  tipoId: string,
+  etapas: MacroFluxo[],
+  sessao: { nome: string; email: string },
 ): Promise<FluxoVersao> {
   const existentes = await listarFluxos(tipoId);
   const versao = existentes.reduce((m, f) => Math.max(m, f.versao), 0) + 1;
-  const { data, error } = await cloud().from("ocorrencia_fluxos")
+  const { data, error } = await cloud()
+    .from("ocorrencia_fluxos")
     .insert({
-      tipo_id: tipoId, versao, etapas, publicada: true,
-      criado_por_nome: sessao.nome, criado_por_email: sessao.email,
+      tipo_id: tipoId,
+      versao,
+      etapas,
+      publicada: true,
+      criado_por_nome: sessao.nome,
+      criado_por_email: sessao.email,
     })
-    .select("*").single();
+    .select("*")
+    .single();
   if (error) throw traduzErro(error);
   return fluxoDoRow(data as Linha);
 }
@@ -244,8 +286,8 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
     : "abertura";
   const status = str(row["status"], "em_andamento") as StatusOcorrencia;
   const avaliacaoRaw = row["avaliacao"] as Linha | null;
-  const respostas = (row["respostas"] && typeof row["respostas"] === "object"
-    ? (row["respostas"] as Respostas) : {});
+  const respostas =
+    row["respostas"] && typeof row["respostas"] === "object" ? (row["respostas"] as Respostas) : {};
   return {
     id: str(row["id"]),
     numero: str(row["numero"]),
@@ -253,6 +295,7 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
     tipoId: str(row["tipo_id"]),
     tipoNome: str(row["tipo_nome"]),
     tipoCor: str(row["tipo_cor"], "#1E3A8A"),
+    procedencia: (str(row["procedencia"], "pendente") as Ocorrencia["procedencia"]) || "pendente",
     formularioVersao: num(row["formulario_versao"], 1),
     fluxoVersao: num(row["fluxo_versao"], 1),
     respostas,
@@ -273,7 +316,10 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
       ? {
           prazoDias: num(avaliacaoRaw["prazoDias"], 30),
           verificacaoEm: str(avaliacaoRaw["verificacaoEm"]) || null,
-          eficaz: typeof avaliacaoRaw["eficaz"] === "boolean" ? (avaliacaoRaw["eficaz"] as boolean) : null,
+          eficaz:
+            typeof avaliacaoRaw["eficaz"] === "boolean"
+              ? (avaliacaoRaw["eficaz"] as boolean)
+              : null,
           observacao: str(avaliacaoRaw["observacao"]),
         }
       : null,
@@ -286,8 +332,10 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
 
 export async function listarOcorrencias(): Promise<Ocorrencia[]> {
   try {
-    const { data, error } = await cloud().from("ocorrencias")
-      .select("*").order("created_at", { ascending: false });
+    const { data, error } = await cloud()
+      .from("ocorrencias")
+      .select("*")
+      .order("created_at", { ascending: false });
     if (error) {
       if (tabelaAusente(error)) return [];
       throw traduzErro(error);
@@ -300,9 +348,17 @@ export async function listarOcorrencias(): Promise<Ocorrencia[]> {
 }
 
 export interface EventoLinha {
-  ocorrencia_id: string; autor_id: string; autor_nome: string; autor_email: string;
-  acao: string; macro: string; subetapa: string; de: string; para: string;
-  comentario: string; anexos: AnexoOcorrencia[];
+  ocorrencia_id: string;
+  autor_id: string;
+  autor_nome: string;
+  autor_email: string;
+  acao: string;
+  macro: string;
+  subetapa: string;
+  de: string;
+  para: string;
+  comentario: string;
+  anexos: AnexoOcorrencia[];
 }
 
 export function eventoDoRow(row: Linha): EventoOcorrencia {
@@ -325,8 +381,10 @@ export function eventoDoRow(row: Linha): EventoOcorrencia {
 
 export async function listarHistorico(ocorrenciaId: string): Promise<EventoOcorrencia[]> {
   try {
-    const { data, error } = await cloud().from("ocorrencia_historico")
-      .select("*").eq("ocorrencia_id", ocorrenciaId)
+    const { data, error } = await cloud()
+      .from("ocorrencia_historico")
+      .select("*")
+      .eq("ocorrencia_id", ocorrenciaId)
       .order("created_at", { ascending: true });
     if (error) {
       if (tabelaAusente(error)) return [];

@@ -47,6 +47,14 @@ create table if not exists public.ocorrencia_fluxos (
   versao integer not null default 1,
   etapas jsonb not null default '[]'::jsonb,
   publicada boolean not null default true,
+  criado_por_nome text not null default '',
+  criado_por_email text not null default '',
+  created_at timestamptz not null default now(),
+  unique (tipo_id, versao)
+);
+comment on table public.ocorrencia_fluxos is 'Versões do fluxo: subetapas por macro-etapa, responsáveis, prazos e regras.';
+comment on column public.ocorrencia_fluxos.etapas is 'Array [{macro, subetapas:[{id,nome,responsavel,prazoDias,acoes,campos,notificar,reprovarPara}]}]';
+
 -- Ocorrências ---------------------------------------------------------------
 create table if not exists public.ocorrencias (
   id uuid primary key default gen_random_uuid(),
@@ -63,6 +71,8 @@ create table if not exists public.ocorrencias (
   subetapa_atual_nome text not null default '',
   status text not null default 'em_andamento'
     check (status in ('em_andamento', 'encerrada', 'reaberta')),
+  procedencia text not null default 'pendente'
+    check (procedencia in ('pendente', 'procedente', 'nao_procedente')),
   aberta_por_id text not null default '',
   aberta_por_nome text not null default '',
   aberta_por_email text not null default '',
@@ -82,18 +92,11 @@ comment on table public.ocorrencias is 'Ocorrências: tratativa com fluxo em mac
 comment on column public.ocorrencias.respostas is 'Respostas do formulário de abertura na versão usada.';
 comment on column public.ocorrencias.avaliacao is 'Avaliação de eficácia: {prazoDias, verificacaoEm, eficaz, observacao}';
 comment on column public.ocorrencias.macro_atual is 'abertura|apuracao|julgamento|comunicacao|fechamento|avaliacao_eficacia';
+comment on column public.ocorrencias.procedencia is 'Resultado do julgamento: pendente|procedente|nao_procedente (visível ao solicitante).';
 
 create index if not exists ocorrencias_status_idx on public.ocorrencias (status);
 create index if not exists ocorrencias_tipo_idx on public.ocorrencias (tipo_id);
 create index if not exists ocorrencias_aberta_por_idx on public.ocorrencias (aberta_por_email);
-
-  criado_por_nome text not null default '',
-  criado_por_email text not null default '',
-  created_at timestamptz not null default now(),
-  unique (tipo_id, versao)
-);
-comment on table public.ocorrencia_fluxos is 'Versões do fluxo: subetapas por macro-etapa, responsáveis, prazos e regras.';
-comment on column public.ocorrencia_fluxos.etapas is 'Array [{macro, subetapas:[{id,nome,responsavel,prazoDias,acoes,campos,notificar,reprovarPara}]}]';
 
 -- Histórico imutável (auditoria, comentários e anexos por etapa) ------------
 create table if not exists public.ocorrencia_historico (

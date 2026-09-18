@@ -5,7 +5,39 @@
  * Comunicação → Fechamento → Avaliação de Eficácia. Dentro de cada macro-etapa
  * o tipo de ocorrência pode ter subetapas próprias (fluxo customizado).
  */
+import {
+  AlertTriangle,
+  FileWarning,
+  Flame,
+  GitBranch,
+  HardHat,
+  MessageSquareWarning,
+  OctagonAlert,
+  PackageX,
+  ShieldAlert,
+  UserX,
+  type LucideIcon,
+} from "lucide-react";
 import { hojeISO } from "@/lib/planos";
+
+/** Ícones disponíveis para tipos de ocorrência (string → componente lucide). */
+export const ICONES_OCORRENCIA: Record<string, LucideIcon> = {
+  AlertTriangle,
+  MessageSquareWarning,
+  OctagonAlert,
+  GitBranch,
+  HardHat,
+  ShieldAlert,
+  FileWarning,
+  PackageX,
+  Flame,
+  UserX,
+};
+
+/** Resolve o componente do ícone informado (fallback: AlertTriangle). */
+export function iconeTipoOcorrencia(nome: string | null | undefined): LucideIcon {
+  return ICONES_OCORRENCIA[nome ?? ""] ?? AlertTriangle;
+}
 
 export const MACRO_ETAPAS = [
   "abertura",
@@ -37,17 +69,21 @@ export const MACRO_ETAPA_DESCRICAO: Record<MacroEtapa, string> = {
     "Verificação posterior (30/60/90 dias) se a ação resolveu o problema. Reabre automática se ineficaz.",
 };
 
-export const MACRO_ETAPA_ORDEM: MacroEtapa[] = [
-  "abertura", "apuracao", "julgamento", "comunicacao", "fechamento", "avaliacao_eficacia",
-];
-export const MACRO_ETAPAS = MACRO_ETAPA_ORDEM;
-
 export type StatusOcorrencia = "em_andamento" | "encerrada" | "reaberta";
 
 export const STATUS_OCORRENCIA_LABELS: Record<StatusOcorrencia, string> = {
   em_andamento: "Em andamento",
   encerrada: "Encerrada",
   reaberta: "Reaberta",
+};
+
+/** Resultado do julgamento da ocorrência (visível ao solicitante). */
+export type ProcedenciaOcorrencia = "pendente" | "procedente" | "nao_procedente";
+
+export const PROCEDENCIA_LABELS: Record<ProcedenciaOcorrencia, string> = {
+  pendente: "Em análise",
+  procedente: "Procedente",
+  nao_procedente: "Não-procedente",
 };
 
 /** Ações permitidas em uma etapa. */
@@ -157,16 +193,21 @@ export function fluxoDefault(tipo: TipoOcorrencia): MacroFluxo[] {
   // herdando o SLA configurado no tipo.
   return MACRO_ETAPAS.map((macro) => ({
     macro,
-    subetapas: [{
-      id: `${macro}-padrao`,
-      nome: MACRO_ETAPA_LABELS[macro],
-      responsavel: { tipo: "setor" as const, id: "", nome: tipo.setorPadrao },
-      prazoDias: tipo.slaDias[macro] ?? 5,
-      acoes: macro === "abertura" ? (["aprovar"] as AcaoEtapa[]) : (["aprovar", "reprovar", "solicitar_info"] as AcaoEtapa[]),
-      campos: [],
-      notificar: true,
-      reprovarPara: "voltar" as const,
-    }],
+    subetapas: [
+      {
+        id: `${macro}-padrao`,
+        nome: MACRO_ETAPA_LABELS[macro],
+        responsavel: { tipo: "setor" as const, id: "", nome: tipo.setorPadrao },
+        prazoDias: tipo.slaDias[macro] ?? 5,
+        acoes:
+          macro === "abertura"
+            ? (["aprovar"] as AcaoEtapa[])
+            : (["aprovar", "reprovar", "solicitar_info"] as AcaoEtapa[]),
+        campos: [],
+        notificar: true,
+        reprovarPara: "voltar" as const,
+      },
+    ],
   }));
 }
 
@@ -202,6 +243,7 @@ export interface Ocorrencia {
   tipoId: string;
   tipoNome: string;
   tipoCor: string;
+  procedencia: ProcedenciaOcorrencia;
   formularioVersao: number;
   fluxoVersao: number;
   respostas: Respostas;
@@ -329,7 +371,9 @@ export function rotuloRelativoPrazo(prazo: string | null): string {
 }
 
 /** Subetapas "achatadas" na ordem do fluxo (para navegar de/para). */
-export function ordenarSubetapas(etapas: MacroFluxo[]): { macro: MacroEtapa; subetapa: SubetapaFluxo }[] {
+export function ordenarSubetapas(
+  etapas: MacroFluxo[],
+): { macro: MacroEtapa; subetapa: SubetapaFluxo }[] {
   const lista: { macro: MacroEtapa; subetapa: SubetapaFluxo }[] = [];
   for (const e of etapas) {
     for (const s of e.subetapas) lista.push({ macro: e.macro, subetapa: s });
@@ -360,7 +404,9 @@ export function textoResposta(v: unknown): string {
   if (Array.isArray(v)) {
     if (v.length === 0) return "—";
     return v
-      .map((i) => (typeof i === "object" && i && "nome" in i ? String((i as AnexoOcorrencia).nome) : String(i)))
+      .map((i) =>
+        typeof i === "object" && i && "nome" in i ? String((i as AnexoOcorrencia).nome) : String(i),
+      )
       .join(", ");
   }
   if (typeof v === "object") {
