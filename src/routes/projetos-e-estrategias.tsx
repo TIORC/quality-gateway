@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FolderKanban, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { PanelShell } from "@/components/panel-shell";
+import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { podeGerenciarConteudo } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 
@@ -37,6 +38,8 @@ const TIPOS_PROJETO = ["Planejamento Estratégico", "Projeto"] as const;
 
 function ProjetosEEstrategias() {
   const catalogo = useCatalogoOrganizacional();
+  const sessao = usePanelSession();
+  const podeGerenciar = podeGerenciarConteudo(sessao);
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
 
   return (
@@ -55,10 +58,12 @@ function ProjetosEEstrategias() {
           </p>
         </div>
 
-        <Button className="shrink-0" onClick={() => setNovoProjetoAberto(true)}>
-          <Plus className="h-4 w-4" />
-          Novo projeto
-        </Button>
+        {podeGerenciar ? (
+          <Button className="shrink-0" onClick={() => setNovoProjetoAberto(true)}>
+            <Plus className="h-4 w-4" />
+            Novo projeto
+          </Button>
+        ) : null}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">

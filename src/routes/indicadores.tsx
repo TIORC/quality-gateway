@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BarChart3, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { PanelShell } from "@/components/panel-shell";
+import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { podeGerenciarConteudo } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 
 export const Route = createFileRoute("/indicadores")({
@@ -82,6 +83,8 @@ function SummaryCard({ label, value, valueClass, accent, footer }: SummaryCardPr
 
 function Indicadores() {
   const catalogo = useCatalogoOrganizacional();
+  const sessao = usePanelSession();
+  const podeGerenciar = podeGerenciarConteudo(sessao);
   const [novoIndicador, setNovoIndicador] = useState(false);
 
   return (
@@ -99,10 +102,12 @@ function Indicadores() {
           </p>
         </div>
 
-        <Button className="shrink-0" onClick={() => setNovoIndicador(true)}>
-          <Plus className="h-4 w-4" />
-          Novo indicador
-        </Button>
+        {podeGerenciar ? (
+          <Button className="shrink-0" onClick={() => setNovoIndicador(true)}>
+            <Plus className="h-4 w-4" />
+            Novo indicador
+          </Button>
+        ) : null}
       </div>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -159,11 +164,11 @@ function Indicadores() {
         </div>
 
         <TabsContent value="visao-geral">
-          <ListaIndicadores onNovo={() => setNovoIndicador(true)} />
+          <ListaIndicadores onNovo={() => setNovoIndicador(true)} podeGerenciar={podeGerenciar} />
         </TabsContent>
 
         <TabsContent value="meu-setor">
-          <ListaIndicadores onNovo={() => setNovoIndicador(true)} />
+          <ListaIndicadores onNovo={() => setNovoIndicador(true)} podeGerenciar={podeGerenciar} />
         </TabsContent>
       </Tabs>
 
@@ -177,7 +182,13 @@ function Indicadores() {
   );
 }
 
-function ListaIndicadores({ onNovo }: { onNovo: () => void }) {
+function ListaIndicadores({
+  onNovo,
+  podeGerenciar,
+}: {
+  onNovo: () => void;
+  podeGerenciar: boolean;
+}) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
       <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
@@ -190,10 +201,12 @@ function ListaIndicadores({ onNovo }: { onNovo: () => void }) {
         <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
           A Qualidade cadastra o indicador, define a meta e como ele é apurado.
         </p>
-        <Button variant="outline" className="mt-5" onClick={onNovo}>
-          <Plus className="h-4 w-4" />
-          Novo indicador
-        </Button>
+        {podeGerenciar ? (
+          <Button variant="outline" className="mt-5" onClick={onNovo}>
+            <Plus className="h-4 w-4" />
+            Novo indicador
+          </Button>
+        ) : null}
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Archive, BarChart3, Building2, CalendarClock, FileText, Plus } from "lucide-react";
-import { PanelShell } from "@/components/panel-shell";
+import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
+import { podeGerenciarConteudo } from "@/lib/permissoes";
 
 export const Route = createFileRoute("/atas-de-reuniao")({
   head: () => ({
@@ -18,6 +19,9 @@ const RESUMOS = [
 ] as const;
 
 function AtasDeReuniao() {
+  const sessao = usePanelSession();
+  const podeGerenciar = podeGerenciarConteudo(sessao);
+
   return (
     <PanelShell wide>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -33,10 +37,12 @@ function AtasDeReuniao() {
           </p>
         </div>
 
-        <Button className="shrink-0">
-          <Plus className="h-4 w-4" />
-          Nova ata
-        </Button>
+        {podeGerenciar ? (
+          <Button className="shrink-0">
+            <Plus className="h-4 w-4" />
+            Nova ata
+          </Button>
+        ) : null}
       </div>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

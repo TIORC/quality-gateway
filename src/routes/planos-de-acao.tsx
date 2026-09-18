@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardList, Plus, Search } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { CampoMencao } from "@/components/campo-mencao";
-import { PanelShell } from "@/components/panel-shell";
+import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { podeGerenciarConteudo } from "@/lib/permissoes";
 import { ORIGENS_ACAO, PRIORIDADES } from "@/lib/dados";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
@@ -57,6 +58,8 @@ const ABAS = [
 
 function PlanosDeAcao() {
   const catalogo = useCatalogoOrganizacional();
+  const sessao = usePanelSession();
+  const podeGerenciar = podeGerenciarConteudo(sessao);
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIAIS);
   const [novoPlanoAberto, setNovoPlanoAberto] = useState(false);
 
@@ -79,10 +82,12 @@ function PlanosDeAcao() {
           </p>
         </div>
 
-        <Button className="shrink-0" onClick={() => setNovoPlanoAberto(true)}>
-          <Plus className="h-4 w-4" />
-          Novo plano de ação
-        </Button>
+        {podeGerenciar ? (
+          <Button className="shrink-0" onClick={() => setNovoPlanoAberto(true)}>
+            <Plus className="h-4 w-4" />
+            Novo plano de ação
+          </Button>
+        ) : null}
       </div>
 
       <Tabs defaultValue="minhas">
@@ -104,6 +109,7 @@ function PlanosDeAcao() {
               setores={catalogo.setores}
               onFiltroChange={atualizarFiltro}
               onNovoPlano={() => setNovoPlanoAberto(true)}
+              podeGerenciar={podeGerenciar}
             />
           </TabsContent>
         ))}
@@ -124,9 +130,16 @@ interface ListaAcoesProps {
   setores: string[];
   onFiltroChange: (campo: keyof Filtros, valor: string) => void;
   onNovoPlano: () => void;
+  podeGerenciar: boolean;
 }
 
-function ListaAcoes({ filtros, setores, onFiltroChange, onNovoPlano }: ListaAcoesProps) {
+function ListaAcoes({
+  filtros,
+  setores,
+  onFiltroChange,
+  onNovoPlano,
+  podeGerenciar,
+}: ListaAcoesProps) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-[#E9EEF5] p-3 lg:flex-row">
@@ -189,10 +202,12 @@ function ListaAcoes({ filtros, setores, onFiltroChange, onNovoPlano }: ListaAcoe
         <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
           Ajuste os filtros ou registre um novo plano de ação para começar.
         </p>
-        <Button variant="outline" className="mt-5" onClick={onNovoPlano}>
-          <Plus className="h-4 w-4" />
-          Novo plano de ação
-        </Button>
+        {podeGerenciar ? (
+          <Button variant="outline" className="mt-5" onClick={onNovoPlano}>
+            <Plus className="h-4 w-4" />
+            Novo plano de ação
+          </Button>
+        ) : null}
       </div>
     </div>
   );

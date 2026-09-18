@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ClipboardCheck, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { CampoMencao } from "@/components/campo-mencao";
-import { PanelShell } from "@/components/panel-shell";
+import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -25,6 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { podeGerenciarConteudo } from "@/lib/permissoes";
 import {
   NORMAS_AUDITORIA,
   TIPOS_AUDITORIA,
@@ -109,6 +110,8 @@ function SummaryCard({ label, value, footer, accent, valueClass }: SummaryCardPr
 
 function Auditorias() {
   const catalogo = useCatalogoOrganizacional();
+  const sessao = usePanelSession();
+  const podeGerenciar = podeGerenciarConteudo(sessao);
   const [novaAuditoria, setNovaAuditoria] = useState(false);
 
   return (
@@ -124,10 +127,12 @@ function Auditorias() {
           </p>
         </div>
 
-        <Button className="shrink-0" onClick={() => setNovaAuditoria(true)}>
-          <Plus className="h-4 w-4" />
-          Nova auditoria
-        </Button>
+        {podeGerenciar ? (
+          <Button className="shrink-0" onClick={() => setNovaAuditoria(true)}>
+            <Plus className="h-4 w-4" />
+            Nova auditoria
+          </Button>
+        ) : null}
       </div>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -175,7 +180,7 @@ function Auditorias() {
 
         {ABAS.map((aba) => (
           <TabsContent key={aba.valor} value={aba.valor}>
-            <ListaAuditorias onNova={() => setNovaAuditoria(true)} />
+            <ListaAuditorias onNova={() => setNovaAuditoria(true)} podeGerenciar={podeGerenciar} />
           </TabsContent>
         ))}
       </Tabs>
@@ -191,7 +196,13 @@ function Auditorias() {
   );
 }
 
-function ListaAuditorias({ onNova }: { onNova: () => void }) {
+function ListaAuditorias({
+  onNova,
+  podeGerenciar,
+}: {
+  onNova: () => void;
+  podeGerenciar: boolean;
+}) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
       <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
@@ -202,10 +213,12 @@ function ListaAuditorias({ onNova }: { onNova: () => void }) {
         <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
           Programe a auditoria, monte o roteiro de verificação e registre os achados.
         </p>
-        <Button variant="outline" className="mt-5" onClick={onNova}>
-          <Plus className="h-4 w-4" />
-          Nova auditoria
-        </Button>
+        {podeGerenciar ? (
+          <Button variant="outline" className="mt-5" onClick={onNova}>
+            <Plus className="h-4 w-4" />
+            Nova auditoria
+          </Button>
+        ) : null}
       </div>
     </div>
   );

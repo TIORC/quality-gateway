@@ -31,22 +31,23 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
   "/meu-perfil",
 ];
 
+/**
+ * Páginas liberadas para todos os colaboradores: todas do portal exceto a
+ * configuração e o disparo de cobranças (restritas à Administração/Gestão).
+ */
+const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter(
+  (rota) => rota !== "/configuracoes" && rota !== "/disparo-de-cobrancas",
+);
+
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
   Administrador: TODAS_AS_ROTAS,
   "Gestor da Qualidade": TODAS_AS_ROTAS,
-  "Auxiliar da Qualidade": ["/painel", "/planos-de-acao", "/pops", "/politicas", "/meu-perfil"],
-  Diretoria: ["/painel", "/pops", "/politicas", "/meu-perfil"],
-  "Líder de setor": [
-    "/painel",
-    "/planos-de-acao",
-    "/ocorrencias",
-    "/pops",
-    "/politicas",
-    "/meu-perfil",
-  ],
-  Desenvolvedor: ["/pops", "/politicas", "/meu-perfil"],
-  Colaborador: ["/pops", "/politicas", "/meu-perfil"],
-  "Colaborador de outra unidade": ["/pops", "/politicas", "/meu-perfil"],
+  "Auxiliar da Qualidade": ROTAS_ABERTAS,
+  Diretoria: ROTAS_ABERTAS,
+  "Líder de setor": ROTAS_ABERTAS,
+  Desenvolvedor: ROTAS_ABERTAS,
+  Colaborador: ROTAS_ABERTAS,
+  "Colaborador de outra unidade": ROTAS_ABERTAS,
 };
 
 /** Rotas que a sessão atual pode acessar (vazio = sem restrição definida). */
@@ -96,9 +97,8 @@ export function ehLiderancaDaQualidade(session: UserSession | null | undefined):
   );
 }
 
-/** Colaborador do setor Qualidade que recebeu a permissão individual. */
+/** Colaborador que recebeu a permissão individual concedida pelo gestor. */
 function permConcedida(session: UserSession, permissao: boolean | undefined): boolean {
-  if (normalizarSetor(session.setor) !== "qualidade") return false;
   return permissao === true;
 }
 
@@ -121,4 +121,24 @@ export function podeExcluirDocumentos(session: UserSession | null | undefined): 
   if (!session) return false;
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permExcluirDocumentos);
+}
+
+/**
+ * Usuário do setor da Qualidade ou liderança da Qualidade (role admin/gestor,
+ * nível "Gestor da Qualidade" ou cargo de coordenador da Qualidade).
+ */
+export function ehUsuarioDaQualidade(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehLiderancaDaQualidade(session)) return true;
+  return normalizarSetor(session.setor) === "qualidade";
+}
+
+/**
+ * Regra geral do portal: quem não é do setor da Qualidade não pode criar,
+ * editar ou excluir conteúdo (com as exceções de abrir ocorrência e sugerir
+ * melhorias). Fica apenas em leitura, salvo o que o gestor da Qualidade
+ * conceder individualmente nas permissões de documentos.
+ */
+export function podeGerenciarConteudo(session: UserSession | null | undefined): boolean {
+  return ehUsuarioDaQualidade(session);
 }
