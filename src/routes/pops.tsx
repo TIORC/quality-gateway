@@ -76,6 +76,7 @@ import {
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
   podeModificarDocumentos,
+  ehLiderancaDaQualidade,
   temAcessoTotalPops,
 } from "@/lib/permissoes";
 import {
@@ -371,7 +372,7 @@ function PopCard({
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="pops-page">
                 {podeModificar ? (
                   <DropdownMenuItem onClick={() => onEditar(pop)}>
                     <Edit3 className="h-4 w-4" /> Editar
@@ -943,7 +944,7 @@ function PopFormDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl pops-page">
         <DialogHeader>
           <DialogTitle>{pop ? "Editar POP" : "Novo POP"}</DialogTitle>
           <DialogDescription>
@@ -1254,6 +1255,8 @@ function PopEtapas({ etapas }: { etapas: PopEtapa[] }) {
 interface SecaoLeituraSugestaoProps {
   leitura: PopLeitura | null;
   todasLeituras: PopLeitura[];
+  /** Verdadeiro apenas para Administrador e Gestor da Qualidade (visão de gestão). */
+  podeVerGestao: boolean;
   sugestoes: PopSugestao[];
   sugestaoAberta: boolean;
   sugestao: string;
@@ -1268,6 +1271,7 @@ interface SecaoLeituraSugestaoProps {
 function SecaoLeituraSugestao({
   leitura,
   todasLeituras,
+  podeVerGestao,
   sugestoes,
   sugestaoAberta,
   sugestao,
@@ -1279,7 +1283,12 @@ function SecaoLeituraSugestao({
   aoEnviarSugestao,
 }: SecaoLeituraSugestaoProps) {
   const jaLeu = leitura !== null && leitura.decisao !== "discordo";
-  const leitores = todasLeituras.filter((l) => l.decisao !== "discordo");
+  // Quem já registrou leitura não vê mais o botão "Lido".
+  const leitores = podeVerGestao
+    ? todasLeituras.filter((l) => l.decisao !== "discordo")
+    : [];
+  // Sugestões de melhoria: visíveis apenas à gestão (Administrador/Gestor).
+  const sugestoesVisiveis = podeVerGestao ? sugestoes : [];
 
   return (
     <section className="mt-5 border-t border-[#E9EEF5] pt-5">
@@ -1295,15 +1304,17 @@ function SecaoLeituraSugestao({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            disabled={enviando || sugestaoAberta}
-            onClick={aoRegistrarLido}
-            className="bg-[#047857] text-white hover:bg-[#059669]"
-          >
-            <Check className="h-4 w-4" /> Lido
-          </Button>
+          {jaLeu ? null : (
+            <Button
+              type="button"
+              size="sm"
+              disabled={enviando || sugestaoAberta}
+              onClick={aoRegistrarLido}
+              className="bg-[#047857] text-white hover:bg-[#059669]"
+            >
+              <Check className="h-4 w-4" /> Lido
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -1316,10 +1327,12 @@ function SecaoLeituraSugestao({
           </Button>
         </div>
 
-        <span className="text-[12px] text-[#94A3B8]">
-          {leitores.length} {leitores.length === 1 ? "leitura" : "leituras"} · {sugestoes.length}{" "}
-          {sugestoes.length === 1 ? "sugestão" : "sugestões"}
-        </span>
+        {podeVerGestao ? (
+          <span className="text-[12px] text-[#94A3B8]">
+            {leitores.length} {leitores.length === 1 ? "leitura" : "leituras"} ·{" "}
+            {sugestoesVisiveis.length} {sugestoesVisiveis.length === 1 ? "sugestão" : "sugestões"}
+          </span>
+        ) : null}
       </div>
 
       {sugestaoAberta ? (
@@ -1374,9 +1387,9 @@ function SecaoLeituraSugestao({
         </div>
       ) : null}
 
-      {sugestoes.length > 0 ? (
+      {sugestoesVisiveis.length > 0 ? (
         <div className="mt-3 space-y-1.5">
-          {sugestoes.map((item) => (
+          {sugestoesVisiveis.map((item) => (
             <div key={item.id} className="rounded-lg border border-[#D9E0EA] bg-white px-3 py-2">
               <p className="text-[12px] font-semibold text-[#1E3A8A]">
                 <Lightbulb className="mr-1 inline h-3 w-3" />
@@ -1686,6 +1699,7 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
         <SecaoLeituraSugestao
           leitura={leitura}
           todasLeituras={todasLeituras}
+          podeVerGestao={ehLiderancaDaQualidade(sessao)}
           sugestoes={sugestoes}
           sugestaoAberta={sugestaoAberta}
           sugestao={sugestao}
@@ -1808,7 +1822,7 @@ function HistoricoModificacoes({ pop, revisoes, podeVerAnteriores }: HistoricoMo
         open={versaoAberta !== null}
         onOpenChange={(abre) => (abre ? undefined : setVersaoAberta(null))}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl pops-page">
           <DialogHeader>
             <DialogTitle>
               {pop.codigo} — {versaoAberta ? rotuloRevisao(versaoAberta.revisao) : ""}
@@ -1969,7 +1983,7 @@ function PopDiscussaoDialog({ aberto, pop, onFechar, onAtualizado }: PopDiscussa
 
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl pops-page">
         <DialogHeader>
           <DialogTitle>Discussão — {pop?.codigo ?? ""}</DialogTitle>
           <DialogDescription>
@@ -2365,7 +2379,9 @@ function Pops() {
 
   return (
     <PanelShell wide>
-      {conteudo}
+      <div className="pops-page">
+        {conteudo}
+      </div>
 
       <PopFormDialog
         aberto={formAberto}
@@ -2388,7 +2404,7 @@ function Pops() {
         open={popExcluindo !== null}
         onOpenChange={(abre) => (abre ? undefined : setPopExcluindo(null))}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="pops-page">
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir POP?</AlertDialogTitle>
             <AlertDialogDescription>

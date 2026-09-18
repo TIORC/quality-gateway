@@ -43,6 +43,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSession, type UserSession } from "@/lib/auth";
 import { organizacaoDisponivel } from "@/lib/organizacao";
 import {
+  ehLiderancaDaQualidade,
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
   podeModificarDocumentos,
@@ -75,37 +76,19 @@ import {
   type SugestaoPolitica,
 } from "@/lib/politicas";
 
-/** Verifica se o usuário pode ver a seção de sugestões de melhoria.
- * Perfis habilitados: Coordenador da Qualidade, Desenvolvedor, Administrador e o próprio autor.
+/**
+ * Verifica se o usuário pode ver a seção de sugestões de melhoria.
+ * Perfis habilitados: apenas Administrador e Gestor da Qualidade.
  */
-function podeVerSugestoes(sessao: UserSession | null, autorEmail: string): boolean {
-  if (!sessao) return false;
-  const emailNormalizado = sessao.email.toLowerCase();
-  const autorNormalizado = autorEmail.toLowerCase();
-
-  // Coordenador da Qualidade
-  if (sessao.cargo === "Coordenador da Qualidade") return true;
-  // Administrador (Gabriel como desenvolvedor/administrador)
-  if (sessao.role === "admin") return true;
-  // Desenvolvedor
-  if (sessao.cargo.toLowerCase().includes("desenvolvedor")) return true;
-  // O próprio autor da sugestão
-  if (emailNormalizado === autorNormalizado) return true;
-  return false;
+function podeVerSugestoes(sessao: UserSession | null): boolean {
+  return ehLiderancaDaQualidade(sessao);
 }
 
 /** Verifica se o usuário pode marcar sugestões como concluídas.
- * Perfis habilitados: Coordenador da Qualidade, Desenvolvedor, Administrador.
+ * Perfis habilitados: apenas Administrador e Gestor da Qualidade.
  */
 function podeConcluirSugestoes(sessao: UserSession | null): boolean {
-  if (!sessao) return false;
-  // Coordenador da Qualidade
-  if (sessao.cargo === "Coordenador da Qualidade") return true;
-  // Administrador (Gabriel como desenvolvedor/administrador)
-  if (sessao.role === "admin") return true;
-  // Desenvolvedor
-  if (sessao.cargo.toLowerCase().includes("desenvolvedor")) return true;
-  return false;
+  return ehLiderancaDaQualidade(sessao);
 }
 /** Verifica se o usuário pode ver a seção de sugestões de melhoria. */
 
@@ -1046,9 +1029,10 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
   const politicaId = politica.id;
   const item = politica;
 
-  // Filtra sugestões visíveis para o usuário atual
+  // Filtra sugestões visíveis para o usuário atual (apenas gestão: Admin/Gestor da Qualidade)
   const sugestoesVisiveis = useMemo(() => {
-    return sugestoes.filter((s) => podeVerSugestoes(sessao, s.usuarioEmail));
+    if (!podeVerSugestoes(sessao)) return [];
+    return sugestoes;
   }, [sugestoes, sessao]);
 
   // Carrega leituras e sugestões do Cloud (tabelas dedicadas)
@@ -1159,7 +1143,13 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
   }, [leituras, item.parecer, politicaId, sessao?.email, sessao?.nome]);
 
   const leitores = todasLeituras;
-  const jaLeu = leitores.length > 0 || (!!item.parecer && item.parecer.tipo === "discordo");
+  const emailAtual = (sessao?.email ?? "").trim().toLowerCase();
+  const leituraPropria = leitores.some((l) => l.usuarioEmail.trim().toLowerCase() === emailAtual);
+  // O usuário vê "Leitura registrada" quando ele próprio já leu (a gestão vê o total).
+  const jaLeu =
+    leituraPropria || (!!item.parecer && item.parecer.tipo !== "discordo");
+  // Visão de gestão: Administrador e Gestor da Qualidade.
+  const gestao = ehLiderancaDaQualidade(sessao);
 
   return (
     <div className="space-y-5">
@@ -1205,15 +1195,19 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
           <PoliticaAnexoVisualizador anexo={item.anexo} />
           <div className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
             <p className="text-[13px] font-semibold text-[#1F2937]">Ciência / Leituras</p>
-            {jaLeu ? (
+            {gestao && jaLeu ? (
               <p className="mt-1 text-[13px] text-[#475569]">
                 <span className="font-semibold text-emerald-700">Lido</span>{" "}
                 {leitores.length} {leitores.length === 1 ? "leitura" : "leituras"} registradas
               </p>
+            ) : jaLeu ? (
+              <p className="mt-1 text-[13px] font-semibold text-emerald-700">
+                <Check className="mr-1 inline h-3.5 w-3.5" />Leitura registrada
+              </p>
             ) : (
               <p className="mt-1 text-xs text-[#64748B]">Registre aqui que leu a política, ou sugira uma melhoria.</p>
             )}
-            {leitores.length > 0 ? (
+            {gestao && leitores.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {leitores.slice(0, 5).map((l) => (
                   <span key={l.id} className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]">
@@ -1226,7 +1220,9 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
               </div>
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmarLeitura} disabled={enviando}><Check className="h-4 w-4" />LIDO</Button>
+              {jaLeu ? null : (
+                <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmarLeitura} disabled={enviando}><Check className="h-4 w-4" />LIDO</Button>
+              )}
               <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarSugestao((v) => !v)} disabled={enviando}><Lightbulb className="h-4 w-4" />Sugerir Melhoria</Button>
             </div>
             {mostrarSugestao ? (
@@ -1239,9 +1235,9 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
                 </div>
               </div>
             ) : null}
-            {sugestoes.length > 0 ? (
+            {sugestoesVisiveis.length > 0 ? (
               <div className="mt-3 space-y-1.5">
-                {sugestoes.map((s) => (
+                {sugestoesVisiveis.map((s) => (
                   <div key={s.id} className="rounded-lg border border-[#D9E0EA] bg-white p-2.5">
                     <p className="text-[12px] font-semibold text-[#1F2937]">
                       <Lightbulb className="mr-1 inline h-3 w-3 text-amber-500" />
@@ -1251,7 +1247,7 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
                   </div>
                 ))}
               </div>
-            ) : item.sugestoes.length > 0 ? (
+            ) : gestao && item.sugestoes.length > 0 ? (
               <ul className="mt-3 space-y-1.5">{item.sugestoes.map((s) => (<li key={s.id} className="rounded-lg bg-white p-2 text-xs text-[#475569] ring-1 ring-[#E9EEF5]"><span className="font-semibold text-[#1F2937]">Sugestão · {s.data}:</span> {s.texto}</li>))}</ul>
             ) : null}
           </div>

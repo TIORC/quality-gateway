@@ -12,7 +12,7 @@ export function AppFooter({ variant = "panel" }: { variant?: "panel" | "brand" }
           variant === "brand" ? "text-xs text-brand-muted" : "text-xs text-muted-foreground"
         }
       >
-        Desenvolvido com 💙 pelos Desenvolvedores da{" "}
+        Criado com 💙 pelos desenvolvedores da{" "}
         <span className="font-medium text-blue-600 dark:text-blue-400">Orcoma Contabilidade</span> -
         G.
       </p>
