@@ -49,6 +49,8 @@ export interface UserSession {
   permModificarDocumentos: boolean;
   /** Permite excluir documentos (POPs e políticas). */
   permExcluirDocumentos: boolean;
+  /** Permite excluir planos de ação (concedida pelo gestor em Configurações). */
+  permExcluirPlanos: boolean;
   loginAt: string;
 }
 
@@ -92,6 +94,7 @@ function readSession(): UserSession | null {
       permAdicionarDocumentos: parsed.permAdicionarDocumentos ?? false,
       permModificarDocumentos: parsed.permModificarDocumentos ?? false,
       permExcluirDocumentos: parsed.permExcluirDocumentos ?? false,
+      permExcluirPlanos: parsed.permExcluirPlanos ?? false,
       loginAt: parsed.loginAt ?? new Date().toISOString(),
     };
   } catch {
@@ -145,6 +148,7 @@ export async function atualizarSessao(): Promise<UserSession | null> {
       permAdicionarDocumentos: colaborador.perm_adicionar_documentos,
       permModificarDocumentos: colaborador.perm_modificar_documentos,
       permExcluirDocumentos: colaborador.perm_excluir_documentos,
+      permExcluirPlanos: colaborador.perm_excluir_planos,
     };
     persistirSession(renovada);
     return renovada;
@@ -191,6 +195,7 @@ function buildSession(
     permAdicionarDocumentos: false,
     permModificarDocumentos: false,
     permExcluirDocumentos: false,
+    permExcluirPlanos: false,
     loginAt: new Date().toISOString(),
   };
 }
@@ -246,12 +251,13 @@ async function buscarColaboradorVinculado(
   | "perm_adicionar_documentos"
   | "perm_modificar_documentos"
   | "perm_excluir_documentos"
+    | "perm_excluir_planos"
 > | null> {
   if (usuario.colaboradorId) {
     const { data } = await client
       .from("colaboradores")
       .select(
-        "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos",
+        "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos",
       )
       .eq("id", usuario.colaboradorId)
       .maybeSingle();
@@ -262,7 +268,7 @@ async function buscarColaboradorVinculado(
   const { data } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos",
     )
     .eq("email", email)
     .maybeSingle();
@@ -344,6 +350,7 @@ export async function login(
         sessionBase.permAdicionarDocumentos = colaborador.perm_adicionar_documentos;
         sessionBase.permModificarDocumentos = colaborador.perm_modificar_documentos;
         sessionBase.permExcluirDocumentos = colaborador.perm_excluir_documentos;
+        sessionBase.permExcluirPlanos = colaborador.perm_excluir_planos;
         // Registra o acesso real: alimenta a coluna "Último acesso" de /funcionários.
         try {
           await client

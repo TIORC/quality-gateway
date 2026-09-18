@@ -15,6 +15,7 @@ import type { AnexoPlano, PlanoAcao, StatusAcao } from "@/lib/planos";
 import { atualizarPlano, excluirPlano } from "@/lib/planos-crud";
 import { adicionarComentario, ehResponsavel } from "@/lib/planos-inter";
 import { listarComentarios, listarHistorico } from "@/lib/planos-inter";
+import { podeExcluirPlano } from "@/lib/permissoes";
 import type { ComentarioPlano, HistoricoPlano } from "@/lib/planos";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 import { StatusBadge } from "@/components/plano-badges";
@@ -126,7 +127,7 @@ export function DetalhePlanoDialog({ plano, podeGerenciar, onFechar, onAlterado,
   }
 
   async function excluir() {
-    if (!possoEditar) return;
+    if (!podeExcluirPlano(sessao)) return;
     if (!window.confirm(`Excluir ${plano.codigo || "esta ação"}?`)) return;
     try {
       await excluirPlano(plano.id);
@@ -199,7 +200,9 @@ export function DetalhePlanoDialog({ plano, podeGerenciar, onFechar, onAlterado,
                 <Button size="sm" onClick={() => void salvar()} disabled={salvando}>
                   {salvando ? "Salvando…" : "Salvar"}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => void excluir()}>Excluir</Button>
+                {podeExcluirPlano(sessao) ? (
+                  <Button size="sm" variant="outline" onClick={() => void excluir()}>Excluir</Button>
+                ) : null}
               </div>
             </div>
           ) : null}

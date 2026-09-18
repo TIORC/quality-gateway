@@ -48,6 +48,7 @@ export interface Colaborador {
   permAdicionarDocumentos?: boolean;
   permModificarDocumentos?: boolean;
   permExcluirDocumentos?: boolean;
+  permExcluirPlanos?: boolean;
 }
 
 export type StatusFuncionario = "Ativo" | "Inativo";

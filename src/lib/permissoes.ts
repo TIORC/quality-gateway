@@ -213,11 +213,15 @@ export function podeEditarPlano(
   return ehResponsavelDoPlano(session, plano) || ehSeguidorDoPlano(session, plano);
 }
 
-/** Exclusão: apenas liderança da Qualidade ou permissão individual de excluir. */
+/**
+ * Excluir planos de ação: liderança da Qualidade (admin/gestor) sempre pode;
+ * demais usuários apenas com a permissão individual `perm_excluir_planos`,
+ * concedida pelo Gestor da Qualidade em /configurações.
+ */
 export function podeExcluirPlano(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (ehLiderancaDaQualidade(session)) return true;
-  return permConcedida(session, session.permExcluirDocumentos);
+  return permConcedida(session, session.permExcluirPlanos);
 }
 
 /**

@@ -1678,6 +1678,10 @@ function GerirColaboradorDialog({
   const [permExcluir, setPermExcluir] = useState(
     colaborador?.permExcluirDocumentos ?? false,
   );
+  // Permissão dedicada a planos de ação: concedida pelo Gestor da Qualidade.
+  const [permExcluirPlanos, setPermExcluirPlanos] = useState(
+    colaborador?.permExcluirPlanos ?? false,
+  );
   // Liberação individual de documentos (quando o nível exige liberação).
   const [popsCatalogo, setPopsCatalogo] = useState<Pop[]>([]);
   const [politicasCatalogo, setPoliticasCatalogo] = useState<PoliticaItem[]>([]);
@@ -1698,6 +1702,7 @@ function GerirColaboradorDialog({
     setPermAdicionar(colaborador?.permAdicionarDocumentos ?? false);
     setPermModificar(colaborador?.permModificarDocumentos ?? false);
     setPermExcluir(colaborador?.permExcluirDocumentos ?? false);
+    setPermExcluirPlanos(colaborador?.permExcluirPlanos ?? false);
   }, [colaborador]);
 
   useEffect(() => {
@@ -1777,6 +1782,7 @@ function GerirColaboradorDialog({
       permAdicionarDocumentos: permAdicionar,
       permModificarDocumentos: permModificar,
       permExcluirDocumentos: permExcluir,
+      permExcluirPlanos: permExcluirPlanos,
     };
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
@@ -1986,6 +1992,26 @@ function GerirColaboradorDialog({
                     onCheckedChange={setPermExcluir}
                     disabled={!podeEditarPermissoes}
                     aria-label="Permitir excluir documentos"
+                  />
+                </label>
+                <label
+                  htmlFor="perm-excluir-planos"
+                  className="flex cursor-pointer items-center justify-between gap-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-[#1F2937]">
+                      Excluir planos de ação
+                    </span>
+                    <span className="block text-[11.5px] leading-relaxed text-[#64748B]">
+                      Permite remover ações do módulo Planos de Ação.
+                    </span>
+                  </span>
+                  <Switch
+                    id="perm-excluir-planos"
+                    checked={permExcluirPlanos}
+                    onCheckedChange={setPermExcluirPlanos}
+                    disabled={!podeEditarPermissoes}
+                    aria-label="Permitir excluir planos de ação"
                   />
                 </label>
               </div>

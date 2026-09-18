@@ -62,6 +62,7 @@ export type Database = {
           nome: string
           perm_adicionar_documentos: boolean
           perm_excluir_documentos: boolean
+          perm_excluir_planos: boolean
           perm_modificar_documentos: boolean
           processos_lidos: number
           processos_visualizados: number
@@ -83,6 +84,7 @@ export type Database = {
           nome: string
           perm_adicionar_documentos?: boolean
           perm_excluir_documentos?: boolean
+          perm_excluir_planos?: boolean
           perm_modificar_documentos?: boolean
           processos_lidos?: number
           processos_visualizados?: number
@@ -104,6 +106,7 @@ export type Database = {
           nome?: string
           perm_adicionar_documentos?: boolean
           perm_excluir_documentos?: boolean
+          perm_excluir_planos?: boolean
           perm_modificar_documentos?: boolean
           processos_lidos?: number
           processos_visualizados?: number
