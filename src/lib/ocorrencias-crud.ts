@@ -281,6 +281,40 @@ export async function abrirOcorrencia(
   return ocorrenciaDoRow(o);
 }
 
+/**
+ * Envia os anexos da abertura ao Storage e grava os caminhos em
+ * `respostas.anexos`, além de registrar um evento no histórico. Usado pelo
+ * formulário fixo de Não Conformidade (até 5 arquivos de 10 MB por item).
+ */
+export async function adicionarAnexosAbertura(
+  o: Ocorrencia,
+  arquivos: File[],
+  sessao: UserSession | null,
+): Promise<Ocorrencia> {
+  const autor = autorDe(sessao);
+  const enviados: AnexoOcorrencia[] = [];
+  for (const arquivo of arquivos) {
+    enviados.push(await enviarAnexo(o.id, arquivo));
+  }
+  const anteriores = Array.isArray(o.respostas["anexos"])
+    ? (o.respostas["anexos"] as AnexoOcorrencia[]).filter((a) => a.caminho)
+    : [];
+  const anexos = [...anteriores, ...enviados];
+  const respostas: Respostas = { ...o.respostas, anexos };
+  const { error } = await cloud().from("ocorrencias").update({ respostas }).eq("id", o.id);
+  if (error) throw traduzErro(error);
+  await registrarHistorico(o.id, autor, {
+    acao: "Anexos da abertura",
+    macro: "abertura",
+    subetapa: "",
+    de: "",
+    para: `${anexos.length} anexo(s)`,
+    comentario: "",
+    anexos,
+  });
+  return { ...o, respostas };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Movimentação                                                                */
 /* -------------------------------------------------------------------------- */
@@ -679,6 +713,28 @@ export async function urlAssinada(caminho: string): Promise<string> {
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível abrir o anexo.");
   return data.signedUrl;
+}
+
+/**
+ * Exclui a ocorrência (Qualidade/administradores). Remove também os anexos do
+ * Storage; o histórico é apagado em cascata pelo banco.
+ */
+export async function excluirOcorrencia(o: Ocorrencia): Promise<void> {
+  try {
+    const anexos = Array.isArray(o.respostas["anexos"])
+      ? (o.respostas["anexos"] as AnexoOcorrencia[])
+      : [];
+    const caminhos = anexos.map((a) => a.caminho).filter(Boolean);
+    if (caminhos.length > 0) {
+      await cloud()
+        .storage.from(BUCKET)
+        .remove(caminhos as string[]);
+    }
+  } catch {
+    /* storage indisponível: segue com a exclusão da linha */
+  }
+  const { error } = await cloud().from("ocorrencias").delete().eq("id", o.id);
+  if (error) throw traduzErro(error);
 }
 
 /** Utilitário exportado para o Form Builder gerar ids de campos. */

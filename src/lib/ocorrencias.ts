@@ -229,6 +229,22 @@ export interface TipoOcorrencia {
   ordem: number;
 }
 
+/**
+ * O tipo "Não Conformidade" tem formulário de abertura fixo (área envolvida,
+ * descrição, consequência, sugestão, gerou multa e anexos), independente do
+ * formulário publicado no Form Builder.
+ */
+export function ehTipoNaoConformidade(
+  tipo: Pick<TipoOcorrencia, "nome"> | null | undefined,
+): boolean {
+  const normalizado = (tipo?.nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_-]+/g, " ");
+  return normalizado.includes("nao conformidade");
+}
+
 export interface AvaliacaoEficacia {
   prazoDias: number;
   verificacaoEm: string | null;

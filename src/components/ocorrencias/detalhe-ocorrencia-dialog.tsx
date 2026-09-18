@@ -50,12 +50,15 @@ import {
   comentarOcorrencia,
   decidirProcedencia,
   enviarAnexo,
+  excluirOcorrencia,
   moverPara,
+  urlAssinada,
 } from "@/lib/ocorrencias-crud";
 import { listarHistorico, listarOcorrencias } from "@/lib/ocorrencias-base";
 import {
   podeAgir,
   podeComentar,
+  podeExcluir,
   podeGerenciar,
   podeVerInternos,
   papelNaOcorrencia,
@@ -67,11 +70,13 @@ import {
   MACRO_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
   STATUS_OCORRENCIA_LABELS,
+  ehTipoNaoConformidade,
   formatarPrazo,
   ordenarSubetapas,
   subetapaDe,
   textoResposta,
   type AcaoEtapa,
+  type AnexoOcorrencia,
   type CampoFormulario,
   type EventoOcorrencia,
   type MacroEtapa,
@@ -134,6 +139,10 @@ function DetalheCorpo({
   const [eficaz, setEficaz] = useState(true);
   const [observacao, setObservacao] = useState("");
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
+
+  // Exclusão (Qualidade/administradores).
+  const [excluirAberto, setExcluirAberto] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -271,6 +280,29 @@ function DetalheCorpo({
     }
   }
 
+  async function abrirAnexo(caminho: string) {
+    try {
+      window.open(await urlAssinada(caminho), "_blank", "noopener");
+    } catch {
+      toast.error("Não foi possível abrir o anexo.");
+    }
+  }
+
+  async function confirmarExclusao() {
+    setExcluindo(true);
+    try {
+      await excluirOcorrencia(o);
+      toast.success(`Ocorrência ${o.numero} excluída.`);
+      setExcluirAberto(false);
+      onAlterada?.();
+      onFechar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
   const mostraAbertura = verInternos || ehSolicitante;
   const moverOpcoes = ordenarSubetapas(etapas);
   const mostraAvaliacao =
@@ -333,7 +365,49 @@ function DetalheCorpo({
                 Dados da abertura
               </h3>
               <dl className="mt-2 grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-2">
-                {formulario.length > 0 ? (
+                {ehTipoNaoConformidade({ nome: o.tipoNome }) ? (
+                  <>
+                    <div>
+                      <dt className="text-[11px] text-[#94A3B8]">Área envolvida</dt>
+                      <dd className="text-[#334155]">
+                        {textoResposta(o.respostas["area_envolvida"])}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-[#94A3B8]">Descrição da Não Conformidade</dt>
+                      <dd className="whitespace-pre-wrap text-[#334155]">
+                        {textoResposta(o.respostas["descricao_nc"])}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-[#94A3B8]">
+                        Consequência
+                        <span className="ml-1 text-[#C7D2E0]">· Qual o impacto dessa NC?</span>
+                      </dt>
+                      <dd className="whitespace-pre-wrap text-[#334155]">
+                        {textoResposta(o.respostas["consequencia"])}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-[#94A3B8]">Sugestão de Solução</dt>
+                      <dd className="whitespace-pre-wrap text-[#334155]">
+                        {textoResposta(o.respostas["sugestao_solucao"])}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-[#94A3B8]">Gerou multa?</dt>
+                      <dd className="text-[#334155]">
+                        {o.respostas["gerou_multa"] === true
+                          ? o.respostas["assinou_termo_multa"] === true
+                            ? "Sim — termo de multa assinado"
+                            : "Sim"
+                          : o.respostas["gerou_multa"] === false
+                            ? "Não"
+                            : "—"}
+                      </dd>
+                    </div>
+                  </>
+                ) : formulario.length > 0 ? (
                   formulario.map((c) => (
                     <div key={c.id}>
                       <dt className="text-[11px] text-[#94A3B8]">{c.label}</dt>
@@ -358,6 +432,32 @@ function DetalheCorpo({
                   </dd>
                 </div>
               </dl>
+              {(o.respostas["anexos"] as AnexoOcorrencia[] | undefined)?.length ? (
+                <div className="mt-3 border-t border-[#E9EEF5] pt-3">
+                  <h4 className="text-[11px] font-semibold text-[#64748B]">Anexos da abertura</h4>
+                  <ul className="mt-1.5 space-y-1">
+                    {(o.respostas["anexos"] as AnexoOcorrencia[]).map((anexo, i) => (
+                      <li
+                        key={`${anexo.nome}-${i}`}
+                        className="flex items-center gap-2 text-[13px] text-[#475569]"
+                      >
+                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-[#94A3B8]" />
+                        {anexo.caminho ? (
+                          <button
+                            type="button"
+                            className="truncate font-medium text-[#1E3A8A] hover:underline"
+                            onClick={() => void abrirAnexo(anexo.caminho as string)}
+                          >
+                            {anexo.nome}
+                          </button>
+                        ) : (
+                          <span className="truncate">{anexo.nome}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </section>
           )}
 
@@ -584,10 +684,50 @@ function DetalheCorpo({
       )}
 
       <DialogFooter>
+        {podeExcluir(session) && (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-[#E11D48]/40 text-[#E11D48] hover:bg-[#FDECEE]"
+            onClick={() => setExcluirAberto(true)}
+          >
+            Excluir ocorrência
+          </Button>
+        )}
         <Button type="button" variant="outline" onClick={onFechar}>
           Fechar
         </Button>
       </DialogFooter>
+
+      <Dialog open={excluirAberto} onOpenChange={(a) => !a && setExcluirAberto(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir a ocorrência {o.numero}?</DialogTitle>
+            <DialogDescription>
+              Esta ação é irreversível: remove a ocorrência, seus anexos e todo o histórico de
+              tratativa. Apenas Qualidade e administradores podem excluir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={excluindo}
+              onClick={() => setExcluirAberto(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={excluindo}
+              onClick={() => void confirmarExclusao()}
+              className="bg-[#E11D48] text-white hover:bg-[#BE123C]"
+            >
+              {excluindo ? "Excluindo…" : "Excluir definitivamente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={avaliacaoAberta} onOpenChange={(a) => !a && setAvaliacaoAberta(false)}>
         <DialogContent className="max-w-lg">

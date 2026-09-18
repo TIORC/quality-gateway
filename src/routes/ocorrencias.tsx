@@ -33,6 +33,14 @@ import { FormatadorSla } from "@/components/ocorrencias/formatador-sla";
 import { DetalheOcorrenciaDialog } from "@/components/ocorrencias/detalhe-ocorrencia-dialog";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
+  ESTADO_NC_VAZIO,
+  FormularioNaoConformidade,
+  LIMITE_ANEXOS_NC,
+  LIMITE_TEXTO_NC,
+  TAMANHO_MAX_ANEXO_NC,
+  type EstadoNaoConformidade,
+} from "@/components/ocorrencias/formulario-nao-conformidade";
+import {
   publicarFluxo,
   publicarFormulario,
   listarOcorrencias,
@@ -41,6 +49,7 @@ import {
 } from "@/lib/ocorrencias-base";
 import {
   abrirOcorrencia,
+  adicionarAnexosAbertura,
   carregarUltimasVersoes,
   detectarAtrasos,
   type VersoesPublicadas,
@@ -50,6 +59,7 @@ import {
   MACRO_ETAPAS,
   MACRO_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
+  ehTipoNaoConformidade,
   iconeTipoOcorrencia,
   type CampoFormulario,
   type MacroEtapa,
@@ -411,6 +421,8 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
   const [etapa, setEtapa] = useState<"tipo" | "formulario">("tipo");
   const [tipoId, setTipoId] = useState<string | null>(null);
   const [respostas, setRespostas] = useState<Respostas>({});
+  const [nc, setNc] = useState<EstadoNaoConformidade>(ESTADO_NC_VAZIO);
+  const [ncErros, setNcErros] = useState<Record<string, string>>({});
   const [versoes, setVersoes] = useState<VersoesPublicadas | null>(null);
   const [carregandoForm, setCarregandoForm] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -420,11 +432,14 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
       setEtapa("tipo");
       setTipoId(null);
       setRespostas({});
+      setNc(ESTADO_NC_VAZIO);
+      setNcErros({});
       setVersoes(null);
     }
   }, [aberto]);
 
   const tipo = tipos.find((t) => t.id === tipoId);
+  const naoConformidade = ehTipoNaoConformidade(tipo);
 
   async function escolherTipo(id: string) {
     setTipoId(id);
@@ -432,6 +447,8 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
     setCarregandoForm(true);
     setVersoes(null);
     setRespostas({});
+    setNc(ESTADO_NC_VAZIO);
+    setNcErros({});
     try {
       setVersoes(await carregarUltimasVersoes(id));
     } catch {
@@ -441,8 +458,70 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
     }
   }
 
+  async function confirmarNc() {
+    if (!tipo || !versoes) return;
+    const erros: Record<string, string> = {};
+    if (!nc.area.trim()) erros.area = "Informe a área envolvida.";
+    if (!nc.descricao.trim()) erros.descricao = "Descreva a não conformidade.";
+    else if (nc.descricao.length > LIMITE_TEXTO_NC)
+      erros.descricao = `Limite de ${LIMITE_TEXTO_NC} caracteres.`;
+    if (!nc.consequencia.trim()) erros.consequencia = "Informe a consequência.";
+    else if (nc.consequencia.length > LIMITE_TEXTO_NC)
+      erros.consequencia = `Limite de ${LIMITE_TEXTO_NC} caracteres.`;
+    if (nc.sugestao.length > LIMITE_TEXTO_NC)
+      erros.sugestao = `Limite de ${LIMITE_TEXTO_NC} caracteres.`;
+    if (nc.multa === "sim" && !nc.assinouMulta)
+      erros.termoMulta = "É obrigatório assinar o termo de multa para gerar a ocorrência.";
+    if (nc.arquivos.length > LIMITE_ANEXOS_NC)
+      erros.anexos = `Máximo de ${LIMITE_ANEXOS_NC} anexos.`;
+    else if (nc.arquivos.some((a) => a.size > TAMANHO_MAX_ANEXO_NC))
+      erros.anexos = "Cada anexo deve ter até 10 MB.";
+    if (Object.keys(erros).length > 0) {
+      setNcErros(erros);
+      toast.error("Verifique os campos obrigatórios do formulário.");
+      return;
+    }
+    const descricao = nc.descricao.trim();
+    const titulo = descricao.length > 80 ? `${descricao.slice(0, 80)}…` : descricao;
+    setSalvando(true);
+    try {
+      const criada = await abrirOcorrencia(
+        {
+          tipo,
+          formularioVersao: versoes.formularioVersao,
+          fluxoVersao: versoes.fluxoVersao,
+          titulo,
+          respostas: {
+            area_envolvida: nc.area.trim(),
+            descricao_nc: descricao,
+            consequencia: nc.consequencia.trim(),
+            sugestao_solucao: nc.sugestao.trim(),
+            gerou_multa: nc.multa === "sim",
+            assinou_termo_multa: nc.assinouMulta,
+            anexos: nc.arquivos.map((a) => ({ nome: a.name })),
+          },
+        },
+        session,
+      );
+      const final =
+        nc.arquivos.length > 0
+          ? await adicionarAnexosAbertura(criada, nc.arquivos, session)
+          : criada;
+      toast.success("Não conformidade aberta com sucesso");
+      onCriado(final);
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function confirmar() {
     if (!tipo || !versoes) return;
+    if (naoConformidade) {
+      await confirmarNc();
+      return;
+    }
     const { __erros, ...respostasLimpas } = respostas;
     const erros = validarCampos(versoes.campos, respostasLimpas);
     if (Object.keys(erros).length > 0) {
@@ -560,6 +639,17 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
               <div className="flex items-center justify-center py-10 text-sm text-[#64748B]">
                 Carregando formulário…
               </div>
+            ) : naoConformidade ? (
+              <FormularioNaoConformidade
+                setores={catalogo.setores}
+                valor={nc}
+                onChange={(estado) => {
+                  setNc(estado);
+                  if (Object.keys(ncErros).length > 0) setNcErros({});
+                }}
+                erros={ncErros}
+                desabilitado={salvando}
+              />
             ) : (
               <FormularioDinamico
                 campos={versoes?.campos ?? ([] as CampoFormulario[])}

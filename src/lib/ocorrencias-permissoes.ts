@@ -74,3 +74,8 @@ export function podeVerInternos(sessao: UserSession | null | undefined, o: Ocorr
 export function veTodasAsOcorrencias(sessao: UserSession | null | undefined): boolean {
   return ehUsuarioDaQualidade(sessao) || ehAdministrador(sessao);
 }
+
+/** Pode excluir ocorrências: Qualidade e administradores. */
+export function podeExcluir(sessao: UserSession | null | undefined): boolean {
+  return ehUsuarioDaQualidade(sessao) || ehAdministrador(sessao);
+}
