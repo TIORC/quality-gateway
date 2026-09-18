@@ -142,3 +142,116 @@ export function ehUsuarioDaQualidade(session: UserSession | null | undefined): b
 export function podeGerenciarConteudo(session: UserSession | null | undefined): boolean {
   return ehUsuarioDaQualidade(session);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Permissões de Planos de Ação                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Gestor/Administrador da Qualidade: cria, edita e exclui qualquer ação,
+ * de qualquer setor. (Regra espelhada no servidor pelo nível de acesso.)
+ */
+export function podeGerenciarTodosPlanos(session: UserSession | null | undefined): boolean {
+  return ehLiderancaDaQualidade(session);
+}
+
+/** Contexto mínimo da ação para avaliar participação (responsável/seguidor). */
+export interface PlanoParticipacao {
+  responsavelEmail: string;
+  responsavelId: string;
+  seguidores: string[];
+  seguidoresIds: string[];
+}
+
+function emailNormalizado(session: UserSession | null | undefined): string {
+  return (session?.email ?? "").trim().toLowerCase();
+}
+
+/** Responsável pela ação (por e-mail ou pelo vínculo de colaborador). */
+export function ehResponsavelDoPlano(
+  session: UserSession | null | undefined,
+  plano: PlanoParticipacao,
+): boolean {
+  if (!session) return false;
+  const email = emailNormalizado(session);
+  if (email && plano.responsavelEmail.trim().toLowerCase() === email) return true;
+  const colaborador = (session.colaboradorId ?? "").trim();
+  return !!colaborador && plano.responsavelId === colaborador;
+}
+
+/** Seguidor da ação: recebe notificações, não responde por ela. */
+export function ehSeguidorDoPlano(
+  session: UserSession | null | undefined,
+  plano: PlanoParticipacao,
+): boolean {
+  if (!session) return false;
+  const email = emailNormalizado(session);
+  if (email && plano.seguidores.some((e) => e.trim().toLowerCase() === email)) return true;
+  const colaborador = (session.colaboradorId ?? "").trim();
+  return !!colaborador && plano.seguidoresIds.includes(colaborador);
+}
+
+/** Criação: Qualidade (ou liderança) e quem recebeu a permissão individual. */
+export function podeCriarPlano(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehUsuarioDaQualidade(session)) return true;
+  return permConcedida(session, session.permAdicionarDocumentos);
+}
+
+/**
+ * Edição: liderança/Qualidade editam qualquer ação; responsável e seguidores
+ * editam as ações em que participam (progresso, status, comentários); quem tem
+ * a permissão individual de modificar documentos também edita.
+ */
+export function podeEditarPlano(
+  session: UserSession | null | undefined,
+  plano: PlanoParticipacao,
+): boolean {
+  if (!session) return false;
+  if (ehUsuarioDaQualidade(session)) return true;
+  if (permConcedida(session, session.permModificarDocumentos)) return true;
+  return ehResponsavelDoPlano(session, plano) || ehSeguidorDoPlano(session, plano);
+}
+
+/** Exclusão: apenas liderança da Qualidade ou permissão individual de excluir. */
+export function podeExcluirPlano(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehLiderancaDaQualidade(session)) return true;
+  return permConcedida(session, session.permExcluirDocumentos);
+}
+
+/**
+ * Comentar: qualquer participante (responsável/seguidor) ou perfil com acesso
+ * de edição. Colaborador sem vínculo com a ação apenas visualiza.
+ */
+export function podeComentarPlano(
+  session: UserSession | null | undefined,
+  plano: PlanoParticipacao,
+): boolean {
+  return podeEditarPlano(session, plano);
+}
+
+/**
+ * Visão restrita: fora da Qualidade/liderança, o colaborador vê apenas as ações
+ * em que é responsável, seguidor ou do seu próprio setor.
+ */
+export function vePlanoNaLista(
+  session: UserSession | null | undefined,
+  plano: PlanoParticipacao & { setor: string },
+): boolean {
+  if (!session) return false;
+  if (ehUsuarioDaQualidade(session)) return true;
+  if (ehResponsavelDoPlano(session, plano) || ehSeguidorDoPlano(session, plano)) return true;
+  const setor = normalizarSetor(session.setor);
+  return !!setor && normalizarSetor(plano.setor) === setor;
+}
+
+/** Filtra a lista conforme a visão permitida (aplicada após carregar as ações). */
+export function filtrarPlanosVisiveis<T extends PlanoParticipacao & { setor: string }>(
+  session: UserSession | null | undefined,
+  planos: T[],
+): T[] {
+  if (!session) return [];
+  return planos.filter((plano) => vePlanoNaLista(session, plano));
+}
+

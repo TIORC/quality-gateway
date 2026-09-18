@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { Bell, ChevronDown, LogOut, User } from "lucide-react";
-import { useState, useEffect, type ReactNode } from "react";
+import { ChevronDown, LogOut, User } from "lucide-react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import {
   PieChart,
   Pie,
@@ -16,10 +16,8 @@ import {
   Label,
 } from "recharts";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
-import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
-
-type PlanoDeAcaoRow = Tables<"planos_de_acao">;
+import { SinoNotificacoes } from "@/components/sino-notificacoes";
+import { PrazoBadge, StatusBadge } from "@/components/plano-badges";
 
 import { logout, getSession } from "@/lib/auth";
 import { carregarEmpresaPrincipal, type Empresa } from "@/lib/organizacao";
@@ -30,6 +28,9 @@ import {
   politicasDisponiveis,
   type DocumentoVencimento,
 } from "@/lib/politicas";
+import { listarPlanos } from "@/lib/planos-base";
+import { diasParaPrazo, planoAtrasado, type PlanoAcao } from "@/lib/planos";
+import { ehResponsavel, ehSeguidor } from "@/lib/planos-inter";
 import {
   cn,
   formatarDataLongaBrasilia,
@@ -60,7 +61,7 @@ export const Route = createFileRoute("/painel")({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function contarPorCampo(planos: PlanoDeAcaoRow[], campo: keyof PlanoDeAcaoRow) {
+function contarPorCampo(planos: PlanoAcao[], campo: "status" | "origem" | "setor" | "prioridade") {
   const mapa: Record<string, number> = {};
   for (const p of planos) {
     const valor = String(p[campo]);
@@ -72,18 +73,25 @@ function contarPorCampo(planos: PlanoDeAcaoRow[], campo: keyof PlanoDeAcaoRow) {
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  nao_iniciado: "Não iniciado",
   aberta: "Aberta",
   em_andamento: "Em andamento",
   concluida: "Concluída",
   atrasada: "Atrasada",
+  cancelado: "Cancelado",
 };
 
 const STATUS_COLORS: Record<string, string> = {
+  nao_iniciado: "#64748B",
   aberta: "#4F46E5",
   em_andamento: "#F59E0B",
   concluida: "#059669",
   atrasada: "#E11D48",
+  cancelado: "#94A3B8",
 };
+
+/** Status que ainda contam como "em aberto" no painel. */
+const STATUS_PENDENTES = new Set(["nao_iniciado", "aberta", "em_andamento", "atrasada"]);
 
 const ORIGEM_COLORS = [
   "#4F46E5",
@@ -156,7 +164,7 @@ function ChartCard({ title, className, children }: ChartCardProps) {
 // Gráficos
 // ---------------------------------------------------------------------------
 
-function GraficoStatus({ planos }: { planos: PlanoDeAcaoRow[] }) {
+function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
   const dados = contarPorCampo(planos, "status")
     .filter((d) => d.nome in STATUS_LABELS)
     .map((d) => ({
@@ -226,7 +234,7 @@ function GraficoStatus({ planos }: { planos: PlanoDeAcaoRow[] }) {
   );
 }
 
-function GraficoOrigem({ planos }: { planos: PlanoDeAcaoRow[] }) {
+function GraficoOrigem({ planos }: { planos: PlanoAcao[] }) {
   const dados = contarPorCampo(planos, "origem");
 
   if (dados.length === 0) {
@@ -266,7 +274,7 @@ function GraficoOrigem({ planos }: { planos: PlanoDeAcaoRow[] }) {
   );
 }
 
-function GraficoSetor({ planos }: { planos: PlanoDeAcaoRow[] }) {
+function GraficoSetor({ planos }: { planos: PlanoAcao[] }) {
   const dados = contarPorCampo(planos, "setor");
 
   if (dados.length === 0) {
@@ -316,7 +324,7 @@ function Painel() {
   const router = useRouter();
   const sessionFromCtx = usePanelSession();
   const [menuAberto, setMenuAberto] = useState(false);
-  const [planos, setPlanos] = useState<PlanoDeAcaoRow[]>([]);
+  const [planos, setPlanos] = useState<PlanoAcao[]>([]);
   const [carregando, setCarregando] = useState(true);
   // Documentos (POPs e políticas) vencidos ou vencendo nos próximos 30 dias.
   const [documentosVencendo, setDocumentosVencendo] = useState<DocumentoVencimento[]>([]);
@@ -374,19 +382,12 @@ function Painel() {
 
   useEffect(() => {
     async function carregar() {
-      try {
-        const { data, error } = await supabase
-          .from("planos_de_acao")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        setPlanos(data ?? []);
-      } catch {
-        setPlanos([]);
-      }
+      // Mesma origem de dados da lista de Planos de Ação (domínio PlanoAcao).
+      const lista = await listarPlanos().catch(() => [] as PlanoAcao[]);
+      setPlanos(lista);
       setCarregando(false);
     }
-    carregar();
+    void carregar();
   }, []);
 
   // Próximos vencimentos: POPs e políticas com data de validade nos próximos
@@ -415,11 +416,26 @@ function Painel() {
     };
   }, []);
 
+  // Indicadores do painel. Atraso considera tanto o status "Atrasada" quanto o
+  // prazo vencido de uma ação ainda não concluída/cancelada.
   const totalAcoes = planos.length;
-  const abertas = planos.filter((p) => p.status === "aberta" || p.status === "em_andamento").length;
-  const atrasadas = planos.filter((p) => p.status === "atrasada").length;
+  const abertas = planos.filter((p) => STATUS_PENDENTES.has(p.status)).length;
+  const atrasadas = planos.filter(planoAtrasado).length;
   const concluidas = planos.filter((p) => p.status === "concluida").length;
   const taxaConclusao = totalAcoes > 0 ? Math.round((concluidas / totalAcoes) * 100) : 0;
+
+  // "Minhas ações": sou responsável (edito) ou seguidor (acompanho).
+  const minhasAbertas = planos.filter(
+    (p) =>
+      STATUS_PENDENTES.has(p.status) &&
+      (ehResponsavel(p, perfil ?? session) || ehSeguidor(p, perfil ?? session)),
+  );
+  const minhasAtrasadas = minhasAbertas.filter(planoAtrasado).length;
+  const minhasOrdenadas = [...minhasAbertas].sort((a, b) => {
+    const da = diasParaPrazo(a.prazo);
+    const db = diasParaPrazo(b.prazo);
+    return (da ?? 9999) - (db ?? 9999);
+  });
 
   const setoresUnicos = new Set(planos.map((p) => p.setor)).size;
 
@@ -455,13 +471,7 @@ function Painel() {
             </span>
           </span>
 
-          <button
-            type="button"
-            aria-label="Notificações"
-            className="rounded-md p-1.5 text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#1F2937]"
-          >
-            <Bell className="h-[18px] w-[18px]" />
-          </button>
+          <SinoNotificacoes />
 
           <span className="hidden h-5 w-px bg-[#D9E0EA] sm:block" />
 
@@ -599,6 +609,70 @@ function Painel() {
               <GraficoOrigem planos={planos} />
             )}
           </ChartCard>
+        </section>
+{/* Minhas ações: sou responsável (edito) ou seguidor (acompanho). */}
+        <section className="mt-5">
+          <div className="flex flex-col rounded-xl border border-[#D9E0EA] bg-white">
+            <div className="flex items-center justify-between px-5 pt-5">
+              <div>
+                <h3 className="text-[14px] font-semibold text-[#1F2937]">Minhas ações</h3>
+                <p className="mt-0.5 text-[12px] text-[#64748B]">
+                  {minhasAbertas.length} em aberto
+                  {minhasAtrasadas > 0 ? ` · ${minhasAtrasadas} em atraso` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void router.navigate({ to: "/planos-de-acao", search: { abrir: undefined } })}
+                className="text-[13px] font-medium text-[#64748B] transition hover:text-[#1F2937]"
+              >
+                ver todas →
+              </button>
+            </div>
+            <div className="mt-4 h-px w-full bg-[#E9EEF5]" />
+            {carregando ? (
+              <div className="flex items-center justify-center px-5 py-10">
+                <p className="text-sm text-[#94A3B8]">Carregando…</p>
+              </div>
+            ) : minhasOrdenadas.length === 0 ? (
+              <div className="flex items-center justify-center px-5 py-10">
+                <p className="text-sm text-[#64748B]">Nenhuma ação atribuída a você.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-[#E9EEF5]">
+                {minhasOrdenadas.slice(0, 5).map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void router.navigate({
+                          to: "/planos-de-acao",
+                          search: { abrir: p.id },
+                        })
+                      }
+                      className="flex w-full flex-wrap items-center gap-3 px-5 py-3 text-left transition hover:bg-[#F8FAFC]"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-[#1F2937]">
+                          {p.codigo ? `${p.codigo} · ` : ""}
+                          {p.titulo}
+                        </span>
+                        <span className="block truncate text-[12px] text-[#64748B]">
+                          {p.setor}
+                          {p.responsavelNome ? ` · ${p.responsavelNome}` : ""}
+                          {ehSeguidor(p, perfil ?? session) && !ehResponsavel(p, perfil ?? session)
+                            ? " · você acompanha como seguidor"
+                            : ""}
+                        </span>
+                      </span>
+                      <StatusBadge status={p.status} />
+                      <PrazoBadge plano={p} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
 
         {/* Seção inferior */}

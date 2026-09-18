@@ -25,6 +25,7 @@ import { rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AppFooter } from "@/components/app-footer";
+import { SinoNotificacoes } from "@/components/sino-notificacoes";
 
 const ICONS: Record<string, LucideIcon> = {
   Painel: LayoutDashboard,
@@ -160,13 +161,16 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
 
       <div className="border-t border-brand-line p-3">
         <ThemeToggle />
-        <button
-          onClick={handleLogout}
-          className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-muted transition hover:bg-white/5 hover:text-brand-foreground"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          Sair
-        </button>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <button
+            onClick={handleLogout}
+            className="flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-muted transition hover:bg-white/5 hover:text-brand-foreground"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            Sair
+          </button>
+          <SinoNotificacoes />
+        </div>
       </div>
     </>
   );
@@ -214,8 +218,11 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
             <Menu className="h-4 w-4" />
             <span className="font-semibold">Gestão da Qualidade</span>
           </button>
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <ShieldCheck className="h-4 w-4" />
+          <span className="inline-flex items-center gap-2">
+            <SinoNotificacoes />
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ShieldCheck className="h-4 w-4" />
+            </span>
           </span>
         </header>
 

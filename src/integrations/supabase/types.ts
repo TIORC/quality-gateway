@@ -187,6 +187,7 @@ export type Database = {
           id: string
           lida: boolean
           mensagem: string
+          plano_id: string | null
           pop_id: string | null
           tipo: string
           titulo: string
@@ -200,6 +201,7 @@ export type Database = {
           id?: string
           lida?: boolean
           mensagem?: string
+          plano_id?: string | null
           pop_id?: string | null
           tipo?: string
           titulo: string
@@ -213,6 +215,7 @@ export type Database = {
           id?: string
           lida?: boolean
           mensagem?: string
+          plano_id?: string | null
           pop_id?: string | null
           tipo?: string
           titulo?: string
@@ -225,56 +228,196 @@ export type Database = {
             referencedRelation: "pops"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "notificacoes_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos_de_acao"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      plano_comentarios: {
+        Row: {
+          autor_email: string
+          autor_id: string
+          autor_nome: string
+          created_at: string
+          id: string
+          mensagem: string
+          plano_id: string
+        }
+        Insert: {
+          autor_email?: string
+          autor_id?: string
+          autor_nome?: string
+          created_at?: string
+          id?: string
+          mensagem?: string
+          plano_id: string
+        }
+        Update: {
+          autor_email?: string
+          autor_id?: string
+          autor_nome?: string
+          created_at?: string
+          id?: string
+          mensagem?: string
+          plano_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plano_comentarios_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos_de_acao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plano_historico: {
+        Row: {
+          autor_email: string
+          autor_id: string
+          autor_nome: string
+          campo: string
+          created_at: string
+          de: string
+          id: string
+          para: string
+          plano_id: string
+        }
+        Insert: {
+          autor_email?: string
+          autor_id?: string
+          autor_nome?: string
+          campo?: string
+          created_at?: string
+          de?: string
+          id?: string
+          para?: string
+          plano_id: string
+        }
+        Update: {
+          autor_email?: string
+          autor_id?: string
+          autor_nome?: string
+          campo?: string
+          created_at?: string
+          de?: string
+          id?: string
+          para?: string
+          plano_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plano_historico_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos_de_acao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plano_origens: {
+        Row: {
+          ativa: boolean
+          created_at: string
+          id: string
+          nome: string
+          ordem: number
+        }
+        Insert: {
+          ativa?: boolean
+          created_at?: string
+          id: string
+          nome: string
+          ordem?: number
+        }
+        Update: {
+          ativa?: boolean
+          created_at?: string
+          id?: string
+          nome?: string
+          ordem?: number
+        }
+        Relationships: []
       }
       planos_de_acao: {
         Row: {
+          anexos: Json
+          codigo: string
+          concluida_em: string | null
           created_at: string
           descricao: string
           detalhamento: string
           id: string
           origem: string
+          origem_outros: string
           prazo: string | null
           prioridade: string
+          progresso: number
           responsavel_email: string
+          responsavel_id: string
           responsavel_nome: string
           seguidores: string[]
+          seguidores_ids: string[]
           setor: string
           status: string
           titulo: string
           updated_at: string
+          vinculo_id: string
+          vinculo_tipo: string
         }
         Insert: {
+          anexos?: Json
+          codigo?: string
+          concluida_em?: string | null
           created_at?: string
           descricao?: string
           detalhamento?: string
           id?: string
           origem?: string
+          origem_outros?: string
           prazo?: string | null
           prioridade?: string
+          progresso?: number
           responsavel_email?: string
+          responsavel_id?: string
           responsavel_nome?: string
           seguidores?: string[]
+          seguidores_ids?: string[]
           setor?: string
           status?: string
           titulo: string
           updated_at?: string
+          vinculo_id?: string
+          vinculo_tipo?: string
         }
         Update: {
+          anexos?: Json
+          codigo?: string
+          concluida_em?: string | null
           created_at?: string
           descricao?: string
           detalhamento?: string
           id?: string
           origem?: string
+          origem_outros?: string
           prazo?: string | null
           prioridade?: string
+          progresso?: number
           responsavel_email?: string
+          responsavel_id?: string
           responsavel_nome?: string
           seguidores?: string[]
+          seguidores_ids?: string[]
           setor?: string
           status?: string
           titulo?: string
           updated_at?: string
+          vinculo_id?: string
+          vinculo_tipo?: string
         }
         Relationships: []
       }
