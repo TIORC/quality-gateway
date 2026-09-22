@@ -320,84 +320,89 @@ function ListaOcorrencias({
   }
 
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-[#D9E0EA] bg-white">
-      <table className="w-full text-[13px]">
-        <thead>
-          <tr className="bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-            <th className="px-3 py-2 text-left">#</th>
-            <th className="px-3 py-2 text-left">Tipo</th>
-            <th className="px-3 py-2 text-left">Título</th>
-            <th className="px-3 py-2 text-left">Etapa</th>
-            <th className="px-3 py-2 text-left">Responsável</th>
-            <th className="px-3 py-2 text-left">Abertura</th>
-            <th className="px-3 py-2 text-left">SLA</th>
-            <th className="px-3 py-2 text-left">Resultado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ocorrencias.map((o) => {
-            const tipo = tipos.find((t) => t.id === o.tipoId);
-            const Icone = iconeTipoOcorrencia(tipo?.icone);
-            const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
-            return (
-              <tr
-                key={o.id}
-                className="cursor-pointer border-t border-[#E9EEF5] transition hover:bg-[#F8FAFC]"
-                onClick={() => onDetalhar(o)}
+    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {ocorrencias.map((o) => {
+        const tipo = tipos.find((t) => t.id === o.tipoId);
+        const Icone = iconeTipoOcorrencia(tipo?.icone);
+        const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
+        return (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onDetalhar(o)}
+            className="group flex flex-col rounded-xl border border-[#E9EEF5] bg-white p-4 text-left shadow-sm transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC]"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span
+                className="inline-flex max-w-[70%] items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
+                style={{ backgroundColor: o.tipoCor }}
+                title={o.tipoNome}
               >
-                <td className="px-3 py-2 font-mono font-medium text-[#1F2937]">{o.numero}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
-                    style={{ backgroundColor: o.tipoCor }}
-                  >
-                    <Icone className="h-3 w-3" />
-                    {o.tipoNome}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-[#1F2937]">{o.titulo || "—"}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                    style={{
-                      backgroundColor: sla.atrasado
-                        ? "#FDECEE"
-                        : sla.critical
-                          ? "#FFFBEB"
-                          : "#ECFDF5",
-                      color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
-                    }}
-                  >
-                    {MACRO_ETAPA_LABELS[o.macroAtual]}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-[#334155]">{o.responsavelNome || "—"}</td>
-                <td className="px-3 py-2 text-[#64748B]">
-                  {FormatadorSla.formatarData(o.createdAt)}
-                </td>
-                <td className="px-3 py-2">
-                  <FormatadorSla sla={sla} />
-                </td>
-                <td className="px-3 py-2">
-                  {o.procedencia !== "pendente" ? (
-                    <span
-                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                      style={{
-                        backgroundColor: o.procedencia === "procedente" ? "#ECFDF5" : "#FDECEE",
-                        color: o.procedencia === "procedente" ? "#065F46" : "#991A1A",
-                      }}
-                    >
-                      {PROCEDENCIA_LABELS[o.procedencia]}
-                    </span>
-                  ) : (
-                    <span className="text-[#94A3B8]">—</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                <Icone className="h-3 w-3 shrink-0" />
+                <span className="truncate">{o.tipoNome}</span>
+              </span>
+              <span className="shrink-0 font-mono text-[11px] text-[#94A3B8]">{o.numero}</span>
+            </div>
+
+            <p className="mt-3 line-clamp-2 text-[14px] font-semibold leading-snug text-[#1F2937]">
+              {o.titulo || "—"}
+            </p>
+
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                style={{
+                  backgroundColor: sla.atrasado
+                    ? "#FDECEE"
+                    : sla.critical
+                      ? "#FFFBEB"
+                      : "#ECFDF5",
+                  color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
+                }}
+              >
+                {MACRO_ETAPA_LABELS[o.macroAtual]}
+              </span>
+              {o.procedencia !== "pendente" ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                  style={{
+                    backgroundColor: o.procedencia === "procedente" ? "#ECFDF5" : "#FDECEE",
+                    color: o.procedencia === "procedente" ? "#065F46" : "#991A1A",
+                  }}
+                >
+                  {PROCEDENCIA_LABELS[o.procedencia]}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-3 flex-1 space-y-1 text-[12px] text-[#64748B]">
+              <p>
+                <span className="text-[#94A3B8]">Responsável:</span>{" "}
+                {o.responsavelNome || "—"}
+              </p>
+              <p>
+                <span className="text-[#94A3B8]">Abertura:</span>{" "}
+                {FormatadorSla.formatarData(o.createdAt)}
+              </p>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2 border-t border-[#EEF2F7] pt-3">
+              <FormatadorSla.Icone sla={sla} />
+              <span
+                className="text-[12px] font-medium"
+                style={{
+                  color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
+                }}
+              >
+                {sla.label}
+              </span>
+              <span className="ml-auto text-[11px] font-semibold text-[#1E3A8A] opacity-0 transition group-hover:opacity-100">
+                Detalhar →
+              </span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
