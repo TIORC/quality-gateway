@@ -152,6 +152,16 @@ export function podeGerenciarConteudo(session: UserSession | null | undefined): 
   return ehUsuarioDaQualidade(session);
 }
 
+/**
+ * Pode planejar auditorias: Qualidade (admin/gestor, Qualidade), nível
+ * Administrador e nível Desenvolvedor. Demais perfis ficam em leitura.
+ */
+export function podePlanejarAuditoria(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (ehUsuarioDaQualidade(session)) return true;
+  return session.nivelAcesso === "Administrador" || session.nivelAcesso === "Desenvolvedor";
+}
+
 /* -------------------------------------------------------------------------- */
 /* Permissões de Planos de Ação                                               */
 /* -------------------------------------------------------------------------- */

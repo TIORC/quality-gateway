@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
-import { podeGerenciarConteudo } from "@/lib/permissoes";
+import { podeGerenciarConteudo, podePlanejarAuditoria } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 import { criarProjeto } from "@/lib/projetos-crud";
@@ -90,18 +90,20 @@ function ProjetosEEstrategias() {
           </p>
         </div>
 
-        {podeGerenciar ? (
-          <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {podePlanejarAuditoria(sessao) ? (
             <Button variant="outline" onClick={() => setNovaAuditoriaAberta(true)}>
               <ClipboardCheck className="h-4 w-4" />
               Nova auditoria
             </Button>
+          ) : null}
+          {podeGerenciar ? (
             <Button onClick={() => setNovoProjetoAberto(true)}>
               <Plus className="h-4 w-4" />
               Novo projeto
             </Button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
