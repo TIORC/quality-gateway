@@ -68,6 +68,7 @@ import {
   type Respostas,
   type TipoOcorrencia,
 } from "@/lib/ocorrencias";
+import { getSession } from "@/lib/auth";
 import { ehUsuarioDaQualidade } from "@/lib/permissoes";
 import { papelNaOcorrencia, veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
@@ -87,7 +88,11 @@ const ABAS = [
 ] as const;
 
 function Ocorrencias() {
-  const session = usePanelSession();
+  // O hook de contexto é nulo aqui: este componente RENDERIZA o PanelShell (e o
+  // contexto só flui para baixo). Lemos a sessão persistida no navegador, como
+  // as demais rotas (planos-de-acao/painel).
+  const sessaoCtx = usePanelSession();
+  const session = getSession() ?? sessaoCtx;
   const [modo, setModo] = useState<"lista" | "configurar">("lista");
   const [refreshToken, setRefreshToken] = useState(0);
   const [abrirAberto, setAbrirAberto] = useState(false);
@@ -1053,7 +1058,8 @@ function TipoDialog({
   const [descricao, setDescricao] = useState(tipo?.descricao ?? "");
   const [cor, setCor] = useState(tipo?.cor ?? "#1E3A8A");
   const [icone, setIcone] = useState(tipo?.icone ?? "AlertTriangle");
-  const [setorPadrao, setSetorPadrao] = useState(tipo?.setorPadrao ?? "Qualidade");
+  // Regra do portal: todo tipo é do setor Qualidade (campo travado).
+  const setorPadrao = "Qualidade";
   const [slaDias, setSlaDias] = useState<Partial<Record<MacroEtapa, number>>>(() => {
     const base: Partial<Record<MacroEtapa, number>> = {};
     for (const m of MACRO_ETAPAS) base[m] = tipo?.slaDias?.[m] ?? 5;
@@ -1125,22 +1131,10 @@ function TipoDialog({
               />
             </Campo>
             <Campo rotulo="Setor responsável padrão">
-              {setores.length > 0 ? (
-                <Select value={setorPadrao} onValueChange={setSetorPadrao}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {setores.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input value={setorPadrao} onChange={(e) => setSetorPadrao(e.target.value)} />
-              )}
+              <Input value="Qualidade" disabled />
+              <p className="text-[11px] text-[#64748B]">
+                Toda ocorrência (qualquer tipo) é do setor Qualidade.
+              </p>
             </Campo>
           </div>
 

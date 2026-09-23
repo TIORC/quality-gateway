@@ -51,7 +51,8 @@ function subetapaVazia(): SubetapaFluxo {
   return {
     id: idCurto(),
     nome: "Nova subetapa",
-    responsavel: { tipo: "setor", id: "", nome: "" },
+    // Regra do portal: toda ocorrência é do setor Qualidade.
+    responsavel: { tipo: "setor", id: "", nome: "Qualidade" },
     prazoDias: 5,
     acoes: ["aprovar", "reprovar", "solicitar_info"] as AcaoEtapa[],
     campos: [],
@@ -84,14 +85,10 @@ export function FlowBuilder({
   }
 
   function adicionarSubetapa(macro: MacroEtapa) {
-    const existente = etapas.find((e) => e.macro === macro);
-    const setorBase =
-      existente?.subetapas[0]?.responsavel.tipo === "setor"
-        ? existente.subetapas[0].responsavel.nome
-        : "";
+    // Regra do portal: nova subetapa já nasce com a Qualidade responsável.
     const nova = {
       ...subetapaVazia(),
-      responsavel: { tipo: "setor" as const, id: "", nome: setorBase },
+      responsavel: { tipo: "setor" as const, id: "", nome: "Qualidade" },
     };
     onChange(
       etapas.map((e) => (e.macro === macro ? { ...e, subetapas: [...e.subetapas, nova] } : e)),

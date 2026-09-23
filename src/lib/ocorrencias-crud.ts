@@ -11,6 +11,7 @@ import {
   MACRO_ETAPAS,
   MACRO_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
+  SETOR_RESPONSAVEL_OCORRENCIAS,
   calcularPrazoEtapa,
   idCurto,
   ocorrenciaAtrasada,
@@ -236,7 +237,8 @@ export async function abrirOcorrencia(
       aberta_por_email: str(autor["autor_email"]),
       aberta_por_setor: sessao?.setor ?? "",
       responsavel_id: "",
-      responsavel_nome: input.tipo.setorPadrao,
+      // Regra do portal: toda ocorrência (qualquer tipo) é do setor Qualidade.
+      responsavel_nome: SETOR_RESPONSAVEL_OCORRENCIAS,
       responsavel_email: "",
       prazo_etapa: calcularPrazoEtapa(input.tipo.slaDias[macro]),
       etapa_entrou_em: new Date().toISOString(),
@@ -334,13 +336,24 @@ async function entrarEm(
   anexos: AnexoOcorrencia[],
 ): Promise<void> {
   const prazo = sub ? calcularPrazoEtapa(sub.prazoDias) : calcularPrazoEtapa(30); // macro sem subetapa: 30 dias padrão
+  // Regra do portal: o setor responsável por toda ocorrência é a Qualidade.
+  // Subetapa sem responsável, sem nome ou com responsável do tipo setor
+  // assume automaticamente a Qualidade (pessoa/cargo explícitos são mantidos,
+  // pois representam delegação feita pela própria Qualidade no fluxo).
+  const ehSetorOuVazio =
+    !sub || sub.responsavel.tipo === "setor" || !sub.responsavel.nome.trim();
+  const responsavelNome = ehSetorOuVazio
+    ? SETOR_RESPONSAVEL_OCORRENCIAS
+    : (sub?.responsavel.nome ?? "");
   const patch: Rec = {
     macro_atual: macro,
     subetapa_atual_id: sub?.id ?? "",
     subetapa_atual_nome: sub?.nome ?? MACRO_ETAPA_LABELS[macro],
-    responsavel_id: sub?.responsavel.id ?? "",
-    responsavel_nome: sub?.responsavel.nome ?? "",
-    responsavel_email: (sub?.responsavel.email ?? "").toLowerCase(),
+    responsavel_id: ehSetorOuVazio ? "" : (sub?.responsavel.id ?? ""),
+    responsavel_nome: responsavelNome,
+    responsavel_email: ehSetorOuVazio
+      ? ""
+      : ((sub?.responsavel.email ?? "").toLowerCase()),
     prazo_etapa: prazo,
     etapa_entrou_em: new Date().toISOString(),
     status: "em_andamento",

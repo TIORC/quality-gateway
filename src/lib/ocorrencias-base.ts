@@ -95,7 +95,9 @@ export async function salvarTipo(
     descricao: tipo.descricao ?? "",
     cor: tipo.cor ?? "#1E3A8A",
     icone: tipo.icone ?? "AlertTriangle",
-    setor_padrao: tipo.setorPadrao ?? "Qualidade",
+    // Regra do portal: todo tipo de ocorrência é de responsabilidade do
+    // setor Qualidade — ignora qualquer outro setor informado.
+    setor_padrao: "Qualidade",
     sla_dias: tipo.slaDias ?? {},
     ativo: tipo.ativo ?? true,
     ordem: tipo.ordem ?? 0,
@@ -258,6 +260,16 @@ export async function publicarFluxo(
   etapas: MacroFluxo[],
   sessao: { nome: string; email: string },
 ): Promise<FluxoVersao> {
+  // Regra do portal: toda etapa de setor é da Qualidade. Normaliza antes de
+  // salvar para que fluxos antigos/com outro setor virem Qualidade.
+  const normalizadas: MacroFluxo[] = etapas.map((e) => ({
+    macro: e.macro,
+    subetapas: e.subetapas.map((s) =>
+      s.responsavel.tipo === "setor" || !s.responsavel.nome.trim()
+        ? { ...s, responsavel: { tipo: "setor", id: "", nome: "Qualidade" } }
+        : s,
+    ),
+  }));
   const existentes = await listarFluxos(tipoId);
   const versao = existentes.reduce((m, f) => Math.max(m, f.versao), 0) + 1;
   const { data, error } = await cloud()
@@ -265,7 +277,7 @@ export async function publicarFluxo(
     .insert({
       tipo_id: tipoId,
       versao,
-      etapas,
+      etapas: normalizadas,
       publicada: true,
       criado_por_nome: sessao.nome,
       criado_por_email: sessao.email,

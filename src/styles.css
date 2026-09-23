@@ -401,6 +401,25 @@
   color: var(--card-foreground);
 }
 
+/*
+ * Hierarquia dos textos no modo escuro ---------------------------------
+ *
+ * No detalhe da ocorrência (e no detalhe do plano) os valores do bloco
+ * "Dados da abertura" usavam #334155 — um cinza-azulado escuro — que ficava
+ * praticamente invisível sobre o card escuro. Aqui os valores passam a cinza
+ * claro e os títulos/rótulos (#94A3B8) a um cinza mais escuro, mantendo a
+ * mesma hierarquia do modo claro (valores em destaque, rótulos discretos).
+ * Vale para todo o app; o modo claro não é alterado.
+ */
+
+.dark .text-\[\#334155\] {
+  color: oklch(0.9 0.01 257); /* cinza claro — textos e valores */
+}
+
+.dark .text-\[\#94A3B8\] {
+  color: oklch(0.75 0.01 257); /* cinza escuro — títulos e rótulos */
+}
+
 /* Página /pops — contraste dos textos no modo escuro ----------------- */
 /*
  * Na tela de POPs o azul escuro dos títulos ficava "apagado" sobre o

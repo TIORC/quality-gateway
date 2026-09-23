@@ -188,8 +188,17 @@ export function fluxoVazio(): MacroFluxo[] {
   return MACRO_ETAPAS.map((macro) => ({ macro, subetapas: [] }));
 }
 
+/**
+ * Setor responsável por TODA ocorrência aberta no portal, qualquer que seja
+ * o tipo (Reclamação, NC, Desvio, Acidente…). A Qualidade recebe, tria e
+ * delega pelo fluxo/histórico — por isso a abertura e cada movimentação da
+ * linha do metrô assumem este setor como responsável atual.
+ */
+export const SETOR_RESPONSAVEL_OCORRENCIAS = "Qualidade";
+
 export function fluxoDefault(tipo: TipoOcorrencia): MacroFluxo[] {
-  // Fluxo mínimo: 1 subetapa por macro-etapa sob o setor responsável padrão,
+  // Fluxo mínimo: 1 subetapa por macro-etapa sob responsabilidade da
+  // Qualidade (regra do portal: toda ocorrência é da Qualidade),
   // herdando o SLA configurado no tipo.
   return MACRO_ETAPAS.map((macro) => ({
     macro,
@@ -197,7 +206,7 @@ export function fluxoDefault(tipo: TipoOcorrencia): MacroFluxo[] {
       {
         id: `${macro}-padrao`,
         nome: MACRO_ETAPA_LABELS[macro],
-        responsavel: { tipo: "setor" as const, id: "", nome: tipo.setorPadrao },
+        responsavel: { tipo: "setor" as const, id: "", nome: SETOR_RESPONSAVEL_OCORRENCIAS },
         prazoDias: tipo.slaDias[macro] ?? 5,
         acoes:
           macro === "abertura"
