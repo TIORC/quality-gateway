@@ -18,8 +18,21 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { atualizarSessao, logout, rolePodeAcessarPainel, type UserSession } from "@/lib/auth";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  atualizarSessao,
+  getSession,
+  logout,
+  rolePodeAcessarPainel,
+  type UserSession,
+} from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
 import { rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
@@ -64,8 +77,18 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
   // Guarda de acesso: admin, gestor e colaboradores com nível de acesso entram.
   // Antes, re-sincroniza a sessão com o vínculo organizacional atual (troca de
   // setor/cargo e permissões de documentos valem sem re-login).
-  useEffect(() => {
+  //
+  // A sessão em cache (localStorage) libera a tela IMEDIATAMENTE (sem o flash
+  // "Verificando acesso" a cada navegação entre módulos); a re-sincronização
+  // roda em segundo plano e atualiza o estado ao concluir. `useLayoutEffect`
+  // garante que a troca acontece antes do paint, mesmo na remontagem da rota.
+  useLayoutEffect(() => {
     let ativo = true;
+    const cache = getSession();
+    if (cache && rolePodeAcessarPainel(cache) && rotaPermitida(cache, location.pathname)) {
+      setSession(cache);
+      setChecando(false);
+    }
     void atualizarSessao().then((atual) => {
       if (!ativo) return;
       if (!atual || !rolePodeAcessarPainel(atual)) {

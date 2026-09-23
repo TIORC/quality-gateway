@@ -41,8 +41,10 @@ export interface UserSession {
   colaboradorId: string;
   /** Nível de acesso efetivo (vazio para compatibilidade). */
   nivelAcesso: string;
-  /** Unidade do colaborador (vazio quando não há vínculo). */
+    /** Unidade do colaborador (vazio quando não há vínculo). */
   unidade: string;
+  /** Grupos personalizados do colaborador (texto, ex.: "CIPA;Comitê de riscos"). */
+  grupos: string;
   /** Permite adicionar/criar documentos (POPs e políticas). */
   permAdicionarDocumentos: boolean;
   /** Permite modificar/editar documentos (POPs e políticas). */
@@ -90,7 +92,8 @@ function readSession(): UserSession | null {
       setor: parsed.setor ?? "",
       colaboradorId: parsed.colaboradorId ?? "",
       nivelAcesso: parsed.nivelAcesso ?? "",
-      unidade: parsed.unidade ?? "",
+            unidade: parsed.unidade ?? "",
+      grupos: parsed.grupos ?? "",
       permAdicionarDocumentos: parsed.permAdicionarDocumentos ?? false,
       permModificarDocumentos: parsed.permModificarDocumentos ?? false,
       permExcluirDocumentos: parsed.permExcluirDocumentos ?? false,
@@ -191,7 +194,8 @@ function buildSession(
     setor: user.setor,
     colaboradorId: user.colaboradorId,
     nivelAcesso: user.nivelAcesso,
-    unidade: user.unidade,
+        unidade: user.unidade,
+    grupos: "",
     permAdicionarDocumentos: false,
     permModificarDocumentos: false,
     permExcluirDocumentos: false,
@@ -347,7 +351,8 @@ export async function login(
         if (usuario.email !== colaborador.email && colaborador.email) {
           sessionBase.email = usuario.email;
         }
-        sessionBase.permAdicionarDocumentos = colaborador.perm_adicionar_documentos;
+                sessionBase.permAdicionarDocumentos = colaborador.perm_adicionar_documentos;
+        sessionBase.grupos = colaborador.grupos ?? "";
         sessionBase.permModificarDocumentos = colaborador.perm_modificar_documentos;
         sessionBase.permExcluirDocumentos = colaborador.perm_excluir_documentos;
         sessionBase.permExcluirPlanos = colaborador.perm_excluir_planos;

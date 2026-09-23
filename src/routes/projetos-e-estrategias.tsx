@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FolderKanban, Plus } from "lucide-react";
+import { ClipboardCheck, FolderKanban, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { NovaAuditoriaDialog } from "@/components/nova-auditoria-dialog";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +27,12 @@ import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { podeGerenciarConteudo } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
+import { criarProjeto } from "@/lib/projetos-crud";
+import { listarProjetos } from "@/lib/projetos-base";
+import type { PrioridadeProjeto, ProjetoEstrategico } from "@/lib/projetos";
+import { TIPOS_PROJETO, PRIORIDADES_PROJETO } from "@/lib/projetos";
+import { CartaoProjeto } from "@/components/cartao-projeto";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/projetos-e-estrategias")({
   head: () => ({
@@ -34,13 +41,38 @@ export const Route = createFileRoute("/projetos-e-estrategias")({
   component: ProjetosEEstrategias,
 });
 
-const TIPOS_PROJETO = ["Planejamento Estratégico", "Projeto"] as const;
-
 function ProjetosEEstrategias() {
   const catalogo = useCatalogoOrganizacional();
   const sessao = usePanelSession();
   const podeGerenciar = podeGerenciarConteudo(sessao);
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
+  const [novaAuditoriaAberta, setNovaAuditoriaAberta] = useState(false);
+  const [projetos, setProjetos] = useState<ProjetoEstrategico[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+
+  async function recarregar() {
+    setCarregando(true);
+    try {
+      setProjetos(await listarProjetos(sessao));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível carregar.");
+      setProjetos([]);
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    void recarregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filtrados = projetos.filter((p) => {
+    const b = busca.trim().toLowerCase();
+    if (!b) return true;
+    return `${p.codigo} ${p.nome} ${p.objetivo} ${p.responsavelNome}`.toLowerCase().includes(b);
+  });
 
   return (
     <PanelShell wide>
@@ -59,32 +91,81 @@ function ProjetosEEstrategias() {
         </div>
 
         {podeGerenciar ? (
-          <Button className="shrink-0" onClick={() => setNovoProjetoAberto(true)}>
-            <Plus className="h-4 w-4" />
-            Novo projeto
-          </Button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setNovaAuditoriaAberta(true)}>
+              <ClipboardCheck className="h-4 w-4" />
+              Nova auditoria
+            </Button>
+            <Button onClick={() => setNovoProjetoAberto(true)}>
+              <Plus className="h-4 w-4" />
+              Novo projeto
+            </Button>
+          </div>
         ) : null}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
-        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF2F7]">
-            <FolderKanban className="h-7 w-7 text-[#94A3B8]" />
-          </div>
-          <h3 className="mt-4 text-base font-semibold text-[#1F2937]">
-            Nenhum projeto para você ainda
-          </h3>
-          <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
-            Projetos aparecem aqui quando o seu setor participa ou quando você é o responsável.
-          </p>
-        </div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por código, nome ou responsável"
+          className="max-w-md bg-white"
+        />
+        <span className="text-[12px] text-[#64748B]">{filtrados.length} projeto(s)</span>
       </div>
+
+      {carregando ? (
+        <p className="rounded-2xl border border-[#D9E0EA] bg-white px-6 py-12 text-center text-sm text-[#64748B]">
+          Carregando projetos...
+        </p>
+      ) : filtrados.length === 0 ? (
+        <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
+          <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF2F7]">
+              <FolderKanban className="h-7 w-7 text-[#94A3B8]" />
+            </div>
+            <h3 className="mt-4 text-base font-semibold text-[#1F2937]">
+              Nenhum projeto para você ainda
+            </h3>
+            <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
+              Projetos aparecem aqui quando o seu setor participa ou quando você é o responsável.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtrados.map((p) => (
+            <CartaoProjeto
+              key={p.id}
+              projeto={p}
+              onAlterado={(atual) =>
+                setProjetos((lista) => lista.map((x) => (x.id === atual.id ? atual : x)))
+              }
+              onExcluido={(id) => setProjetos((lista) => lista.filter((x) => x.id !== id))}
+            />
+          ))}
+        </div>
+      )}
+
+      <NovaAuditoriaDialog
+        aberto={novaAuditoriaAberta}
+        unidades={catalogo.unidades}
+        setores={catalogo.setores}
+        colaboradores={catalogo.colaboradores}
+        onFechar={() => setNovaAuditoriaAberta(false)}
+      />
 
       <NovoProjetoDialog
         aberto={novoProjetoAberto}
         setores={catalogo.setores}
         colaboradores={catalogo.colaboradores}
+        projetos={projetos}
         onFechar={() => setNovoProjetoAberto(false)}
+        onCriado={(p) => {
+          setProjetos((lista) => [p, ...lista]);
+          setNovoProjetoAberto(false);
+          toast.success(`Projeto ${p.codigo} criado.`);
+        }}
       />
     </PanelShell>
   );
