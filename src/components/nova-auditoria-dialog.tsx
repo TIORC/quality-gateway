@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { CampoMencao } from "@/components/campo-mencao";
+import {
+  FormularioNaoConformidade,
+  LIMITE_ANEXOS_NC,
+  LIMITE_TEXTO_NC,
+  TAMANHO_MAX_ANEXO_NC,
+  type EstadoNaoConformidade,
+  ESTADO_NC_VAZIO,
+} from "@/components/ocorrencias/formulario-nao-conformidade";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,50 +29,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { getSession } from "@/lib/auth";
+import { RESULTADOS_AUDITORIA, type Auditoria, type ResultadoAuditoria } from "@/lib/auditorias";
+import { criarAuditoria } from "@/lib/auditorias-crud";
+import { TIPOS_AUDITORIA, type Colaborador, type TipoAuditoria } from "@/lib/dados";
 import {
-  NORMAS_AUDITORIA,
-  TIPOS_AUDITORIA,
-  type Colaborador,
-  type TipoAuditoria,
-} from "@/lib/dados";
+  adicionarAnexosAbertura,
+  abrirOcorrencia,
+  carregarUltimasVersoes,
+} from "@/lib/ocorrencias-crud";
+import { listarTipos } from "@/lib/ocorrencias-base";
+import { ehTipoNaoConformidade } from "@/lib/ocorrencias";
+import { traduzErro } from "@/lib/organizacao";
+import { criarPlano } from "@/lib/planos-crud";
+import { PRIORIDADES_ACAO, prazoBrParaISO } from "@/lib/planos";
 import { mascaraDataBr } from "@/lib/utils";
-
-const ROTEIRO = [
-  {
-    id: "monitoramento",
-    rotulo: "Monitoramento e medição ISO 9001:2015 · 9.1",
-    pergunta:
-      "Os indicadores do processo são apurados na periodicidade definida e analisados criticamente?",
-  },
-  {
-    id: "nconformidade",
-    rotulo: "Não conformidade e ação corretiva ISO 9001:2015 · 10.2",
-    pergunta:
-      "As não conformidades anteriores foram tratadas com análise de causa e avaliação de eficácia?",
-  },
-  {
-    id: "competencia",
-    rotulo: "Competência ISO 9001:2015 · 7.2",
-    pergunta: "A equipe tem treinamento registrado para as atividades que executa?",
-  },
-  {
-    id: "riscos",
-    rotulo: "Riscos e oportunidades ISO 9001:2015 · 6.1",
-    pergunta: "Os riscos do processo estão identificados e existe tratamento definido?",
-  },
-  {
-    id: "informacao",
-    rotulo: "Informação documentada ISO 9001:2015 · 7.5",
-    pergunta:
-      "Os documentos do processo estão atualizados, aprovados e disponíveis na versão vigente?",
-  },
-  {
-    id: "producao",
-    rotulo: "Controle da produção e serviço ISO 9001:2015 · 8.5.1",
-    pergunta:
-      "As atividades seguem os procedimentos operacionais definidos e há registro da execução?",
-  },
-];
 
 const OLANDSSON: Colaborador = { id: "col_olandson", nome: "Olandson", cargo: "Auditor" };
 
@@ -87,6 +67,7 @@ interface NovaAuditoriaDialogProps {
   setores: string[];
   colaboradores: Colaborador[];
   onFechar: () => void;
+  onCriado?: (auditoria: Auditoria) => void;
 }
 
 export function NovaAuditoriaDialog({
@@ -95,18 +76,30 @@ export function NovaAuditoriaDialog({
   setores,
   colaboradores,
   onFechar,
+  onCriado,
 }: NovaAuditoriaDialogProps) {
   const [codigo, setCodigo] = useState("AUD-2026-05");
   const [titulo, setTitulo] = useState("");
   const [tipo, setTipo] = useState<TipoAuditoria>("Interna");
-  const [norma, setNorma] = useState("ISO 9001:2015");
   const [unidade, setUnidade] = useState("Matriz");
   const [dataPlanejada, setDataPlanejada] = useState("");
   const [setoresAuditados, setSetoresAuditados] = useState<string[]>([]);
-  const [escopo, setEscopo] = useState("");
+  const [relatorio, setRelatorio] = useState("");
+  const [evidencias, setEvidencias] = useState("");
   const [auditores, setAuditores] = useState<Colaborador[]>([OLANDSSON]);
   const [auditados, setAuditados] = useState<Colaborador[]>([]);
-  const [roteiroSelecionado, setRoteiroSelecionado] = useState<string[]>([]);
+
+  const [resultado, setResultado] = useState<ResultadoAuditoria>("nenhum");
+  const [nc, setNc] = useState<EstadoNaoConformidade>(ESTADO_NC_VAZIO);
+  const [ncErros, setNcErros] = useState<Record<string, string>>({});
+  const [planoTitulo, setPlanoTitulo] = useState("");
+  const [planoDetalhamento, setPlanoDetalhamento] = useState("");
+  const [planoSetor, setPlanoSetor] = useState("");
+  const [planoResponsavelId, setPlanoResponsavelId] = useState("");
+  const [planoPrazo, setPlanoPrazo] = useState("");
+  const [planoPrioridade, setPlanoPrioridade] = useState("Média");
+  const [planoSeguidores, setPlanoSeguidores] = useState<Colaborador[]>([]);
+  const [salvando, setSalvando] = useState(false);
 
   function alternarSetor(setor: string) {
     setSetoresAuditados((atual) =>
@@ -114,34 +107,206 @@ export function NovaAuditoriaDialog({
     );
   }
 
-  function alternarRoteiro(id: string) {
-    setRoteiroSelecionado((atual) =>
-      atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id],
-    );
-  }
+  const origemRotulo = tipo === "Interna" ? "Auditoria Interna" : "Auditoria Externa";
 
   function limpar() {
     setCodigo("AUD-2026-05");
     setTitulo("");
     setTipo("Interna");
-    setNorma("ISO 9001:2015");
     setUnidade("Matriz");
     setDataPlanejada("");
     setSetoresAuditados([]);
-    setEscopo("");
+    setRelatorio("");
+    setEvidencias("");
     setAuditores([OLANDSSON]);
     setAuditados([]);
-    setRoteiroSelecionado([]);
+    setResultado("nenhum");
+    setNc(ESTADO_NC_VAZIO);
+    setNcErros({});
+    setPlanoTitulo("");
+    setPlanoDetalhamento("");
+    setPlanoSetor("");
+    setPlanoResponsavelId("");
+    setPlanoPrazo("");
+    setPlanoPrioridade("Média");
+    setPlanoSeguidores([]);
+    setSalvando(false);
   }
 
   useEffect(() => {
     if (!aberto) limpar();
   }, [aberto]);
 
-  function programar() {
+  async function programar() {
+    if (salvando) return;
+    if (!titulo.trim()) {
+      toast.error("Informe o título da auditoria.");
+      return;
+    }
+    setSalvando(true);
+    let resultadoRef = "";
+
+    if (resultado === "nao_conformidade") {
+      const erros: Record<string, string> = {};
+      if (!nc.area.trim()) erros["area"] = "Informe a área envolvida.";
+      if (!nc.descricao.trim()) erros["descricao"] = "Descreva a não conformidade.";
+      else if (nc.descricao.length > LIMITE_TEXTO_NC)
+        erros["descricao"] = `Limite de ${LIMITE_TEXTO_NC} caracteres.`;
+      if (!nc.consequencia.trim()) erros["consequencia"] = "Informe a consequência.";
+      else if (nc.consequencia.length > LIMITE_TEXTO_NC)
+        erros["consequencia"] = `Limite de ${LIMITE_TEXTO_NC} caracteres.`;
+      if (nc.sugestao.length > LIMITE_TEXTO_NC)
+        erros["sugestao"] = `Limite de ${LIMITE_TEXTO_NC} caracteres.`;
+      if (nc.multa === "sim" && !nc.assinouMulta)
+        erros["termoMulta"] = "É obrigatório assinar o termo de multa para gerar a ocorrência.";
+      if (nc.arquivos.length > LIMITE_ANEXOS_NC)
+        erros["anexos"] = `Máximo de ${LIMITE_ANEXOS_NC} anexos.`;
+      else if (nc.arquivos.some((a) => a.size > TAMANHO_MAX_ANEXO_NC))
+        erros["anexos"] = "Cada anexo deve ter até 10 MB.";
+      if (Object.keys(erros).length > 0) {
+        setNcErros(erros);
+        setSalvando(false);
+        toast.error("Verifique os campos obrigatórios do formulário.");
+        return;
+      }
+      try {
+        const tipos = await listarTipos();
+        const tipoNC = tipos.find((t) => ehTipoNaoConformidade(t));
+        if (!tipoNC) {
+          toast.error("Não há tipo 'Não Conformidade' cadastrado em Ocorrências.");
+          setSalvando(false);
+          return;
+        }
+        const versoes = await carregarUltimasVersoes(tipoNC.id);
+        const descricao = nc.descricao.trim();
+        const tituloNC = descricao.length > 80 ? `${descricao.slice(0, 80)}…` : descricao;
+        const criada = await abrirOcorrencia(
+          {
+            tipo: tipoNC,
+            formularioVersao: versoes.formularioVersao,
+            fluxoVersao: versoes.fluxoVersao,
+            titulo: tituloNC,
+            respostas: {
+              origem_nc: origemRotulo,
+              area_envolvida: nc.area.trim(),
+              descricao_nc: descricao,
+              consequencia: nc.consequencia.trim(),
+              sugestao_solucao: nc.sugestao.trim(),
+              gerou_multa: nc.multa === "sim",
+              assinou_termo_multa: nc.assinouMulta,
+              anexos: nc.arquivos.map((a) => ({ nome: a.name })),
+            },
+          },
+          getSession(),
+        );
+        try {
+          await adicionarAnexosAbertura(criada, nc.arquivos, getSession());
+        } catch (eAnexo) {
+          // A NC já existe: anexo é complementar e não pode travar o modal.
+          toast.warning(
+            `NC ${criada.numero} aberta, mas os anexos não puderam ser anexados (${traduzErro(eAnexo).message}).`,
+          );
+        }
+        resultadoRef = criada.numero;
+        toast.success(`Não conformidade ${criada.numero} aberta com sucesso`);
+      } catch (e) {
+        toast.error(traduzErro(e).message);
+        setSalvando(false);
+        return;
+      }
+    } else if (resultado === "ponto_atencao" || resultado === "oportunidade") {
+      const responsavel = colaboradores.find((c) => c.id === planoResponsavelId);
+      const prazoIso = planoPrazo.trim() ? prazoBrParaISO(planoPrazo) : null;
+      const tituloPlano = planoTitulo.trim();
+      if (
+        tituloPlano.length < 3 ||
+        !responsavel ||
+        !planoSetor ||
+        !planoPrioridade ||
+        (planoPrazo.trim() !== "" && prazoIso === null)
+      ) {
+        setSalvando(false);
+        toast.error("Preencha os campos obrigatórios do plano de ação.");
+        return;
+      }
+      try {
+        const plano = await criarPlano(
+          {
+            titulo: tituloPlano,
+            descricao: planoDetalhamento.trim() || tituloPlano,
+            origem: origemRotulo,
+            origemOutros: "",
+            setor: planoSetor,
+            responsavelId: responsavel.id,
+            responsavelNome: responsavel.nome,
+            responsavelEmail: (responsavel.email ?? "").toLowerCase(),
+            seguidoresIds: planoSeguidores.map((m) => m.id),
+            seguidoresEmails: planoSeguidores
+              .map((m) => (m.email ?? "").toLowerCase())
+              .filter((e) => e.includes("@")),
+            prazo: prazoIso,
+            prioridade: planoPrioridade,
+          },
+          getSession(),
+        );
+        resultadoRef = plano.codigo;
+        toast.success(`Plano de ação ${plano.codigo} criado com sucesso`);
+      } catch (e) {
+        toast.error(traduzErro(e).message);
+        setSalvando(false);
+        return;
+      }
+    }
+
+    try {
+      const auditoria = await criarAuditoria(
+        {
+          codigo,
+          titulo,
+          tipo,
+          norma: "ISO 9001:2015",
+          unidade,
+          dataPlanejada,
+          setoresAuditados,
+          relatorio,
+          evidencias,
+          auditores: auditores.map((a) => ({ id: a.id, nome: a.nome })),
+          auditados: auditados.map((a) => ({ id: a.id, nome: a.nome })),
+          resultado,
+          resultadoRef,
+        },
+        getSession(),
+      );
+      toast.success("Auditoria programada");
+      onCriado?.(auditoria);
+    } catch (e) {
+      if (resultadoRef) {
+        // NC/plano já foram criados: manter o modal aberto faria o usuário
+        // clicar de novo e duplicar o registro. Fecha com aviso.
+        toast.error(
+          `${resultado === "nao_conformidade" ? `Não conformidade ${resultadoRef} aberta` : `Plano ${resultadoRef} criado`}, mas não foi possível gravar a auditoria: ${traduzErro(e).message}`,
+        );
+        setSalvando(false);
+        limpar();
+        onFechar();
+        return;
+      }
+      toast.error(traduzErro(e).message);
+      setSalvando(false);
+      return;
+    }
+
+    setSalvando(false);
     limpar();
     onFechar();
   }
+
+  const rotuloAcaoFinal =
+    resultado === "nao_conformidade"
+      ? "Programar e abrir NC"
+      : resultado === "ponto_atencao" || resultado === "oportunidade"
+        ? "Programar e criar plano"
+        : "Programar Auditoria";
 
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
@@ -149,7 +314,7 @@ export function NovaAuditoriaDialog({
         <DialogHeader>
           <DialogTitle>Nova auditoria</DialogTitle>
           <DialogDescription>
-            Programe a auditoria, defina o escopo e monte o roteiro de verificação.
+            Programe a auditoria e registre o relatório, as evidências e o resultado da verificação.
           </DialogDescription>
         </DialogHeader>
 
@@ -183,18 +348,7 @@ export function NovaAuditoriaDialog({
             </Campo>
 
             <Campo rotulo="Norma">
-              <Select value={norma} onValueChange={setNorma}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {NORMAS_AUDITORIA.map((opcao) => (
-                    <SelectItem key={opcao} value={opcao}>
-                      {opcao}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input value="ISO 9001:2015" readOnly className="bg-[#F1F5F9] text-[#475569]" />
             </Campo>
 
             <Campo rotulo="Unidade">
@@ -241,11 +395,11 @@ export function NovaAuditoriaDialog({
             </div>
           </Campo>
 
-          <Campo rotulo="Escopo">
+          <Campo rotulo="Relatório">
             <Textarea
-              value={escopo}
-              onChange={(evento) => setEscopo(evento.target.value)}
-              placeholder="O que será verificado e com qual profundidade."
+              value={relatorio}
+              onChange={(evento) => setRelatorio(evento.target.value)}
+              placeholder="Resumo da auditoria e o que foi verificado."
               className="min-h-[90px]"
             />
           </Campo>
@@ -273,47 +427,175 @@ export function NovaAuditoriaDialog({
             </p>
           </Campo>
 
-          <Campo rotulo="Roteiro de verificação">
-            <div className="space-y-2">
-              {ROTEIRO.map((item) => (
-                <label
-                  key={item.id}
-                  htmlFor={`roteiro-${item.id}`}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#E9EEF5] p-3 transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC]"
-                >
-                  <Checkbox
-                    id={`roteiro-${item.id}`}
-                    checked={roteiroSelecionado.includes(item.id)}
-                    onCheckedChange={() => alternarRoteiro(item.id)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="block text-[13px] font-semibold text-[#1F2937]">
-                      {item.rotulo}
-                    </span>
-                    <span className="mt-0.5 block text-xs leading-relaxed text-[#64748B]">
-                      {item.pergunta}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-            <p className="pt-1 text-xs italic text-[#94A3B8]">
-              Outros itens podem ser acrescentados durante a auditoria.
+          <Campo rotulo="Evidências">
+            <Textarea
+              value={evidencias}
+              onChange={(evento) => setEvidencias(evento.target.value)}
+              placeholder="Descreva as evidências coletadas durante a auditoria."
+              className="min-h-[140px]"
+              maxLength={20000}
+            />
+            <p className="text-xs italic text-[#94A3B8]">
+              {evidencias.length.toLocaleString("pt-BR")} / 20.000 caracteres
             </p>
           </Campo>
+
+          <Campo rotulo="Resultado">
+            <div className="flex flex-wrap gap-2">
+              {RESULTADOS_AUDITORIA.map((opcao) => (
+                <button
+                  key={opcao.valor}
+                  type="button"
+                  disabled={salvando}
+                  onClick={() =>
+                    setResultado((atual) => (atual === opcao.valor ? "nenhum" : opcao.valor))
+                  }
+                  className={`rounded-full border px-4 py-1.5 text-[13px] font-medium transition ${
+                    resultado === opcao.valor
+                      ? "border-[#1E3A8A] bg-[#EEF2FF] text-[#1E3A8A]"
+                      : "border-[#D9E0EA] bg-white text-[#475569] hover:bg-[#F8FAFC]"
+                  } ${salvando ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
+                >
+                  {opcao.rotulo}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs italic text-[#94A3B8]">
+              A Não Conformidade abre em Ocorrências com origem {origemRotulo}; Ponto de Atenção e
+              Oportunidade geram um plano de ação preenchido pelo auditor.
+            </p>
+          </Campo>
+
+          {resultado === "nao_conformidade" ? (
+            <div className="space-y-3 rounded-xl border border-[#D9E0EA] bg-[#F8FAFC] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+                  Não conformidade da auditoria
+                </p>
+                <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#1E3A8A]">
+                  {origemRotulo}
+                </span>
+              </div>
+              <FormularioNaoConformidade
+                setores={setores}
+                valor={nc}
+                onChange={(estado) => {
+                  setNc(estado);
+                  if (Object.keys(ncErros).length > 0) setNcErros({});
+                }}
+                erros={ncErros}
+                desabilitado={salvando}
+              />
+            </div>
+          ) : null}
+
+          {resultado === "ponto_atencao" || resultado === "oportunidade" ? (
+            <div className="space-y-3 rounded-xl border border-[#D9E0EA] bg-[#F8FAFC] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+                  Plano de ação —{" "}
+                  {resultado === "ponto_atencao" ? "Ponto de Atenção" : "Oportunidade"}
+                </p>
+                <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#1E3A8A]">
+                  {origemRotulo}
+                </span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Campo rotulo="O que precisa ser feito *">
+                    <Input
+                      value={planoTitulo}
+                      onChange={(evento) => setPlanoTitulo(evento.target.value)}
+                      placeholder="Ex.: Revisar procedimento de expedição"
+                      maxLength={140}
+                    />
+                  </Campo>
+                </div>
+                <div className="sm:col-span-2">
+                  <Campo rotulo="Detalhamento">
+                    <Textarea
+                      value={planoDetalhamento}
+                      onChange={(evento) => setPlanoDetalhamento(evento.target.value)}
+                      placeholder="Problema, entrega esperada e comprovação."
+                      className="min-h-[90px]"
+                    />
+                  </Campo>
+                </div>
+                <Campo rotulo="Setor *">
+                  <Select value={planoSetor} onValueChange={setPlanoSetor}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar setor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {setores.map((opcao) => (
+                        <SelectItem key={opcao} value={opcao}>
+                          {opcao}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Campo>
+                <Campo rotulo="Responsável *">
+                  <Select value={planoResponsavelId} onValueChange={setPlanoResponsavelId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecionar colaborador…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {colaboradores.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nome} — {c.setor || c.cargo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Campo>
+                <Campo rotulo="Prazo">
+                  <Input
+                    value={planoPrazo}
+                    onChange={(evento) => setPlanoPrazo(mascaraDataBr(evento.target.value))}
+                    placeholder="dd/mm/aaaa"
+                    inputMode="numeric"
+                  />
+                </Campo>
+                <Campo rotulo="Prioridade *">
+                  <Select value={planoPrioridade} onValueChange={setPlanoPrioridade}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORIDADES_ACAO.map((opcao) => (
+                        <SelectItem key={opcao} value={opcao}>
+                          {opcao}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Campo>
+                <div className="sm:col-span-2">
+                  <Campo rotulo="Seguidores">
+                    <CampoMencao
+                      colaboradores={colaboradores}
+                      selecionados={planoSeguidores}
+                      onChange={setPlanoSeguidores}
+                    />
+                  </Campo>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onFechar}>
+          <Button type="button" variant="outline" onClick={onFechar} disabled={salvando}>
             Cancelar
           </Button>
           <Button
             type="button"
-            onClick={programar}
+            onClick={() => void programar()}
+            disabled={salvando}
             className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
           >
-            Programar Auditoria
+            {salvando ? "Salvando…" : rotuloAcaoFinal}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -368,6 +368,10 @@ function DetalheCorpo({
                 {ehTipoNaoConformidade({ nome: o.tipoNome }) ? (
                   <>
                     <div>
+                      <dt className="text-[11px] text-[#94A3B8]">Origem</dt>
+                      <dd className="text-[#334155]">{textoResposta(o.respostas["origem_nc"])}</dd>
+                    </div>
+                    <div>
                       <dt className="text-[11px] text-[#94A3B8]">Área envolvida</dt>
                       <dd className="text-[#334155]">
                         {textoResposta(o.respostas["area_envolvida"])}

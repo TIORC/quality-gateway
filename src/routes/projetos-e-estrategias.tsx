@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClipboardCheck, FolderKanban, Plus } from "lucide-react";
+import { FolderKanban, Plus } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { NovaAuditoriaDialog } from "@/components/nova-auditoria-dialog";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
-import { podeGerenciarConteudo, podePlanejarAuditoria } from "@/lib/permissoes";
+import { podeGerenciarConteudo } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 import { criarProjeto } from "@/lib/projetos-crud";
@@ -46,7 +45,6 @@ function ProjetosEEstrategias() {
   const sessao = usePanelSession();
   const podeGerenciar = podeGerenciarConteudo(sessao);
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
-  const [novaAuditoriaAberta, setNovaAuditoriaAberta] = useState(false);
   const [projetos, setProjetos] = useState<ProjetoEstrategico[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -91,12 +89,6 @@ function ProjetosEEstrategias() {
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2">
-          {podePlanejarAuditoria(sessao) ? (
-            <Button variant="outline" onClick={() => setNovaAuditoriaAberta(true)}>
-              <ClipboardCheck className="h-4 w-4" />
-              Nova auditoria
-            </Button>
-          ) : null}
           {podeGerenciar ? (
             <Button onClick={() => setNovoProjetoAberto(true)}>
               <Plus className="h-4 w-4" />
@@ -148,14 +140,6 @@ function ProjetosEEstrategias() {
           ))}
         </div>
       )}
-
-      <NovaAuditoriaDialog
-        aberto={novaAuditoriaAberta}
-        unidades={catalogo.unidades}
-        setores={catalogo.setores}
-        colaboradores={catalogo.colaboradores}
-        onFechar={() => setNovaAuditoriaAberta(false)}
-      />
 
       <NovoProjetoDialog
         aberto={novoProjetoAberto}

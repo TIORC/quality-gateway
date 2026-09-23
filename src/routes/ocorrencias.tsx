@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClipboardList, List, Pencil, Plus, Settings2 } from "lucide-react";
+import { ClipboardCheck, ClipboardList, List, Pencil, Plus, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -330,6 +330,8 @@ function ListaOcorrencias({
         const tipo = tipos.find((t) => t.id === o.tipoId);
         const Icone = iconeTipoOcorrencia(tipo?.icone);
         const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
+        const origemAuditoria =
+          typeof o.respostas["origem_nc"] === "string" ? (o.respostas["origem_nc"] as string) : "";
         return (
           <button
             key={o.id}
@@ -367,6 +369,15 @@ function ListaOcorrencias({
               >
                 {MACRO_ETAPA_LABELS[o.macroAtual]}
               </span>
+              {origemAuditoria ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#1E3A8A]"
+                  title={`Origem: ${origemAuditoria}`}
+                >
+                  <ClipboardCheck className="h-3 w-3 shrink-0" />
+                  {origemAuditoria}
+                </span>
+              ) : null}
               {o.procedencia !== "pendente" ? (
                 <span
                   className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"

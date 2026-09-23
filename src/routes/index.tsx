@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { isAuthenticated, login, redefinirSenha } from "@/lib/auth";
 import { AppFooter } from "@/components/app-footer";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [verSenha, setVerSenha] = useState(false);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [recuperarAberto, setRecuperarAberto] = useState(false);
@@ -131,15 +132,25 @@ function Login() {
               >
                 Senha
               </label>
-              <input
-                id="senha"
-                type="password"
-                autoComplete="current-password"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                placeholder="••••••••"
-                className="input-brand"
-              />
+              <div className="relative">
+                <input
+                  id="senha"
+                  type={verSenha ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  placeholder="••••••••"
+                  className="input-brand pr-11"
+                />
+                <button
+                  type="button"
+                  aria-label={verSenha ? "Ocultar senha" : "Mostrar senha"}
+                  onClick={() => setVerSenha((atual) => !atual)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted transition hover:text-brand-foreground"
+                >
+                  {verSenha ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {erro ? (
