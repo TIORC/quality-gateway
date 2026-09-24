@@ -17,7 +17,6 @@ import {
   mesAnteriorRef,
   rotuloMes,
   rotuloMesLongo,
-  ultimosMeses,
   type Apuracao,
   type Indicador,
 } from "@/lib/indicadores";
@@ -28,6 +27,10 @@ interface Props {
   indicador: Indicador | null;
   /** Apurações do indicador (qualquer ordem). */
   apuracoes: Apuracao[];
+  /** Meses exibidos no histórico, em ordem cronológica. */
+  meses: string[];
+  /** Rótulo do período exibido (ex.: `jan/25 – mar/25`). */
+  periodoRotulo?: string;
   planosPorId: Map<string, PlanoAcao>;
   podeGerenciar: boolean;
   podeLancar: boolean;
@@ -50,13 +53,14 @@ function Info({ rotulo, valor }: { rotulo: string; valor: string }) {
 }
 
 export function DetalheIndicadorDrawer(props: Props) {
-  const { indicador, apuracoes, planosPorId, podeGerenciar, podeLancar } = props;
+  const { indicador, apuracoes, meses: mesesHistorico, periodoRotulo, planosPorId, podeGerenciar, podeLancar } =
+    props;
   const { onFechar, onLancar, onEditar, onAlternarArquivamento } = props;
   const { onFecharMes, onVincularPlano, onAbrirPlano } = props;
 
   if (!indicador) return null;
 
-  const meses = [...ultimosMeses(24)].reverse();
+  const meses = [...mesesHistorico].reverse();
   const atrasada = indicador.ativo && apuracaoAtrasada(apuracoes);
   const mesAtrasado = mesAnteriorRef();
 
@@ -106,7 +110,7 @@ export function DetalheIndicadorDrawer(props: Props) {
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">
-                Histórico mês a mês
+                Histórico mês a mês{periodoRotulo ? ` · ${periodoRotulo}` : ""}
               </p>
               {podeLancar && indicador.ativo ? (
                 <Button size="sm" variant="outline" onClick={() => onLancar(indicador)}>
@@ -116,6 +120,11 @@ export function DetalheIndicadorDrawer(props: Props) {
               ) : null}
             </div>
 
+            {meses.length === 0 ? (
+              <p className="mt-2 text-[13px] text-[#94A3B8]">
+                Nenhum mês neste período. Ajuste o filtro de período da página para ver o histórico.
+              </p>
+            ) : (
             <div className="mt-2 overflow-hidden rounded-xl border border-[#D9E0EA] bg-white">
               <table className="w-full border-collapse text-left">
                 <thead>
@@ -200,6 +209,7 @@ export function DetalheIndicadorDrawer(props: Props) {
                 </tbody>
               </table>
             </div>
+            )}
 
             {atrasada ? (
               <p className="mt-2 text-[12px] text-[#64748B]">

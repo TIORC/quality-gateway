@@ -1,8 +1,12 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { AlertTriangle, BarChart3, Library, Plus, TrainFront } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarDays, Library, Plus, TrainFront } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { type DateRange } from "react-day-picker";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,20 +30,29 @@ import {
   formatarValor,
   mesAnterior,
   mesAnteriorRef,
+  mesesDoPeriodo,
+  mesReferenciaAtual,
+  mesReferenciaDe,
+  MODOS_PERIODO,
+  normalizarIntervalo,
   podeGerenciarIndicadores,
   podeLancarApuracao,
   rotuloMes,
   rotuloMesLongo,
+  rotuloPeriodo,
   ultimaApuracao,
   ultimosMeses,
   type Apuracao,
+  type FiltroPeriodo,
   type Indicador,
 } from "@/lib/indicadores";
+import { getSession } from "@/lib/auth";
 import { listarApuracoes, listarIndicadores } from "@/lib/indicadores-base";
 import { definirArquivamento, fecharApuracao } from "@/lib/indicadores-crud";
 import { listarOcorrencias, listarTipos } from "@/lib/ocorrencias-base";
 import { ocorrenciaAtrasada } from "@/lib/ocorrencias";
 import { listarPlanos } from "@/lib/planos-base";
+import { normalizarSetor } from "@/lib/niveis-acesso";
 import type { PlanoAcao } from "@/lib/planos";
 
 export const Route = createFileRoute("/indicadores")({
@@ -48,9 +61,6 @@ export const Route = createFileRoute("/indicadores")({
   }),
   component: Indicadores,
 });
-
-/** Quantidade de meses mostrada no mini-gráfico dos cards. */
-const MESES_NO_GRAFICO = 12;
 
 interface SummaryCardProps {
   label: string;
@@ -76,7 +86,11 @@ function SummaryCard({ label, value, valueClass, accent, footer }: SummaryCardPr
 function Indicadores() {
   const router = useRouter();
   const catalogo = useCatalogoOrganizacional();
-  const sessao = usePanelSession();
+  // O hook de contexto é nulo aqui: este componente RENDERIZA o PanelShell (e o
+  // contexto só flui para dentro). Lê a sessão persistida no navegador como
+  // fallback, igual a painel/ocorrências/planos-de-ação.
+  const sessaoCtx = usePanelSession();
+  const sessao = getSession() ?? sessaoCtx;
   const podeGerenciar = podeGerenciarIndicadores(sessao);
 
   const [indicadores, setIndicadores] = useState<Indicador[]>([]);
@@ -86,6 +100,13 @@ function Indicadores() {
   const [erro, setErro] = useState("");
   const [setorFiltro, setSetorFiltro] = useState("todos");
   const [aba, setAba] = useState("visao-geral");
+  /** Período de exibição (cards, gráficos, resumo e histórico). */
+  const [periodo, setPeriodo] = useState<FiltroPeriodo>({ modo: "ultimos12" });
+  const [mesEscolhido, setMesEscolhido] = useState(mesReferenciaAtual());
+  const [anoEscolhido, setAnoEscolhido] = useState(() => new Date().getFullYear());
+  /** Seleção parcial do calendário de intervalo (1º clique → arrastar → 2º clique). */
+  const [intervaloCal, setIntervaloCal] = useState<DateRange>({ from: undefined });
+  const [popoverIntervalo, setPopoverIntervalo] = useState(false);
 
   const [formulario, setFormulario] = useState<{ aberto: boolean; indicador: Indicador | null }>({
     aberto: false,
@@ -135,9 +156,63 @@ function Indicadores() {
   const planosPorId = useMemo(() => new Map(planos.map((p) => [p.id, p])), [planos]);
   const ativos = useMemo(() => indicadores.filter((i) => i.ativo), [indicadores]);
 
-  /** Números dos cards do topo: só o que está apurado e fechado. */
+  /* Período de exibição ---------------------------------------------------- */
+  /** `true` quando o filtro está no padrão (últimos 12 meses). */
+  const ehPadraoPeriodo = periodo.modo === "ultimos12";
+  /** Meses dos cards, gráficos e resumo do topo. */
+  const mesesPeriodo = useMemo(() => mesesDoPeriodo(periodo), [periodo]);
+  /** Meses do histórico do drawer (no padrão, os últimos 24 — comportamento original). */
+  const mesesDrawer = useMemo(
+    () => (ehPadraoPeriodo ? ultimosMeses(24) : mesesPeriodo),
+    [ehPadraoPeriodo, mesesPeriodo],
+  );
+  const rotuloPeriodoAtual = rotuloPeriodo(periodo);
+  const mesesDisponiveis = useMemo(() => [...ultimosMeses(36)].reverse(), []);
+  const anosDisponiveis = useMemo(() => {
+    const atual = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, i) => atual - i);
+  }, []);
+
+  /** Troca o modo do filtro já aplicando o valor escolhido (mês/ano). */
+  function mudarModoPeriodo(modo: string) {
+    if (modo === "mes") setPeriodo({ modo: "mes", mes: mesEscolhido });
+    else if (modo === "ano") setPeriodo({ modo: "ano", ano: anoEscolhido });
+    else if (modo === "intervalo") {
+      setPeriodo({ modo: "intervalo", inicio: "", fim: "" });
+      setPopoverIntervalo(true);
+    } else {
+      setPeriodo({ modo: "ultimos12" });
+    }
+  }
+
+  /**
+   * Calendário em intervalo: o 1º clique marca a data inicial, o arrastar
+   * mostra a prévia e o 2º clique fecha — aí o filtro de período é aplicado.
+   */
+  function aoSelecionarIntervalo(range: DateRange | undefined) {
+    const de = range?.from;
+    const ate = range?.to;
+    setIntervaloCal({ from: de, to: ate });
+    if (de && ate) {
+      const inicio = mesReferenciaDe(de);
+      const fim = mesReferenciaDe(ate);
+      setPeriodo({ modo: "intervalo", ...normalizarIntervalo(inicio, fim) });
+      setPopoverIntervalo(false);
+    }
+  }
+
+  /** Volta para o padrão (últimos 12 meses) e limpa o calendário. */
+  function limparPeriodo() {
+    setIntervaloCal({ from: undefined });
+    setPeriodo({ modo: "ultimos12" });
+  }
+
+  /** Números dos cards do topo: apurados, fechados e dentro do período. */
   const resumo = useMemo(() => {
-    const fechadas = apuracoes.filter((a) => a.fechado && a.valorRealizado !== null);
+    const noPeriodo = new Set(mesesPeriodo);
+    const fechadas = apuracoes.filter(
+      (a) => a.fechado && a.valorRealizado !== null && noPeriodo.has(a.mesReferencia),
+    );
     const ultimoFechamento = fechadas.reduce(
       (max, a) => (a.mesReferencia > max ? a.mesReferencia : max),
       "",
@@ -149,12 +224,14 @@ function Indicadores() {
       abaixo: doMes.filter((a) => a.status === "abaixo_da_meta").length,
       ultimoFechamento,
     };
-  }, [ativos, apuracoes]);
+  }, [ativos, apuracoes, mesesPeriodo]);
 
-  const setorDaSessao = (sessao?.setor ?? "").trim().toLowerCase();
+  const setorDaSessao = normalizarSetor(sessao?.setor);
   const listaVisaoGeral =
     setorFiltro === "todos" ? ativos : ativos.filter((i) => i.setor === setorFiltro);
-  const listaMeuSetor = ativos.filter((i) => setorDaSessao !== "" && i.setor.trim().toLowerCase() === setorDaSessao);
+  const listaMeuSetor = ativos.filter(
+    (i) => setorDaSessao !== "" && normalizarSetor(i.setor) === setorDaSessao,
+  );
   const atrasadasNoMeuSetor = listaMeuSetor.filter((i) =>
     apuracaoAtrasada(porIndicador.get(i.id) ?? []),
   ).length;
@@ -260,6 +337,7 @@ function Indicadores() {
             key={indicador.id}
             indicador={indicador}
             apuracoes={porIndicador.get(indicador.id) ?? []}
+            meses={mesesPeriodo}
             podeLancar={podeLancarApuracao(sessao, indicador)}
             onAbrir={() => setDetalhe(indicador)}
             onLancar={() => setLancamento(indicador)}
@@ -332,32 +410,133 @@ function Indicadores() {
             valueClass="mt-3 text-[30px] font-semibold leading-none text-[#4F46E5]"
             accent="#4F46E5"
             footer={
-              resumo.ultimoFechamento ? "mês de referência fechado" : "nenhum mês fechado até agora"
+              resumo.ultimoFechamento
+                ? ehPadraoPeriodo
+                  ? "mês de referência fechado"
+                  : `fechado dentro de ${rotuloPeriodoAtual}`
+                : ehPadraoPeriodo
+                  ? "nenhum mês fechado até agora"
+                  : `nenhum fechamento em ${rotuloPeriodoAtual}`
             }
           />
         </section>
 
         <Tabs value={aba} onValueChange={setAba}>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TabsList>
-              <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
-              <TabsTrigger value="meu-setor">Meu setor</TabsTrigger>
-              <TabsTrigger value="ocorrencias">Ocorrências</TabsTrigger>
-            </TabsList>
+          <div className="mt-6 flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <TabsList>
+                <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
+                <TabsTrigger value="meu-setor">Meu setor</TabsTrigger>
+                <TabsTrigger value="ocorrencias">Ocorrências</TabsTrigger>
+              </TabsList>
 
-            <Select value={setorFiltro} onValueChange={setSetorFiltro}>
-              <SelectTrigger className="w-full sm:w-[220px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os setores</SelectItem>
-                {setoresDoFiltro.map((setor) => (
-                  <SelectItem key={setor} value={setor}>
-                    {setor}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select value={setorFiltro} onValueChange={setSetorFiltro}>
+                <SelectTrigger className="w-full sm:w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os setores</SelectItem>
+                  {setoresDoFiltro.map((setor) => (
+                    <SelectItem key={setor} value={setor}>
+                      {setor}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filtro de período: recorta resumo, cards, gráficos e histórico. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">
+                Período
+              </span>
+              <Select value={periodo.modo} onValueChange={mudarModoPeriodo}>
+                <SelectTrigger className="w-full sm:w-[190px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODOS_PERIODO.map((m) => (
+                    <SelectItem key={m.valor} value={m.valor}>
+                      {m.rotulo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {periodo.modo === "mes" ? (
+                <Select
+                  value={mesEscolhido}
+                  onValueChange={(valor) => {
+                    setMesEscolhido(valor);
+                    setPeriodo({ modo: "mes", mes: valor });
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mesesDisponiveis.map((mes) => (
+                      <SelectItem key={mes} value={mes}>
+                        {rotuloMes(mes)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+
+              {periodo.modo === "ano" ? (
+                <Select
+                  value={String(anoEscolhido)}
+                  onValueChange={(valor) => {
+                    const ano = Number(valor);
+                    setAnoEscolhido(ano);
+                    setPeriodo({ modo: "ano", ano });
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {anosDisponiveis.map((ano) => (
+                      <SelectItem key={ano} value={String(ano)}>
+                        {ano}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+
+              {periodo.modo === "intervalo" ? (
+                <Popover open={popoverIntervalo} onOpenChange={setPopoverIntervalo}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline">
+                      <CalendarDays className="h-4 w-4" />
+                      {periodo.inicio ? rotuloPeriodoAtual : "Selecionar datas"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="range"
+                      selected={intervaloCal}
+                      onSelect={(range) => aoSelecionarIntervalo(range)}
+                      numberOfMonths={2}
+                      locale={ptBR}
+                      disabled={{ after: new Date() }}
+                      resetOnSelect
+                    />
+                    <p className="border-t border-[#E9EEF5] px-4 py-2.5 text-[12px] text-[#64748B]">
+                      1º clique marca a data inicial; arraste o mouse e dê o 2º clique para marcar a final.
+                    </p>
+                  </PopoverContent>
+                </Popover>
+              ) : null}
+
+              {!ehPadraoPeriodo ? (
+                <Button variant="ghost" size="sm" onClick={limparPeriodo}>
+                  Limpar
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <TabsContent value="visao-geral">
@@ -464,6 +643,8 @@ function Indicadores() {
       <DetalheIndicadorDrawer
         indicador={indicadorDetalhe}
         apuracoes={indicadorDetalhe ? (porIndicador.get(indicadorDetalhe.id) ?? []) : []}
+        meses={mesesDrawer}
+        periodoRotulo={ehPadraoPeriodo ? "últimos 24 meses" : rotuloPeriodoAtual}
         planosPorId={planosPorId}
         podeGerenciar={podeGerenciar}
         podeLancar={!!indicadorDetalhe && podeLancarApuracao(sessao, indicadorDetalhe)}
@@ -484,16 +665,22 @@ function Indicadores() {
 /* -------------------------------------------------------------------------- */
 
 /** Mini-gráfico dos últimos meses com lançamento (linha + linha da meta). */
-function SparklineValores({ indicador, apuracoes }: { indicador: Indicador; apuracoes: Apuracao[] }) {
-  const pontos = ultimosMeses(MESES_NO_GRAFICO)
+function SparklineValores({
+  indicador,
+  apuracoes,
+  meses,
+}: {
+  indicador: Indicador;
+  apuracoes: Apuracao[];
+  meses: string[];
+}) {
+  const pontos = meses
     .map((mes) => ({ mes, valor: apuracaoDoMes(apuracoes, mes)?.valorRealizado ?? null }))
     .filter((ponto): ponto is { mes: string; valor: number } => ponto.valor !== null);
 
   if (pontos.length < 2) {
     return (
-      <p className="text-[12px] text-[#94A3B8]">
-        Sem histórico suficiente para o gráfico dos últimos {MESES_NO_GRAFICO} meses.
-      </p>
+      <p className="text-[12px] text-[#94A3B8]">Sem histórico suficiente para o gráfico do período.</p>
     );
   }
 
@@ -532,15 +719,18 @@ function SparklineValores({ indicador, apuracoes }: { indicador: Indicador; apur
 interface CartaoProps {
   indicador: Indicador;
   apuracoes: Apuracao[];
+  /** Meses do período de exibição (recorte do filtro da página). */
+  meses: string[];
   podeLancar: boolean;
   onAbrir: () => void;
   onLancar: () => void;
 }
 
-function CartaoIndicador({ indicador, apuracoes, podeLancar, onAbrir, onLancar }: CartaoProps) {
-  const ultima = ultimaApuracao(apuracoes);
-  const mesAnteriorLancado = ultima ? mesAnterior(ultima.mesReferencia) : "";
-  const anterior = mesAnteriorLancado ? apuracaoDoMes(apuracoes, mesAnteriorLancado) : null;
+function CartaoIndicador({ indicador, apuracoes, meses, podeLancar, onAbrir, onLancar }: CartaoProps) {
+  const noPeriodo = new Set(meses);
+  const apuracoesNoPeriodo = apuracoes.filter((a) => noPeriodo.has(a.mesReferencia));
+  const ultima = ultimaApuracao(apuracoesNoPeriodo);
+  const anterior = ultima ? apuracaoDoMes(apuracoesNoPeriodo, mesAnterior(ultima.mesReferencia)) : null;
   const variacao = calcularVariacao(
     ultima?.valorRealizado ?? null,
     anterior?.valorRealizado ?? null,
@@ -585,7 +775,7 @@ function CartaoIndicador({ indicador, apuracoes, podeLancar, onAbrir, onLancar }
       </div>
 
       <div className="mt-3">
-        <SparklineValores indicador={indicador} apuracoes={apuracoes} />
+        <SparklineValores indicador={indicador} apuracoes={apuracoes} meses={meses} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#EEF2F7] pt-3">

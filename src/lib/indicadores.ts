@@ -203,6 +203,76 @@ export function ultimosMeses(quantidade: number, mesFinal: string = mesReferenci
 }
 
 /* -------------------------------------------------------------------------- */
+/* Período de exibição (filtro dos gráficos/cards/histórico)                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Filtro de período da tela de indicadores. É sempre um RECORTE sobre os
+ * lançamentos mensais (`AAAA-MM`) — nunca agrega (soma/média) valores entre
+ * meses: o status e a variação continuam mensais e exatos.
+ */
+export type FiltroPeriodo =
+  | { modo: "ultimos12" }
+  | { modo: "mes"; mes: string }
+  | { modo: "ano"; ano: number }
+  | { modo: "intervalo"; inicio: string; fim: string };
+
+/** Modos do seletor de período (valor do campo + rótulo). */
+export const MODOS_PERIODO: { valor: FiltroPeriodo["modo"]; rotulo: string }[] = [
+  { valor: "ultimos12", rotulo: "Últimos 12 meses" },
+  { valor: "mes", rotulo: "Mês específico" },
+  { valor: "ano", rotulo: "Ano" },
+  { valor: "intervalo", rotulo: "Intervalo de datas" },
+];
+
+/** Garante `inicio <= fim` (comparação lexicográfica de `AAAA-MM`). */
+export function normalizarIntervalo(inicio: string, fim: string): { inicio: string; fim: string } {
+  return inicio <= fim ? { inicio, fim } : { inicio: fim, fim: inicio };
+}
+
+const FORMATO_MES_PERIODO = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Lista cronológica de meses coberta pelo filtro (sem meses futuros).
+ * Intervalo incompleto/inválido volta para os últimos 12 meses.
+ */
+export function mesesDoPeriodo(filtro: FiltroPeriodo): string[] {
+  const atual = mesReferenciaAtual();
+  if (filtro.modo === "mes") {
+    return FORMATO_MES_PERIODO.test(filtro.mes) && filtro.mes <= atual ? [filtro.mes] : [];
+  }
+  if (filtro.modo === "ano") {
+    return Array.from({ length: 12 }, (_, i) => `${filtro.ano}-${String(i + 1).padStart(2, "0")}`).filter(
+      (mes) => mes <= atual,
+    );
+  }
+  if (filtro.modo === "intervalo") {
+    const { inicio, fim } = normalizarIntervalo(filtro.inicio, filtro.fim);
+    if (!FORMATO_MES_PERIODO.test(inicio) || !FORMATO_MES_PERIODO.test(fim)) return ultimosMeses(12);
+    const meses: string[] = [];
+    let mes = inicio;
+    while (mes <= fim && meses.length < 120) {
+      meses.push(mes);
+      mes = proximoMes(mes);
+    }
+    return meses.filter((m) => m <= atual);
+  }
+  return ultimosMeses(12);
+}
+
+/** Rótulo do período para exibição (`set/25`, `2025`, `jan/25 – mar/25`). */
+export function rotuloPeriodo(filtro: FiltroPeriodo): string {
+  if (filtro.modo === "mes") return rotuloMes(filtro.mes);
+  if (filtro.modo === "ano") return String(filtro.ano);
+  if (filtro.modo === "intervalo") {
+    const { inicio, fim } = normalizarIntervalo(filtro.inicio, filtro.fim);
+    if (!FORMATO_MES_PERIODO.test(inicio) || !FORMATO_MES_PERIODO.test(fim)) return "Intervalo incompleto";
+    return `${rotuloMes(inicio)} – ${rotuloMes(fim)}`;
+  }
+  return "Últimos 12 meses";
+}
+
+/* -------------------------------------------------------------------------- */
 /* Regras de negócio                                                           */
 /* -------------------------------------------------------------------------- */
 

@@ -9,6 +9,7 @@
 
 import type { AppRoutePath } from "@/lib/navigation";
 import type { UserSession } from "@/lib/auth";
+import type { Ata, TipoReuniao } from "@/lib/atas";
 import {
   NIVEIS_ACESSO_TOTAL_POPS,
   NIVEL_SOMENTE_LIBERADOS,
@@ -34,9 +35,7 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
  * Páginas liberadas para todos os colaboradores: todas do portal exceto a
  * configuração (restrita à Administração/Gestão).
  */
-const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter(
-  (rota) => rota !== "/configuracoes",
-);
+const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
 
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
   Administrador: TODAS_AS_ROTAS,
@@ -275,4 +274,52 @@ export function filtrarPlanosVisiveis<T extends PlanoParticipacao & { setor: str
 ): T[] {
   if (!session) return [];
   return planos.filter((plano) => vePlanoNaLista(session, plano));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Permissões de Atas de Reunião                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ata simples (sem tipo vinculado): somente Qualidade/Admin cria. Ata do
+ * sistema pode ser criada por quem participa do tipo — o banco valida
+ * (`pode_criar_ata`), o front apenas libera o formulário.
+ */
+export function podeCriarAtaSimples(session: UserSession | null | undefined): boolean {
+  return podeGerenciarConteudo(session) || ehAdministrador(session);
+}
+
+/**
+ * Indica se a origem pode ser oferecida na tela de nova ata. Para `simples`,
+ * exige Qualidade/Admin; para `sistema`, qualquer sessão ativa tenta (a
+ * validação de participação ocorre no banco).
+ */
+export function podeCriarAta(
+  session: UserSession | null | undefined,
+  origem: Ata["origem"],
+): boolean {
+  if (!session) return false;
+  if (origem === "simples") return podeCriarAtaSimples(session);
+  return origem === "sistema";
+}
+
+/**
+ * Edição de ata rascunho: Qualidade/Admin sempre; demais somente o criador
+ * (`criado_por`) ou participante/signatário do tipo vinculado. O `usuarioId` é
+ * o id de `public.usuarios` da sessão, resolvido por `usuarioIdPorEmail`. A
+ * regra definitiva é validada no banco (`pode_editar_ata`).
+ */
+export function podeEditarAta(
+  session: UserSession | null | undefined,
+  ata: Ata | null | undefined,
+  tipo: TipoReuniao | null | undefined,
+  usuarioId: string | null,
+): boolean {
+  if (!session || !ata) return false;
+  if (ata.status !== "rascunho") return false;
+  if (podeGerenciarConteudo(session) || ehAdministrador(session)) return true;
+  if (!usuarioId) return false;
+  if (ata.criadoPor === usuarioId) return true;
+  if (!tipo) return false;
+  return [...tipo.participantes, ...tipo.signatarios].some((p) => p.id === usuarioId);
 }

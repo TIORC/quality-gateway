@@ -220,7 +220,3 @@ values
    null, 'menor_melhor', 'mensal', 'manual', false, '', false, true)
 on conflict do nothing;
 
-create trigger apuracoes_set_updated_at
-  before update on public.apuracoes
-  for each row
-  execute function public.indicadores_set_updated_at();
