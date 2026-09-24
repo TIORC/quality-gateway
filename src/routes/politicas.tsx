@@ -56,6 +56,8 @@ import {
   urlAssinadaDoAnexo,
 } from "@/lib/pops";
 import { cn, mascaraDataBr } from "@/lib/utils";
+import { PdfProtegido } from "@/components/pdf-protegido";
+import { useBloquearAtalhosDocumento } from "@/hooks/use-bloquear-documento";
 import {
   atualizarPolitica,
   carregarPoliticasAcessiveis,
@@ -153,6 +155,8 @@ function Politicas() {
   const podeAdicionar = podeAdicionarDocumentos(sessao);
   const podeModificar = podeModificarDocumentos(sessao);
   const podeExcluir = podeExcluirDocumentos(sessao);
+
+  useBloquearAtalhosDocumento(politicaAberta !== null);
 
   // Carrega as políticas do banco quando o Lovable Cloud está disponível.
   useEffect(() => {
@@ -1315,7 +1319,7 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
   const badgeTipo = ROTULO_TIPO_ANEXO[anexo.tipo] ?? "Documento";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" onContextMenu={(evento) => evento.preventDefault()}>
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[13px] font-semibold text-[#1F2937]">Documento da política</p>
         <Badge variant="outline" className="bg-[#EEF2F7] text-[10px] text-[#1E3A8A]">{badgeTipo}</Badge>
@@ -1339,11 +1343,7 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
           Não foi possível abrir o documento agora. Tente novamente mais tarde.
         </p>
       ) : anexo.tipo === "application/pdf" && urlPdf ? (
-        <iframe
-          src={`${urlPdf}#toolbar=0&navpanes=0&statusbar=0&view=FitH`}
-          className="h-[640px] w-full rounded-lg border border-[#D9E0EA] bg-[#F8FAFC]"
-          title={`Documento ${anexo.nome}`}
-        />
+        <PdfProtegido url={urlPdf} titulo={anexo.nome} altura="640px" />
       ) : (
         <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E0EA] bg-white p-4 font-sans text-[13px] leading-relaxed text-[#334155]">
           {texto ?? ""}

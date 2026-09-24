@@ -16,6 +16,7 @@ export const ORIGENS_ACAO_FIXAS = [
   "Risco / Oportunidade",
   "Melhoria Contínua",
   "Solicitação de Cliente",
+  "Ata de Reunião",
 ] as const;
 
 /**
@@ -31,6 +32,7 @@ export const ORIGENS_ATIVAS_PADRAO: ReadonlySet<string> = new Set([
   "Análise Crítica",
   "Indicador de Desempenho",
   "Melhoria Contínua",
+  "Ata de Reunião",
 ]);
 
 /** Origem livre, usada quando a causa não está na lista parametrizada. */
@@ -46,6 +48,7 @@ export const VINCULOS_ACAO = [
   "Risco / oportunidade",
   "POP",
   "Política",
+  "Ata de Reunião",
   "Outro",
 ] as const;
 

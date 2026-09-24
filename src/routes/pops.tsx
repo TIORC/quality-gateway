@@ -137,6 +137,8 @@ import {
   type StatusPop,
 } from "@/lib/pops";
 import { cn, mascaraDataBr } from "@/lib/utils";
+import { PdfProtegido } from "@/components/pdf-protegido";
+import { useBloquearAtalhosDocumento } from "@/hooks/use-bloquear-documento";
 
 export const Route = createFileRoute("/pops")({
   head: () => ({
@@ -1188,7 +1190,10 @@ function PopAnexoVisualizador({ pop }: { pop: Pop }) {
   if (!anexo) return null;
 
   return (
-    <div className="mt-5 overflow-hidden rounded-xl border border-[#D9E0EA]">
+    <div
+      className="mt-5 overflow-hidden rounded-xl border border-[#D9E0EA]"
+      onContextMenu={(evento) => evento.preventDefault()}
+    >
       <div className="flex items-center gap-2 border-b border-[#E9EEF5] bg-[#F8FAFC] px-4 py-2.5">
         <FileText className="h-4 w-4 text-[#1E3A8A]" />
         <p className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-[#1F2937]">
@@ -1208,11 +1213,7 @@ function PopAnexoVisualizador({ pop }: { pop: Pop }) {
       ) : erro ? (
         <p className="px-4 py-6 text-center text-[13px] text-destructive">{erro}</p>
       ) : url ? (
-        <iframe
-          src={`${url}#toolbar=0&navpanes=0`}
-          title={`Visualização de ${anexo.nome}`}
-          className="h-[65vh] w-full bg-white"
-        />
+        <PdfProtegido url={url} titulo={anexo.nome} />
       ) : texto !== null ? (
         <pre className="max-h-[65vh] overflow-auto whitespace-pre-wrap px-5 py-4 font-sans text-[13px] leading-relaxed text-[#334155]">
           {texto}
@@ -2093,6 +2094,8 @@ function Pops() {
   const emailUsuario = sessao?.email ?? "";
   const colaboradorIdUsuario = sessao?.colaboradorId ?? "";
   const [favoritosMeus, setFavoritosMeus] = useState<string[]>([]);
+
+  useBloquearAtalhosDocumento(popAberto !== null);
 
   useEffect(() => {
     let ativo = true;

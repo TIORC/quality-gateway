@@ -32,6 +32,8 @@ import {
   listarUsuariosDasAtas,
   type UsuarioAtaRow,
 } from "@/lib/atas-base";
+import type { PlanoAcao } from "@/lib/planos";
+import { listarPlanos } from "@/lib/planos-base";
 import { mudarStatusAcaoAta, salvarLeituraAssistida } from "@/lib/atas-crud";
 import {
   gerarLeituraAssistida,
@@ -71,6 +73,7 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
 
   const [setoresCfg, setSetoresCfg] = useState<SetorConfig[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioAtaRow[]>([]);
+  const [planos, setPlanos] = useState<PlanoAcao[]>([]);
   const [citados, setCitados] = useState<AtaSetorCitado[]>([]);
   const [acoes, setAcoes] = useState<AtaAcao[]>([]);
   const [carregando, setCarregando] = useState(false);
@@ -93,6 +96,12 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
     return mapa;
   }, [usuarios]);
 
+  const planoPorId = useMemo(() => {
+    const mapa = new Map<string, PlanoAcao>();
+    for (const p of planos) mapa.set(p.id, p);
+    return mapa;
+  }, [planos]);
+
   const recarregarDetalhes = useCallback(async () => {
     if (!ata) return;
     setCarregando(true);
@@ -103,6 +112,10 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
       ]);
       setCitados(c);
       setAcoes(a);
+      // Planos de ação vinculados (badge do plano na ação confirmada).
+      listarPlanos()
+        .then((lista) => setPlanos(lista))
+        .catch(() => setPlanos([]));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível carregar a ata.");
     } finally {
@@ -333,6 +346,13 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
                             <p className="mt-1 text-[12px] italic leading-relaxed text-[#64748B]">
                               “{acao.trechoOrigem}”
                             </p>
+                          ) : null}
+                          {acao.planoAcaoId ? (
+                            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#E0E7FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#4338CA]">
+                              <Check className="h-3 w-3" />
+                              Plano de ação:{" "}
+                              {planoPorId.get(acao.planoAcaoId)?.codigo ?? "vinculado"}
+                            </span>
                           ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#475569]">
                             <span className="inline-flex items-center gap-1">

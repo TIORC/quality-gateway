@@ -9,6 +9,7 @@ import { Select, SelectContent } from "@/components/ui/select";
 import { SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getSession } from "@/lib/auth";
+import { listarAtas } from "@/lib/atas-base";
 import { MARCOS_PROGRESSO, STATUS_ACAO_LABELS, formatarPrazo, formatarTempo, progressoDoChecklist, tempoTotalSegundos } from "@/lib/planos";
 import { sugerirStatusPorProgresso } from "@/lib/planos";
 import type { AnexoPlano, ItemChecklist, PlanoAcao, StatusAcao } from "@/lib/planos";
@@ -44,6 +45,24 @@ export function DetalhePlanoDialog({ plano, podeGerenciar, onFechar, onAlterado,
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [confirmar, setConfirmar] = useState<ConfirmarDialogProps | null>(null);
+  const [tituloAta, setTituloAta] = useState("");
+
+  useEffect(() => {
+    if (plano.vinculoTipo !== "Ata de Reunião" || !plano.vinculoId) return;
+    let ativo = true;
+    listarAtas()
+      .then((lista) => {
+        if (!ativo) return;
+        const ata = lista.find((a) => a.id === plano.vinculoId);
+        setTituloAta(ata?.titulo ?? "");
+      })
+      .catch(() => {
+        if (ativo) setTituloAta("");
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [plano.vinculoTipo, plano.vinculoId]);
 
   useEffect(() => {
     setStatus(plano.status);
@@ -307,7 +326,13 @@ export function DetalhePlanoDialog({ plano, podeGerenciar, onFechar, onAlterado,
             <p className="whitespace-pre-wrap text-[14px] text-[#334155]">{plano.detalhamento}</p>
           ) : null}
           {plano.vinculoId ? (
-            <p className="text-[12px] text-[#64748B]">Vinculado a: {plano.vinculoId}</p>
+            <p className="text-[12px] text-[#64748B]">
+              {plano.vinculoTipo === "Ata de Reunião" ? (
+                <>Vinculado à ata: “{tituloAta || plano.vinculoId}”</>
+              ) : (
+                <>Vinculado a: {plano.vinculoId}</>
+              )}
+            </p>
           ) : null}
           {possoEditar ? (
             <div className="space-y-3 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">

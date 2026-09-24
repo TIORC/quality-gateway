@@ -9,7 +9,9 @@
  * Atas: criação e edição passam por `criar_ata` e `atualizar_ata`, que validam
  * no backend se o usuário participa do tipo de reunião (ou é Qualidade/Admin)
  * e se a ata ainda é rascunho. A leitura assistida usa `salvar_leitura_assistida`
- * (setores citados + ações sugeridas) e `mudar_status_acao`. A escrita direta
+ * (setores citados + ações sugeridas) e `mudar_status_acao`. Ao confirmar uma
+ * ação (`mudar_status_acao` no banco), é criado o registro no módulo Planos de
+ * Ação existente e o vínculo fica em `ata_acoes.plano_acao`. A escrita direta
  * nas tabelas é bloqueada pela RLS; apenas estas funções gravam.
  */
 import type { UserSession } from "@/lib/auth";

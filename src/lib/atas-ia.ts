@@ -56,8 +56,35 @@ function frasesDe(texto: string): string[] {
   return bruto.length > 0 ? bruto : [texto.trim()].filter(Boolean);
 }
 
-/** Extrai "até dd/mm/aaaa" (ou dd/mm) de uma frase e devolve `AAAA-MM-DD`. */
+/**
+ * Extrai prazos em português de uma frase e devolve `AAAA-MM-DD`:
+ * "amanhã", "próxima sexta" (e demais dias), "dia 15"/"até dia 15" e
+ * "até/antes de dd/mm(/aaaa)".
+ */
 function prazoDaFrase(frase: string): string {
+  const t = norm(frase);
+  const hoje = new Date();
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+
+  if (/\bamanha\b/.test(t)) return isoDaData(somarDias(inicioHoje, 1));
+
+  const diaSemana = t.match(
+    /proxima\s+(domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)/,
+  );
+  const nomeDia = diaSemana ? diaSemana[1] : undefined;
+  const alvo = nomeDia ? DIAS_SEMANA[nomeDia] : undefined;
+  if (alvo !== undefined) {
+    let diff = (alvo - hoje.getDay() + 7) % 7;
+    if (diff === 0) diff = 7; // "próxima" nunca é hoje
+    return isoDaData(somarDias(inicioHoje, diff));
+  }
+
+  const diaDoMes = t.match(/(?:ate\s+)?dia\s+(\d{1,2})/);
+  if (diaDoMes) {
+    const dia = Number(diaDoMes[1]);
+    if (dia >= 1 && dia <= 31) return isoDaData(ocorrenciaDiaDoMes(dia));
+  }
+
   const match = frase.match(
     /(?:até|antes de|vence[^a-z]*em)[^\d]*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/i,
   );
@@ -73,9 +100,53 @@ function prazoDaFrase(frase: string): string {
   ).padStart(2, "0")}`;
 }
 
+function isoDaData(data: Date): string {
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}-${String(
+    data.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+/** Soma dias a partir de uma data (seguro contra ajustes de horário). */
+function somarDias(data: Date, dias: number): Date {
+  return new Date(data.getFullYear(), data.getMonth(), data.getDate() + dias);
+}
+
+/**
+ * Primeira ocorrência de um dia do mês (1–31) igual ou após hoje. Se o mês não
+ * tiver o dia (ex.: 31 em mês de 30), usa o último dia desse mês.
+ */
+function ocorrenciaDiaDoMes(dia: number): Date {
+  const hoje = new Date();
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  let candidato = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
+  if (candidato.getDate() !== dia) candidato = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+  if (candidato < inicioHoje) {
+    let proximo = new Date(hoje.getFullYear(), hoje.getMonth() + 1, dia);
+    if (proximo.getDate() !== dia) proximo = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0);
+    return proximo;
+  }
+  return candidato;
+}
+
 /** Verbos e marcadores de compromisso que caracterizam uma ação na ata. */
 const MARCADORES_ACAO =
-  /(vamos|iremos|será feito|será realizada|será responsável|ficará responsável|deverá|deverão|deve ser|precisa ser|precisamos|providenciar|elaborar|enviar|levantar|implementar|implantar|definir|revisar|adequar|monitorar|treinar|padronizar|agendar|apresentar|encaminhar|planejar|corrigir|atualizar|validar|garantir|avaliar|estabelecer|a ser definid|daremos andamento|dar andamento|até\s+\d{1,2}\/\d{1,2})/i;
+  /(vamos|iremos|será feito|será realizada|será responsável|ficará responsável|deverá|deverão|deve ser|precisa ser|precisamos|providenciar|elaborar|enviar|entregar|levantar|implementar|implantar|definir|revisar|adequar|monitorar|treinar|padronizar|agendar|apresentar|encaminhar|planejar|corrigir|verificar|atualizar|cobrar|validar|garantir|avaliar|estabelecer|a ser definid|daremos andamento|dar andamento|amanh[aã]|pr[oó]xima\s+(domingo|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado)|dia\s+\d{1,2}|até\s+\d{1,2}\/\d{1,2})/i;
+
+/** Nome normalizado do dia da semana -> `getDay()` (0 = domingo). */
+const DIAS_SEMANA: Record<string, number> = {
+  domingo: 0,
+  segunda: 1,
+  "segunda-feira": 1,
+  terca: 2,
+  "terca-feira": 2,
+  quarta: 3,
+  "quarta-feira": 3,
+  quinta: 4,
+  "quinta-feira": 4,
+  sexta: 5,
+  "sexta-feira": 5,
+  sabado: 6,
+};
 
 /**
  * Lê o texto da ata e devolve setores citados (com trecho) e ações sugeridas,
