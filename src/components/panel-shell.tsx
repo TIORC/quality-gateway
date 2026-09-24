@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Send,
   Settings,
   ShieldCheck,
   Target,
@@ -52,7 +51,6 @@ const ICONS: Record<string, LucideIcon> = {
   POPs: FileCheck,
   Funcionários: Users,
   Configurações: Settings,
-  "Disparo de Cobranças": Send,
 };
 
 const PanelSessionContext = createContext<UserSession | null>(null);

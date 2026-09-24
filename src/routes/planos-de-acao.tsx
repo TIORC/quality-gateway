@@ -1,6 +1,6 @@
 import { createFileRoute, getRouteApi } from "@tanstack/react-router";
 import { LayoutGrid, Plus, Search, Table2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +20,28 @@ import { ehResponsavel, ehSeguidor } from "@/lib/planos-inter";
 
 const rotaPlanos = getRouteApi("/planos-de-acao");
 
+/** Parâmetros de URL aceitos pela rota de Planos de Ação (todos opcionais). */
+export interface BuscaPlanos {
+  abrir?: string | undefined;
+  /** `1` → abre o formulário de novo plano já pré-preenchido. */
+  preencher?: string | undefined;
+  titulo?: string | undefined;
+  detalhamento?: string | undefined;
+  setor?: string | undefined;
+  origem?: string | undefined;
+  vinculo?: string | undefined;
+}
+
 export const Route = createFileRoute("/planos-de-acao")({
-  validateSearch: (s: Record<string, unknown>) => ({
+  validateSearch: (s: Record<string, unknown>): BuscaPlanos => ({
     abrir: typeof s["abrir"] === "string" ? (s["abrir"] as string) : undefined,
+    // Pré-preenchimento do formulário vindo de outro módulo (ex.: Indicadores).
+    preencher: typeof s["preencher"] === "string" ? (s["preencher"] as string) : undefined,
+    titulo: typeof s["titulo"] === "string" ? (s["titulo"] as string) : undefined,
+    detalhamento: typeof s["detalhamento"] === "string" ? (s["detalhamento"] as string) : undefined,
+    setor: typeof s["setor"] === "string" ? (s["setor"] as string) : undefined,
+    origem: typeof s["origem"] === "string" ? (s["origem"] as string) : undefined,
+    vinculo: typeof s["vinculo"] === "string" ? (s["vinculo"] as string) : undefined,
   }),
   head: () => ({ meta: [{ title: "Planos de Acao | Gestao da Qualidade" }] }),
   component: PlanosDeAcao,
@@ -58,7 +77,15 @@ function PlanosDeAcao() {
   const [origens, setOrigens] = useState<string[]>([]);
   const [novoPlanoAberto, setNovoPlanoAberto] = useState(false);
   const [planoAberto, setPlanoAberto] = useState<PlanoAcao | null>(null);
-  const { abrir } = rotaPlanos.useSearch();
+  const { abrir, preencher, titulo, detalhamento, setor, origem, vinculo } = rotaPlanos.useSearch();
+  // O formulário de novo plano vindo de outro módulo abre uma única vez por visita.
+  const preenchimentoAplicado = useRef(false);
+
+  useEffect(() => {
+    if (preencher !== "1" || preenchimentoAplicado.current) return;
+    preenchimentoAplicado.current = true;
+    setNovoPlanoAberto(true);
+  }, [preencher]);
 
   function atualizarFiltro(campo: keyof Filtros, valor: string) {
     setFiltros((atual) => ({ ...atual, [campo]: valor }));
@@ -173,6 +200,7 @@ function PlanosDeAcao() {
         setores={catalogo.setores}
         colaboradores={catalogo.colaboradores}
         origens={origens}
+        inicial={{ titulo, detalhamento, setor, origem, vinculo }}
         onFechar={() => setNovoPlanoAberto(false)}
         onCriado={() => { setNovoPlanoAberto(false); void recarregar(); }}
       />

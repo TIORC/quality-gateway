@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CampoMencao } from "@/components/campo-mencao";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -26,11 +26,19 @@ export function Campo({ rotulo, children }: { rotulo: string; children: ReactNod
 interface Props {
   aberto: boolean; setores: string[]; colaboradores: Colaborador[];
   origens: string[]; onFechar: () => void; onCriado: () => void;
+  /** Valores iniciais enviados por outro módulo (ex.: indicador abaixo da meta). */
+  inicial?: {
+    titulo?: string | undefined;
+    detalhamento?: string | undefined;
+    setor?: string | undefined;
+    origem?: string | undefined;
+    vinculo?: string | undefined;
+  };
 }
 
 export function NovoPlanoDialog(p: Props) {
   const { aberto, setores, colaboradores } = p;
-  const { origens, onFechar, onCriado } = p;
+  const { origens, onFechar, onCriado, inicial } = p;
   const [titulo, setTitulo] = useState("");
   const [detalhamento, setDetalhamento] = useState("");
   const [origem, setOrigem] = useState("");
@@ -43,14 +51,28 @@ export function NovoPlanoDialog(p: Props) {
   const [mencionados, setMencionados] = useState<Colaborador[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  // Controla o pré-preenchimento vindo de outro módulo (uma vez por abertura).
+  const preenchido = useRef(false);
 
   useEffect(() => {
     if (!aberto) {
       setTitulo(""); setDetalhamento(""); setOrigem(""); setOrigemOutros("");
       setSetor(""); setResponsavelId(""); setPrazo(""); setPrioridade("Média");
       setVinculo(""); setMencionados([]); setErro(""); setSalvando(false);
+      preenchido.current = false;
+      return;
     }
-  }, [aberto]);
+    // Pré-preenchimento vindo de outro módulo: aplica uma vez por abertura,
+    // para não sobrescrever o que a pessoa digita depois.
+    if (preenchido.current) return;
+    preenchido.current = true;
+    if (!inicial) return;
+    setTitulo((inicial.titulo ?? "").slice(0, 140));
+    setDetalhamento(inicial.detalhamento ?? "");
+    setSetor(inicial.setor ?? "");
+    setOrigem(inicial.origem ?? "");
+    setVinculo(inicial.vinculo ?? "");
+  }, [aberto, inicial]);
 
   const responsavel = colaboradores.find((c) => c.id === responsavelId);
   const prazoIso = prazo.trim() ? prazoBrParaISO(prazo) : null;

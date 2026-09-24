@@ -1,33 +1,46 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { BarChart3, Plus, TrainFront, AlertTriangle } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { AlertTriangle, BarChart3, Library, Plus, TrainFront } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Line, LineChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import { DetalheIndicadorDrawer } from "@/components/indicador-detalhe-drawer";
+import { Pill, SeloAtraso, StatusApuracaoBadge, VariacaoIndicador } from "@/components/indicador-badges";
+import {
+  BibliotecaModelosDialog,
+  FormularioIndicadorDialog,
+  LancarApuracaoDialog,
+  ORIGEM_INDICADOR,
+  PlanoObrigatorioDialog,
+} from "@/components/indicadores-dialogs";
 import { useAsync } from "@/hooks/use-async";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
+import {
+  apuracaoAtrasada,
+  apuracaoDoMes,
+  calcularVariacao,
+  DIA_LIMITE_APURACAO,
+  formatarValor,
+  mesAnterior,
+  mesAnteriorRef,
+  podeGerenciarIndicadores,
+  podeLancarApuracao,
+  rotuloMes,
+  rotuloMesLongo,
+  ultimaApuracao,
+  ultimosMeses,
+  type Apuracao,
+  type Indicador,
+} from "@/lib/indicadores";
+import { listarApuracoes, listarIndicadores } from "@/lib/indicadores-base";
+import { definirArquivamento, fecharApuracao } from "@/lib/indicadores-crud";
 import { listarOcorrencias, listarTipos } from "@/lib/ocorrencias-base";
-import { ocorrenciaAtrasada, type Ocorrencia, type TipoOcorrencia } from "@/lib/ocorrencias";
-import { podeGerenciarConteudo } from "@/lib/permissoes";
-import type { Colaborador } from "@/lib/dados";
+import { ocorrenciaAtrasada } from "@/lib/ocorrencias";
+import { listarPlanos } from "@/lib/planos-base";
+import type { PlanoAcao } from "@/lib/planos";
 
 export const Route = createFileRoute("/indicadores")({
   head: () => ({
@@ -36,32 +49,8 @@ export const Route = createFileRoute("/indicadores")({
   component: Indicadores,
 });
 
-const MESES_CURTOS = [
-  "jan",
-  "fev",
-  "mar",
-  "abr",
-  "mai",
-  "jun",
-  "jul",
-  "ago",
-  "set",
-  "out",
-  "nov",
-  "dez",
-];
-
-function mesFechamento() {
-  const agora = new Date();
-  const anterior = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
-  return `${MESES_CURTOS[anterior.getMonth()]}/${String(anterior.getFullYear()).slice(-2)}`;
-}
-
-const UNIDADES = ["%", "R$", "Unidade(s)", "Dias", "Horas"] as const;
-
-const SENTIDOS = ["Quanto maior, melhor", "Quanto menor, melhor", "Dentro da faixa"] as const;
-
-const FORMAS_ALIMENTACAO = ["Manual", "Automática"] as const;
+/** Quantidade de meses mostrada no mini-gráfico dos cards. */
+const MESES_NO_GRAFICO = 12;
 
 interface SummaryCardProps {
   label: string;
@@ -85,118 +74,542 @@ function SummaryCard({ label, value, valueClass, accent, footer }: SummaryCardPr
 }
 
 function Indicadores() {
+  const router = useRouter();
   const catalogo = useCatalogoOrganizacional();
   const sessao = usePanelSession();
-  const podeGerenciar = podeGerenciarConteudo(sessao);
-  const [novoIndicador, setNovoIndicador] = useState(false);
+  const podeGerenciar = podeGerenciarIndicadores(sessao);
+
+  const [indicadores, setIndicadores] = useState<Indicador[]>([]);
+  const [apuracoes, setApuracoes] = useState<Apuracao[]>([]);
+  const [planos, setPlanos] = useState<PlanoAcao[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
+  const [setorFiltro, setSetorFiltro] = useState("todos");
+  const [aba, setAba] = useState("visao-geral");
+
+  const [formulario, setFormulario] = useState<{ aberto: boolean; indicador: Indicador | null }>({
+    aberto: false,
+    indicador: null,
+  });
+  const [bibliotecaAberta, setBibliotecaAberta] = useState(false);
+  const [lancamento, setLancamento] = useState<Indicador | null>(null);
+  const [detalhe, setDetalhe] = useState<Indicador | null>(null);
+  const [planoPendente, setPlanoPendente] = useState<{ indicador: Indicador; apuracao: Apuracao } | null>(
+    null,
+  );
+
+  const recarregar = useCallback(async () => {
+    setCarregando(true);
+    setErro("");
+    try {
+      const [listaIndicadores, listaApuracoes, listaPlanos] = await Promise.all([
+        listarIndicadores(),
+        listarApuracoes(),
+        listarPlanos().catch(() => [] as PlanoAcao[]),
+      ]);
+      setIndicadores(listaIndicadores);
+      setApuracoes(listaApuracoes);
+      setPlanos(listaPlanos);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível carregar os indicadores.");
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void recarregar();
+  }, [recarregar]);
+
+  /** Apurações agrupadas por indicador. */
+  const porIndicador = useMemo(() => {
+    const mapa = new Map<string, Apuracao[]>();
+    for (const apuracao of apuracoes) {
+      const lista = mapa.get(apuracao.indicadorId) ?? [];
+      lista.push(apuracao);
+      mapa.set(apuracao.indicadorId, lista);
+    }
+    return mapa;
+  }, [apuracoes]);
+
+  const planosPorId = useMemo(() => new Map(planos.map((p) => [p.id, p])), [planos]);
+  const ativos = useMemo(() => indicadores.filter((i) => i.ativo), [indicadores]);
+
+  /** Números dos cards do topo: só o que está apurado e fechado. */
+  const resumo = useMemo(() => {
+    const fechadas = apuracoes.filter((a) => a.fechado && a.valorRealizado !== null);
+    const ultimoFechamento = fechadas.reduce(
+      (max, a) => (a.mesReferencia > max ? a.mesReferencia : max),
+      "",
+    );
+    const doMes = ultimoFechamento ? fechadas.filter((a) => a.mesReferencia === ultimoFechamento) : [];
+    return {
+      acompanhados: ativos.length,
+      dentro: doMes.filter((a) => a.status === "dentro_da_meta").length,
+      abaixo: doMes.filter((a) => a.status === "abaixo_da_meta").length,
+      ultimoFechamento,
+    };
+  }, [ativos, apuracoes]);
+
+  const setorDaSessao = (sessao?.setor ?? "").trim().toLowerCase();
+  const listaVisaoGeral =
+    setorFiltro === "todos" ? ativos : ativos.filter((i) => i.setor === setorFiltro);
+  const listaMeuSetor = ativos.filter((i) => setorDaSessao !== "" && i.setor.trim().toLowerCase() === setorDaSessao);
+  const atrasadasNoMeuSetor = listaMeuSetor.filter((i) =>
+    apuracaoAtrasada(porIndicador.get(i.id) ?? []),
+  ).length;
+
+  const indicadorDetalhe = detalhe
+    ? (indicadores.find((i) => i.id === detalhe.id) ?? detalhe)
+    : null;
+
+  function abrirFormulario(indicador: Indicador | null) {
+    setFormulario({ aberto: true, indicador });
+  }
+
+  function aposLancamento(apuracao: Apuracao) {
+    const indicador = indicadores.find((i) => i.id === apuracao.indicadorId) ?? null;
+    setLancamento(null);
+    void recarregar();
+    if (apuracao.status === "abaixo_da_meta" && indicador) {
+      setPlanoPendente({ indicador, apuracao });
+      toast.warning("Meta não batida: registre o plano de ação para liberar o fechamento do mês.");
+      return;
+    }
+    toast.success(`Apuração de ${rotuloMes(apuracao.mesReferencia)} registrada.`);
+  }
+
+  async function fecharMes(apuracao: Apuracao) {
+    try {
+      await fecharApuracao(apuracao, sessao);
+      toast.success(`Mês de ${rotuloMes(apuracao.mesReferencia)} fechado.`);
+      await recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível fechar o mês.");
+    }
+  }
+
+  async function alternarArquivamento(indicador: Indicador, arquivado: boolean) {
+    try {
+      await definirArquivamento(indicador, arquivado, sessao);
+      toast.success(
+        arquivado
+          ? "Indicador arquivado. O histórico continua preservado."
+          : "Indicador reativado e de volta à visão geral.",
+      );
+      await recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível alterar o indicador.");
+    }
+  }
+
+  /** Abre o formulário de plano de ação do módulo Planos de Ação já preenchido. */
+  function criarPlanoDeAcao(indicador: Indicador, apuracao: Apuracao) {
+    void router.navigate({
+      to: "/planos-de-acao",
+      search: {
+        preencher: "1",
+        titulo: `Meta não batida em ${rotuloMesLongo(apuracao.mesReferencia)} — ${indicador.nome}`,
+        detalhamento:
+          `Indicador ${indicador.nome} (${indicador.setor}) apurou ` +
+          `${formatarValor(apuracao.valorRealizado, indicador.unidade)} contra a meta de ` +
+          `${formatarValor(apuracao.metaNoMes, indicador.unidade)} em ${rotuloMesLongo(apuracao.mesReferencia)}.\n\n` +
+          (indicador.formulaDescricao ? `Como o indicador é apurado: ${indicador.formulaDescricao}` : ""),
+        setor: indicador.setor,
+        origem: ORIGEM_INDICADOR,
+        vinculo: `${indicador.nome} · ${apuracao.mesReferencia}`,
+      },
+    });
+  }
+
+  function abrirPlano(planoId: string) {
+    void router.navigate({ to: "/planos-de-acao", search: { abrir: planoId } });
+  }
+
+  const setoresDoFiltro = useMemo(() => {
+    const nomes = new Set(catalogo.setores);
+    for (const indicador of ativos) if (indicador.setor) nomes.add(indicador.setor);
+    return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [catalogo.setores, ativos]);
+
+  function conteudoLista(lista: Indicador[], vazio: ReactNode) {
+    if (carregando) {
+      return (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-44 animate-pulse rounded-2xl bg-[#F1F5F9]" />
+          ))}
+        </div>
+      );
+    }
+    if (erro) {
+      return (
+        <div className="mt-4 rounded-2xl border border-[#D9E0EA] bg-white px-6 py-14 text-center">
+          <p className="text-sm text-[#E11D48]">{erro}</p>
+          <Button variant="outline" className="mt-4" onClick={() => void recarregar()}>
+            Tentar de novo
+          </Button>
+        </div>
+      );
+    }
+    if (lista.length === 0) return <>{vazio}</>;
+    return (
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {lista.map((indicador) => (
+          <CartaoIndicador
+            key={indicador.id}
+            indicador={indicador}
+            apuracoes={porIndicador.get(indicador.id) ?? []}
+            podeLancar={podeLancarApuracao(sessao, indicador)}
+            onAbrir={() => setDetalhe(indicador)}
+            onLancar={() => setLancamento(indicador)}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <PanelShell wide>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#64748B]">
-            Medição
-          </p>
-          <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-[#1F2937] sm:text-[26px]">
-            Indicadores
-          </h1>
-          <p className="mt-1.5 text-sm text-[#64748B]">
-            Onde o número não bate a meta, sai um plano de ação para o setor dono do indicador.
-          </p>
+      <div className="indicadores-page">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#64748B]">
+              Medição
+            </p>
+            <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-[#1F2937] sm:text-[26px]">
+              Indicadores
+            </h1>
+            <p className="mt-1.5 max-w-3xl text-sm text-[#64748B]">
+              Acompanhe o desempenho de cada setor mês a mês. Compare com a meta e com o mês anterior,
+              consulte o histórico e, quando a meta não for batida, registre o plano de ação obrigatório.
+            </p>
+          </div>
+
+          {podeGerenciar ? (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => setBibliotecaAberta(true)}>
+                <Library className="h-4 w-4" />
+                Usar indicador pronto
+              </Button>
+              <Button onClick={() => abrirFormulario(null)}>
+                <Plus className="h-4 w-4" />
+                Novo indicador
+              </Button>
+            </div>
+          ) : null}
         </div>
 
-        {podeGerenciar ? (
-          <Button className="shrink-0" onClick={() => setNovoIndicador(true)}>
-            <Plus className="h-4 w-4" />
-            Novo indicador
-          </Button>
-        ) : null}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard
+            label="Indicadores acompanhados"
+            value={String(resumo.acompanhados)}
+            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937]"
+            accent="#1F2937"
+            footer="indicadores ativos em toda a operação"
+          />
+          <SummaryCard
+            label="Dentro da meta"
+            value={String(resumo.dentro)}
+            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#059669]"
+            accent="#059669"
+            footer={
+              resumo.ultimoFechamento
+                ? `no fechamento de ${rotuloMes(resumo.ultimoFechamento)}`
+                : "sem fechamento ainda"
+            }
+          />
+          <SummaryCard
+            label="Abaixo da meta"
+            value={String(resumo.abaixo)}
+            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#E11D48]"
+            accent="#E11D48"
+            footer="exigem plano de ação vinculado"
+          />
+          <SummaryCard
+            label="Último fechamento"
+            value={resumo.ultimoFechamento ? rotuloMes(resumo.ultimoFechamento) : "—"}
+            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#4F46E5]"
+            accent="#4F46E5"
+            footer={
+              resumo.ultimoFechamento ? "mês de referência fechado" : "nenhum mês fechado até agora"
+            }
+          />
+        </section>
+
+        <Tabs value={aba} onValueChange={setAba}>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList>
+              <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
+              <TabsTrigger value="meu-setor">Meu setor</TabsTrigger>
+              <TabsTrigger value="ocorrencias">Ocorrências</TabsTrigger>
+            </TabsList>
+
+            <Select value={setorFiltro} onValueChange={setSetorFiltro}>
+              <SelectTrigger className="w-full sm:w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os setores</SelectItem>
+                {setoresDoFiltro.map((setor) => (
+                  <SelectItem key={setor} value={setor}>
+                    {setor}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <TabsContent value="visao-geral">
+            {conteudoLista(
+              listaVisaoGeral,
+              <EstadoVazioIndicadores
+                podeGerenciar={podeGerenciar}
+                temIndicadores={ativos.length > 0}
+                onCriar={() => abrirFormulario(null)}
+                onBiblioteca={() => setBibliotecaAberta(true)}
+              />,
+            )}
+          </TabsContent>
+
+          <TabsContent value="meu-setor">
+            {setorDaSessao === "" ? (
+              <div className="mt-4 rounded-2xl border border-[#D9E0EA] bg-white px-6 py-14 text-center">
+                <h3 className="text-base font-semibold text-[#1F2937]">Setor não identificado</h3>
+                <p className="mt-1.5 text-sm text-[#64748B]">
+                  Seu cadastro não tem setor definido, então não há indicadores para lançar aqui. Fale com a
+                  Qualidade para ajustar o seu cadastro.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="mt-4 text-[13px] text-[#64748B]">
+                  Indicadores do setor <span className="font-semibold text-[#1F2937]">{sessao?.setor}</span>.
+                  {atrasadasNoMeuSetor > 0
+                    ? ` ${atrasadasNoMeuSetor} apuração(ões) atrasada(s) — passou do dia ${
+                        DIA_LIMITE_APURACAO
+                      } e o mês anterior segue sem lançamento.`
+                    : ""}
+                </p>
+                {conteudoLista(
+                  listaMeuSetor,
+                  <EstadoVazioIndicadores
+                    podeGerenciar={podeGerenciar}
+                    temIndicadores={false}
+                    onCriar={() => abrirFormulario(null)}
+                    onBiblioteca={() => setBibliotecaAberta(true)}
+                  />,
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="ocorrencias">
+            <OcorrenciasIndicadores />
+          </TabsContent>
+        </Tabs>
       </div>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Indicadores acompanhados"
-          value="0"
-          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937]"
-          accent="#1F2937"
-          footer="em toda a operação"
-        />
-        <SummaryCard
-          label="Dentro da meta"
-          value="0"
-          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#059669]"
-          accent="#059669"
-          footer="no último mês apurado"
-        />
-        <SummaryCard
-          label="Abaixo da meta"
-          value="0"
-          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#E11D48]"
-          accent="#E11D48"
-          footer="exigem plano de ação"
-        />
-        <SummaryCard
-          label="Último fechamento"
-          value={mesFechamento()}
-          valueClass="mt-3 text-[30px] font-semibold leading-none text-[#4F46E5]"
-          accent="#4F46E5"
-          footer="mês de referência"
-        />
-      </section>
+      {podeGerenciar ? (
+        <>
+          <FormularioIndicadorDialog
+            aberto={formulario.aberto}
+            indicador={formulario.indicador}
+            setores={catalogo.setores}
+            colaboradores={catalogo.colaboradores}
+            onFechar={() => setFormulario({ aberto: false, indicador: null })}
+            onSalvo={() => {
+              setFormulario({ aberto: false, indicador: null });
+              toast.success("Indicador salvo.");
+              void recarregar();
+            }}
+          />
+          <BibliotecaModelosDialog
+            aberto={bibliotecaAberta}
+            modelos={indicadores.filter((i) => i.criadoDeModelo && !i.ativo)}
+            carregando={carregando}
+            setores={catalogo.setores}
+            colaboradores={catalogo.colaboradores}
+            onFechar={() => setBibliotecaAberta(false)}
+            onAtivado={() => {
+              setBibliotecaAberta(false);
+              toast.success("Indicador ativado da biblioteca. Confira a meta e o responsável.");
+              void recarregar();
+            }}
+          />
+        </>
+      ) : null}
 
-      <Tabs defaultValue="visao-geral">
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TabsList>
-            <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
-            <TabsTrigger value="meu-setor">Meu setor</TabsTrigger>
-            <TabsTrigger value="ocorrencias">Ocorrências</TabsTrigger>
-          </TabsList>
+      <LancarApuracaoDialog
+        aberto={lancamento !== null}
+        indicador={lancamento}
+        apuracoes={lancamento ? (porIndicador.get(lancamento.id) ?? []) : []}
+        onFechar={() => setLancamento(null)}
+        onLancado={aposLancamento}
+      />
 
-          <Select defaultValue="todos">
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os setores</SelectItem>
-              {catalogo.setores.map((setor) => (
-                <SelectItem key={setor} value={setor}>
-                  {setor}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <PlanoObrigatorioDialog
+        aberto={planoPendente !== null}
+        indicador={planoPendente?.indicador ?? null}
+        apuracao={planoPendente?.apuracao ?? null}
+        onCriarPlano={criarPlanoDeAcao}
+        onFechar={() => setPlanoPendente(null)}
+        onVinculado={() => {
+          setPlanoPendente(null);
+          toast.success("Plano de ação vinculado ao mês.");
+          void recarregar();
+        }}
+      />
 
-        <TabsContent value="visao-geral">
-          <ListaIndicadores onNovo={() => setNovoIndicador(true)} podeGerenciar={podeGerenciar} />
-        </TabsContent>
-
-        <TabsContent value="meu-setor">
-          <ListaIndicadores onNovo={() => setNovoIndicador(true)} podeGerenciar={podeGerenciar} />
-        </TabsContent>
-
-        <TabsContent value="ocorrencias">
-          <OcorrenciasIndicadores />
-        </TabsContent>
-      </Tabs>
-
-      <NovoIndicadorDialog
-        aberto={novoIndicador}
-        setores={catalogo.setores}
-        colaboradores={catalogo.colaboradores}
-        onFechar={() => setNovoIndicador(false)}
+      <DetalheIndicadorDrawer
+        indicador={indicadorDetalhe}
+        apuracoes={indicadorDetalhe ? (porIndicador.get(indicadorDetalhe.id) ?? []) : []}
+        planosPorId={planosPorId}
+        podeGerenciar={podeGerenciar}
+        podeLancar={!!indicadorDetalhe && podeLancarApuracao(sessao, indicadorDetalhe)}
+        onFechar={() => setDetalhe(null)}
+        onLancar={(indicador) => setLancamento(indicador)}
+        onEditar={(indicador) => abrirFormulario(indicador)}
+        onAlternarArquivamento={(indicador, arquivado) => void alternarArquivamento(indicador, arquivado)}
+        onFecharMes={(apuracao) => void fecharMes(apuracao)}
+        onVincularPlano={(indicador, apuracao) => setPlanoPendente({ indicador, apuracao })}
+        onAbrirPlano={abrirPlano}
       />
     </PanelShell>
   );
 }
 
-function ListaIndicadores({
-  onNovo,
-  podeGerenciar,
-}: {
-  onNovo: () => void;
+/* -------------------------------------------------------------------------- */
+/* Cards por indicador                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** Mini-gráfico dos últimos meses com lançamento (linha + linha da meta). */
+function SparklineValores({ indicador, apuracoes }: { indicador: Indicador; apuracoes: Apuracao[] }) {
+  const pontos = ultimosMeses(MESES_NO_GRAFICO)
+    .map((mes) => ({ mes, valor: apuracaoDoMes(apuracoes, mes)?.valorRealizado ?? null }))
+    .filter((ponto): ponto is { mes: string; valor: number } => ponto.valor !== null);
+
+  if (pontos.length < 2) {
+    return (
+      <p className="text-[12px] text-[#94A3B8]">
+        Sem histórico suficiente para o gráfico dos últimos {MESES_NO_GRAFICO} meses.
+      </p>
+    );
+  }
+
+  return (
+    <div className="h-14 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={pontos} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
+          <XAxis dataKey="mes" hide />
+          <YAxis hide domain={["auto", "auto"]} />
+          {indicador.meta !== null ? (
+            <ReferenceLine
+              y={indicador.meta}
+              stroke="currentColor"
+              strokeDasharray="3 3"
+              className="text-[#94A3B8]"
+            />
+          ) : null}
+          <Line
+            type="monotone"
+            dataKey="valor"
+            stroke="currentColor"
+            className="text-[#1E3A8A]"
+            strokeWidth={2}
+            dot={{ r: 2 }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+
+
+
+interface CartaoProps {
+  indicador: Indicador;
+  apuracoes: Apuracao[];
+  podeLancar: boolean;
+  onAbrir: () => void;
+  onLancar: () => void;
+}
+
+function CartaoIndicador({ indicador, apuracoes, podeLancar, onAbrir, onLancar }: CartaoProps) {
+  const ultima = ultimaApuracao(apuracoes);
+  const mesAnteriorLancado = ultima ? mesAnterior(ultima.mesReferencia) : "";
+  const anterior = mesAnteriorLancado ? apuracaoDoMes(apuracoes, mesAnteriorLancado) : null;
+  const variacao = calcularVariacao(
+    ultima?.valorRealizado ?? null,
+    anterior?.valorRealizado ?? null,
+    indicador.sentido,
+  );
+  const atrasada = apuracaoAtrasada(apuracoes);
+
+  return (
+    <div className="flex flex-col rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm transition hover:border-[#94A3B8]">
+      <button type="button" onClick={onAbrir} className="text-left">
+        <p className="text-[15px] font-semibold leading-snug text-[#1F2937]">{indicador.nome}</p>
+        <p className="mt-1 text-[12px] text-[#64748B]">
+          {indicador.setor || "Sem setor"}
+          {indicador.responsavelNome ? ` · ${indicador.responsavelNome}` : ""}
+        </p>
+      </button>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <StatusApuracaoBadge status={ultima?.status ?? "pendente"} fechado={ultima?.fechado} />
+        {indicador.automatico ? <Pill tom="info">Automático</Pill> : null}
+        {atrasada ? <SeloAtraso mes={rotuloMes(mesAnteriorRef())} /> : null}
+      </div>
+
+      <div className="mt-3">
+        <div className="flex items-end justify-between gap-2">
+          <p className="text-[24px] font-semibold leading-none text-[#1F2937]">
+            {formatarValor(ultima?.valorRealizado ?? null, indicador.unidade)}
+          </p>
+          <p className="text-[12px] text-[#64748B]">
+            meta {formatarValor(ultima?.metaNoMes ?? indicador.meta, indicador.unidade)}
+          </p>
+        </div>
+        <p className="mt-1.5 text-[12px] text-[#94A3B8]">
+          {ultima ? `Apurado em ${rotuloMes(ultima.mesReferencia)}` : "Nenhuma apuração lançada"}
+        </p>
+        <div className="mt-1.5">
+          <VariacaoIndicador
+            variacao={variacao}
+            absoluta={formatarValor(variacao ? Math.abs(variacao.absoluta) : null, indicador.unidade)}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <SparklineValores indicador={indicador} apuracoes={apuracoes} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#EEF2F7] pt-3">
+        <Button size="sm" variant="outline" onClick={onAbrir}>
+          Ver histórico
+        </Button>
+        {podeLancar && indicador.ativo ? (
+          <Button size="sm" onClick={onLancar}>
+            Lançar apuração
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+interface VazioProps {
   podeGerenciar: boolean;
-}) {
+  temIndicadores: boolean;
+  onCriar: () => void;
+  onBiblioteca: () => void;
+}
+
+function EstadoVazioIndicadores({ podeGerenciar, temIndicadores, onCriar, onBiblioteca }: VazioProps) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
       <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
@@ -204,21 +617,29 @@ function ListaIndicadores({
           <BarChart3 className="h-7 w-7 text-[#94A3B8]" />
         </div>
         <h3 className="mt-4 text-base font-semibold text-[#1F2937]">
-          Nenhum indicador cadastrado aqui
+          {temIndicadores ? "Nenhum indicador neste setor" : "Nenhum indicador cadastrado aqui"}
         </h3>
-        <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
-          A Qualidade cadastra o indicador, define a meta e como ele é apurado.
+        <p className="mt-1.5 max-w-lg text-sm text-[#64748B]">
+          Use um modelo pronto da biblioteca ou crie o indicador do zero: a Qualidade define a meta e como
+          ele é apurado, e o setor lança o resultado todo mês.
         </p>
         {podeGerenciar ? (
-          <Button variant="outline" className="mt-5" onClick={onNovo}>
-            <Plus className="h-4 w-4" />
-            Novo indicador
-          </Button>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <Button variant="outline" onClick={onBiblioteca}>
+              <Library className="h-4 w-4" />
+              Usar indicador pronto
+            </Button>
+            <Button onClick={onCriar}>
+              <Plus className="h-4 w-4" />
+              Criar indicador
+            </Button>
+          </div>
         ) : null}
       </div>
     </div>
   );
 }
+
 
 function Barra({
   rotulo,
@@ -364,204 +785,4 @@ function OcorrenciasIndicadores() {
   );
 }
 
-interface CampoProps {
-  rotulo: string;
-  children: ReactNode;
-}
 
-function Campo({ rotulo, children }: CampoProps) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[13px] font-medium text-[#1F2937]">{rotulo}</Label>
-      {children}
-    </div>
-  );
-}
-
-interface NovoIndicadorDialogProps {
-  aberto: boolean;
-  setores: string[];
-  colaboradores: Colaborador[];
-  onFechar: () => void;
-}
-
-function NovoIndicadorDialog({
-  aberto,
-  setores,
-  colaboradores,
-  onFechar,
-}: NovoIndicadorDialogProps) {
-  const [nome, setNome] = useState("");
-  const [setor, setSetor] = useState("Qualidade");
-  const [donoId, setDonoId] = useState("");
-  const [unidade, setUnidade] = useState("%");
-  const [meta, setMeta] = useState("90");
-  const [sentido, setSentido] = useState("Quanto maior, melhor");
-  const [comoApurado, setComoApurado] = useState("");
-  const [alimentacao, setAlimentacao] = useState("Manual");
-  const [modelo, setModelo] = useState("modelo-indicador.xlsx");
-
-  function limpar() {
-    setNome("");
-    setSetor("Qualidade");
-    setDonoId("");
-    setUnidade("%");
-    setMeta("90");
-    setSentido("Quanto maior, melhor");
-    setComoApurado("");
-    setAlimentacao("Manual");
-    setModelo("modelo-indicador.xlsx");
-  }
-
-  useEffect(() => {
-    if (!aberto) limpar();
-  }, [aberto]);
-
-  function enviar() {
-    limpar();
-    onFechar();
-  }
-
-  return (
-    <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Novo indicador</DialogTitle>
-          <DialogDescription>
-            Cadastre o indicador, defina a meta e como ele é apurado.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          <Campo rotulo="Nome do indicador">
-            <Input
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex.: Tarefas concluídas no prazo"
-            />
-          </Campo>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Setor">
-              <Select value={setor} onValueChange={setSetor}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {setores.map((opcao) => (
-                    <SelectItem key={opcao} value={opcao}>
-                      {opcao}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
-
-            <Campo rotulo="Dono do indicador">
-              <Select value={donoId} onValueChange={setDonoId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecionar colaborador…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {colaboradores.map((colaborador) => (
-                    <SelectItem key={colaborador.id} value={colaborador.id}>
-                      {colaborador.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
-
-            <Campo rotulo="Unidade">
-              <Select value={unidade} onValueChange={setUnidade}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNIDADES.map((opcao) => (
-                    <SelectItem key={opcao} value={opcao}>
-                      {opcao}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
-
-            <Campo rotulo="Meta">
-              <Input
-                value={meta}
-                onChange={(e) => setMeta(e.target.value)}
-                placeholder="Ex.: 90"
-                inputMode="numeric"
-              />
-            </Campo>
-          </div>
-
-          <Campo rotulo="Sentido">
-            <Select value={sentido} onValueChange={setSentido}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SENTIDOS.map((opcao) => (
-                  <SelectItem key={opcao} value={opcao}>
-                    {opcao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Campo>
-
-          <Campo rotulo="Como é apurado">
-            <Textarea
-              value={comoApurado}
-              onChange={(e) => setComoApurado(e.target.value)}
-              placeholder="Ex.: Apurado mensalmente pela Qualidade…"
-              className="min-h-[80px]"
-            />
-            <p className="text-xs italic text-[#94A3B8]">
-              Fica visível para quem lança a apuração todo mês.
-            </p>
-          </Campo>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Forma de alimentação">
-              <Select value={alimentacao} onValueChange={setAlimentacao}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FORMAS_ALIMENTACAO.map((opcao) => (
-                    <SelectItem key={opcao} value={opcao}>
-                      {opcao}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Campo>
-
-            <Campo rotulo="Modelo de documento">
-              <Input value={modelo} onChange={(e) => setModelo(e.target.value)} />
-              <p className="text-xs italic text-[#94A3B8]">
-                Nome do arquivo padrão usado no lançamento.
-              </p>
-            </Campo>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onFechar}>
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            onClick={enviar}
-            className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-          >
-            Criar indicador
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

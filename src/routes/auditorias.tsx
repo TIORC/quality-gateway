@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Building2, CalendarDays, ClipboardCheck, Plus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  AuditoriaDetalheDialog,
+  StatusAuditoriaBadge,
+} from "@/components/auditoria-detalhe-dialog";
 import { NovaAuditoriaDialog } from "@/components/nova-auditoria-dialog";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
@@ -30,9 +34,8 @@ const ABAS = [
 type SituacaoAuditoria = "planejadas" | "execucao" | "concluidas";
 
 function situacaoDe(a: Auditoria): SituacaoAuditoria {
-  if (a.resultado !== "nenhum") return "concluidas";
-  const hoje = new Date().toISOString().slice(0, 10);
-  if (a.dataPlanejada && a.dataPlanejada < hoje) return "execucao";
+  if (a.status === "concluida" || a.resultado !== "nenhum") return "concluidas";
+  if (a.status === "em_execucao") return "execucao";
   return "planejadas";
 }
 
@@ -65,6 +68,7 @@ function Auditorias() {
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
+  const [selecionada, setSelecionada] = useState<Auditoria | null>(null);
 
   async function recarregar() {
     setCarregando(true);
@@ -186,11 +190,23 @@ function Auditorias() {
               auditorias={porAba(aba.valor)}
               carregando={carregando && aba.valor === "todas"}
               onNova={() => setNovaAuditoria(true)}
+              onVer={(a) => setSelecionada(a)}
               podeGerenciar={podeGerenciar}
             />
           </TabsContent>
         ))}
       </Tabs>
+
+      <AuditoriaDetalheDialog
+        aberto={selecionada !== null}
+        auditoria={selecionada}
+        podeGerenciar={podeGerenciar}
+        onFechar={() => setSelecionada(null)}
+        onAlterada={(atualizada) => {
+          setAuditorias((lista) => lista.map((x) => (x.id === atualizada.id ? atualizada : x)));
+          setSelecionada(atualizada);
+        }}
+      />
 
       <NovaAuditoriaDialog
         aberto={novaAuditoria}
@@ -211,11 +227,13 @@ function ListaAuditorias({
   auditorias,
   carregando,
   onNova,
+  onVer,
   podeGerenciar,
 }: {
   auditorias: Auditoria[];
   carregando: boolean;
   onNova: () => void;
+  onVer: (auditoria: Auditoria) => void;
   podeGerenciar: boolean;
 }) {
   if (carregando) {
@@ -251,7 +269,7 @@ function ListaAuditorias({
   return (
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {auditorias.map((a) => (
-        <CartaoAuditoria key={a.id} auditoria={a} />
+        <CartaoAuditoria key={a.id} auditoria={a} onClique={() => onVer(a)} />
       ))}
     </div>
   );
@@ -266,7 +284,7 @@ const ESTILOS_RESULTADO: Record<ResultadoAuditoria, { pill: string }> = {
 
 const LIMITE_NOMES_CARD = 3;
 
-function CartaoAuditoria({ auditoria }: { auditoria: Auditoria }) {
+function CartaoAuditoria({ auditoria, onClique }: { auditoria: Auditoria; onClique: () => void }) {
   const resultadoPill =
     auditoria.resultado === "nenhum"
       ? "bg-[#F1F5F9] text-[#64748B]"
@@ -281,15 +299,22 @@ function CartaoAuditoria({ auditoria }: { auditoria: Auditoria }) {
   };
 
   return (
-    <div className="flex flex-col rounded-xl border border-[#E9EEF5] bg-white p-4 shadow-sm transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC]">
+    <button
+      type="button"
+      onClick={onClique}
+      className="flex cursor-pointer flex-col rounded-xl border border-[#E9EEF5] bg-white p-4 text-left shadow-sm transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC] hover:shadow-md"
+    >
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[11px] text-[#94A3B8]">{auditoria.codigo || "—"}</span>
-        <span
-          className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${resultadoPill}`}
-          title={`Resultado: ${rotuloResultado(auditoria.resultado)}`}
-        >
-          {rotuloResultado(auditoria.resultado)}
-          {auditoria.resultadoRef ? ` · ${auditoria.resultadoRef}` : ""}
+        <span className="flex shrink-0 items-center gap-1.5">
+          <StatusAuditoriaBadge status={auditoria.status} />
+          <span
+            className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${resultadoPill}`}
+            title={`Resultado: ${rotuloResultado(auditoria.resultado)}`}
+          >
+            {rotuloResultado(auditoria.resultado)}
+            {auditoria.resultadoRef ? ` · ${auditoria.resultadoRef}` : ""}
+          </span>
         </span>
       </div>
 
@@ -360,6 +385,6 @@ function CartaoAuditoria({ auditoria }: { auditoria: Auditoria }) {
           <p className="mt-1 leading-snug text-[#334155]">{nomes(auditoria.auditados)}</p>
         </div>
       </div>
-    </div>
+    </button>
   );
 }

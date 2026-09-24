@@ -1,5 +1,17 @@
 import type { TipoAuditoria } from "@/lib/dados";
 
+export type StatusAuditoria = "planejada" | "em_execucao" | "concluida";
+
+export const STATUS_AUDITORIA: { valor: StatusAuditoria; rotulo: string }[] = [
+  { valor: "planejada", rotulo: "Planejada" },
+  { valor: "em_execucao", rotulo: "Em Execução" },
+  { valor: "concluida", rotulo: "Concluída" },
+];
+
+export function rotuloStatus(status: StatusAuditoria): string {
+  return STATUS_AUDITORIA.find((s) => s.valor === status)?.rotulo ?? "—";
+}
+
 export type ResultadoAuditoria = "nenhum" | "nao_conformidade" | "ponto_atencao" | "oportunidade";
 
 export const RESULTADOS_AUDITORIA: { valor: ResultadoAuditoria; rotulo: string }[] = [
@@ -31,6 +43,7 @@ export interface Auditoria {
   evidencias: string;
   auditores: PessoaAuditoria[];
   auditados: PessoaAuditoria[];
+  status: StatusAuditoria;
   resultado: ResultadoAuditoria;
   resultadoRef: string;
   criadaPorNome: string;

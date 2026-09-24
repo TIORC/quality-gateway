@@ -6,6 +6,7 @@ import {
   type Auditoria,
   type PessoaAuditoria,
   type ResultadoAuditoria,
+  type StatusAuditoria,
 } from "@/lib/auditorias";
 
 export type Rec = Record<string, unknown>;
@@ -28,10 +29,23 @@ function textosDoJson(v: unknown): string[] {
 
 const RESULTADOS_OK = RESULTADOS_AUDITORIA.map((r) => r.valor);
 const TIPOS_OK: TipoAuditoria[] = ["Interna", "Externa"];
+const STATUS_OK: StatusAuditoria[] = ["planejada", "em_execucao", "concluida"];
+
+/** Registros antigos (sem coluna `status`): deduz a situação atual. */
+function statusLegado(row: Rec, resultado: ResultadoAuditoria): StatusAuditoria {
+  if (resultado !== "nenhum") return "concluida";
+  const data = typeof row["data_planejada"] === "string" ? row["data_planejada"] : "";
+  if (data && data < new Date().toISOString().slice(0, 10)) return "em_execucao";
+  return "planejada";
+}
 
 export function auditoriaDoRow(row: Rec): Auditoria {
   const tipo = str(row["tipo"], "Interna") as TipoAuditoria;
   const resultado = str(row["resultado"], "nenhum") as ResultadoAuditoria;
+  const statusBruto = str(row["status"], "");
+  const status = STATUS_OK.includes(statusBruto as StatusAuditoria)
+    ? (statusBruto as StatusAuditoria)
+    : statusLegado(row, resultado);
   return {
     id: str(row["id"]),
     codigo: str(row["codigo"]),
@@ -45,6 +59,7 @@ export function auditoriaDoRow(row: Rec): Auditoria {
     evidencias: str(row["evidencias"]),
     auditores: pessoasDoJson(row["auditores"]),
     auditados: pessoasDoJson(row["auditados"]),
+    status,
     resultado: RESULTADOS_OK.includes(resultado) ? resultado : "nenhum",
     resultadoRef: str(row["resultado_ref"]),
     criadaPorNome: str(row["criada_por_nome"]),

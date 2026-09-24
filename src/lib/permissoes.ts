@@ -27,16 +27,15 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
   "/pops",
   "/funcionarios",
   "/configuracoes",
-  "/disparo-de-cobrancas",
   "/meu-perfil",
 ];
 
 /**
  * Páginas liberadas para todos os colaboradores: todas do portal exceto a
- * configuração e o disparo de cobranças (restritas à Administração/Gestão).
+ * configuração (restrita à Administração/Gestão).
  */
 const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter(
-  (rota) => rota !== "/configuracoes" && rota !== "/disparo-de-cobrancas",
+  (rota) => rota !== "/configuracoes",
 );
 
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {

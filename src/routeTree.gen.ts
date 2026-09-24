@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AtasDeReuniaoRouteImport } from './routes/atas-de-reuniao'
 import { Route as AuditoriasRouteImport } from './routes/auditorias'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
-import { Route as DisparoDeCobrancasRouteImport } from './routes/disparo-de-cobrancas'
 import { Route as FuncionariosRouteImport } from './routes/funcionarios'
 import { Route as IndicadoresRouteImport } from './routes/indicadores'
 import { Route as LoadingRouteImport } from './routes/loading'
@@ -43,11 +42,6 @@ const AuditoriasRoute = AuditoriasRouteImport.update({
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DisparoDeCobrancasRoute = DisparoDeCobrancasRouteImport.update({
-  id: '/disparo-de-cobrancas',
-  path: '/disparo-de-cobrancas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FuncionariosRoute = FuncionariosRouteImport.update({
@@ -106,7 +100,6 @@ export interface FileRoutesByFullPath {
   '/atas-de-reuniao': typeof AtasDeReuniaoRoute
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
-  '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
   '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
@@ -123,7 +116,6 @@ export interface FileRoutesByTo {
   '/atas-de-reuniao': typeof AtasDeReuniaoRoute
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
-  '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
   '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
@@ -141,7 +133,6 @@ export interface FileRoutesById {
   '/atas-de-reuniao': typeof AtasDeReuniaoRoute
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
-  '/disparo-de-cobrancas': typeof DisparoDeCobrancasRoute
   '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
@@ -160,7 +151,6 @@ export interface FileRouteTypes {
     | '/atas-de-reuniao'
     | '/auditorias'
     | '/configuracoes'
-    | '/disparo-de-cobrancas'
     | '/funcionarios'
     | '/indicadores'
     | '/loading'
@@ -177,7 +167,6 @@ export interface FileRouteTypes {
     | '/atas-de-reuniao'
     | '/auditorias'
     | '/configuracoes'
-    | '/disparo-de-cobrancas'
     | '/funcionarios'
     | '/indicadores'
     | '/loading'
@@ -194,7 +183,6 @@ export interface FileRouteTypes {
     | '/atas-de-reuniao'
     | '/auditorias'
     | '/configuracoes'
-    | '/disparo-de-cobrancas'
     | '/funcionarios'
     | '/indicadores'
     | '/loading'
@@ -212,7 +200,6 @@ export interface RootRouteChildren {
   AtasDeReuniaoRoute: typeof AtasDeReuniaoRoute
   AuditoriasRoute: typeof AuditoriasRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
-  DisparoDeCobrancasRoute: typeof DisparoDeCobrancasRoute
   FuncionariosRoute: typeof FuncionariosRoute
   IndicadoresRoute: typeof IndicadoresRoute
   LoadingRoute: typeof LoadingRoute
@@ -253,13 +240,6 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/configuracoes'
       preLoaderRoute: typeof ConfiguracoesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/disparo-de-cobrancas': {
-      id: '/disparo-de-cobrancas'
-      path: '/disparo-de-cobrancas'
-      fullPath: '/disparo-de-cobrancas'
-      preLoaderRoute: typeof DisparoDeCobrancasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/funcionarios': {
@@ -340,7 +320,6 @@ const rootRouteChildren: RootRouteChildren = {
   AtasDeReuniaoRoute: AtasDeReuniaoRoute,
   AuditoriasRoute: AuditoriasRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
-  DisparoDeCobrancasRoute: DisparoDeCobrancasRoute,
   FuncionariosRoute: FuncionariosRoute,
   IndicadoresRoute: IndicadoresRoute,
   LoadingRoute: LoadingRoute,

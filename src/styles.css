@@ -566,3 +566,63 @@
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Página /indicadores — selos de status                               */
+/* ------------------------------------------------------------------ */
+/*
+ * Os selos do módulo de indicadores (status da apuração, atraso, automático)
+ * usam `data-pill` e recebem as cores por aqui, valendo nos dois temas sem
+ * depender de utilitário de cor fixa. Só afeta a página de indicadores.
+ */
+
+.indicadores-page [data-pill="sucesso"] {
+  background-color: oklch(0.696 0.17 162.48 / 14%);
+  color: oklch(0.42 0.11 162);
+}
+
+.dark .indicadores-page [data-pill="sucesso"] {
+  background-color: oklch(0.696 0.17 162.48 / 20%);
+  color: oklch(0.82 0.14 162);
+}
+
+.indicadores-page [data-pill="perigo"] {
+  background-color: oklch(0.577 0.245 27.325 / 12%);
+  color: oklch(0.51 0.2 22);
+}
+
+.dark .indicadores-page [data-pill="perigo"] {
+  background-color: oklch(0.704 0.191 22.216 / 20%);
+  color: oklch(0.79 0.15 20);
+}
+
+.indicadores-page [data-pill="atencao"] {
+  background-color: oklch(0.828 0.189 84.429 / 22%);
+  color: oklch(0.5 0.13 70);
+}
+
+.dark .indicadores-page [data-pill="atencao"] {
+  background-color: oklch(0.828 0.189 84.429 / 18%);
+  color: oklch(0.86 0.13 80);
+}
+
+.indicadores-page [data-pill="neutro"] {
+  background-color: oklch(0.929 0.013 255.508);
+  color: oklch(0.44 0.03 257);
+}
+
+.dark .indicadores-page [data-pill="neutro"] {
+  background-color: oklch(1 0 0 / 10%);
+  color: oklch(0.87 0.02 257);
+}
+
+.indicadores-page [data-pill="info"] {
+  background-color: oklch(0.62 0.19 275 / 14%);
+  color: oklch(0.45 0.16 275);
+}
+
+.dark .indicadores-page [data-pill="info"] {
+  background-color: oklch(0.72 0.16 275 / 22%);
+  color: oklch(0.85 0.1 275);
+}
+

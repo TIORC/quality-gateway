@@ -4,7 +4,12 @@ import type { UserSession } from "@/lib/auth";
 import type { TipoAuditoria } from "@/lib/dados";
 import { dataBrParaISO } from "@/lib/projetos";
 import { auditoriaDoRow, type Rec } from "@/lib/auditorias-base";
-import type { Auditoria, PessoaAuditoria, ResultadoAuditoria } from "@/lib/auditorias";
+import type {
+  Auditoria,
+  PessoaAuditoria,
+  ResultadoAuditoria,
+  StatusAuditoria,
+} from "@/lib/auditorias";
 
 export interface NovaAuditoriaInput {
   codigo: string;
@@ -52,4 +57,11 @@ export async function criarAuditoria(
     .single();
   if (error) throw traduzErro(error);
   return auditoriaDoRow(data as unknown as Rec);
+}
+
+/** Move a auditoria para outra situação (ex.: em_execucao). */
+export async function atualizarStatusAuditoria(id: string, status: StatusAuditoria): Promise<void> {
+  const client = clienteLivre();
+  const { error } = await client.from("auditorias").update({ status }).eq("id", id);
+  if (error) throw traduzErro(error);
 }
