@@ -63,6 +63,8 @@ export function rotaPermitida(session: UserSession | null, path: string): boolea
   const permitidas = rotasPermitidas(session);
   // Sem mapa para o nível (ex.: colaborador sem vínculo): não restringe.
   if (permitidas.size === 0) return true;
+  // Caminhos dinâmicos herdam a permissão da rota raiz (ex.: /funcionarios/$id).
+  if ([...permitidas].some((rota) => path.startsWith(`${rota}/`))) return true;
   return permitidas.has(path as AppRoutePath);
 }
 

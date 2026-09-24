@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { CheckCircle2, Eye, FileCheck2, Search, UserX, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import { STATUS_FUNCIONARIO, type Funcionario, type StatusFuncionario } from "@/
 import * as org from "@/lib/organizacao";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 
-export const Route = createFileRoute("/funcionarios")({
+export const Route = createFileRoute("/funcionarios/")({
   head: () => ({
     meta: [{ title: "Funcionários | Gestão da Qualidade" }],
   }),
@@ -247,6 +247,7 @@ function Funcionarios() {
                   <Th>Último acesso</Th>
                   <Th>Processos visualizados</Th>
                   <Th>Processos lidos</Th>
+                  <Th>Perfil</Th>
                 </tr>
               </thead>
               <tbody>
@@ -267,19 +268,24 @@ function Funcionarios() {
                       className="border-b border-[#E9EEF5] last:border-0 hover:bg-[#F8FAFC]"
                     >
                       <td className="px-4 py-3 align-middle">
-                        <div className="flex items-center gap-3">
+                        <Link
+                          to="/funcionarios/$id"
+                          params={{ id: funcionario.id }}
+                          title={`Visitar perfil de ${funcionario.nome}`}
+                          className="group flex items-center gap-3 transition"
+                        >
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#312E81] text-[12px] font-semibold text-white">
                             {iniciais(funcionario.nome)}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-[#1F2937]">
+                            <p className="truncate text-[13px] font-semibold text-[#1F2937] transition group-hover:text-[#312E81]">
                               {funcionario.nome}
                             </p>
                             <p className="truncate text-[11px] text-[#64748B]">
                               {funcionario.setor || "—"}
                             </p>
                           </div>
-                        </div>
+                        </Link>
                       </td>
                       <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
                         {funcionario.email || "—"}
@@ -325,6 +331,16 @@ function Funcionarios() {
                             </span>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <Link
+                          to="/funcionarios/$id"
+                          params={{ id: funcionario.id }}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-[#D9E0EA] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1E3A8A] transition hover:border-[#C7CBD1] hover:bg-[#EEF2F7]"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Ver perfil
+                        </Link>
                       </td>
                     </tr>
                   );

@@ -368,6 +368,69 @@ export async function carregarFuncionarios(): Promise<Funcionario[]> {
   });
 }
 
+/** Perfil de visitante: dados organizacionais do colaborador + contadores. */
+export interface PerfilColaborador extends Colaborador {
+  status: StatusFuncionario;
+  /** Data e hora do último acesso (ISO). `null` quando nunca acessou. */
+  ultimoAcesso: string | null;
+  processosVisualizados: number;
+  processosLidos: number;
+}
+
+/** Conta visualizações/leituras de processos vinculadas a um e-mail específico. */
+async function contarPopsPorEmail(
+  tabela: "pop_leituras" | "pop_visualizacoes",
+  email: string,
+): Promise<number> {
+  const client = exigirCloud();
+  const { count, error } = await client
+    .from(tabela)
+    .select("usuario_email", { count: "exact", head: true })
+    .eq("usuario_email", email);
+  if (error) {
+    if (tabelaAusente(error)) return 0;
+    throw traduzErro(error);
+  }
+  return count ?? 0;
+}
+
+/**
+ * Perfil público de um colaborador para a tela de visitar perfis: dados
+ * organizacionais (cargo, setor, unidade, e-mail) mais a situação de acesso
+ * e os contadores de visualização/leitura de processos. Devolve `null`
+ * quando não existe colaborador com o id informado.
+ */
+export async function carregarPerfilColaborador(id: string): Promise<PerfilColaborador | null> {
+  if (!organizacaoDisponivel()) return null;
+  const client = exigirCloud();
+  const { data, error } = await client
+    .from("colaboradores")
+    .select(
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw traduzErro(error);
+  if (!data) return null;
+
+  const base = colaboradoraDoRow(data);
+  const email = (data.email ?? "").trim().toLowerCase();
+  const [processosVisualizados, processosLidos] = email
+    ? await Promise.all([
+        contarPopsPorEmail("pop_visualizacoes", email),
+        contarPopsPorEmail("pop_leituras", email),
+      ])
+    : [0, 0];
+
+  return {
+    ...base,
+    status: (data.status === "Inativo" ? "Inativo" : "Ativo") as StatusFuncionario,
+    ultimoAcesso: data.ultimo_acesso,
+    processosVisualizados,
+    processosLidos,
+  };
+}
+
 /** Cria um colaborador no banco e devolve o registro persistido. */
 export async function criarColaborador(dados: Colaborador): Promise<Colaborador> {
   const client = exigirCloud();

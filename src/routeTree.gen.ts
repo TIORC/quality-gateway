@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AtasDeReuniaoRouteImport } from './routes/atas-de-reuniao'
 import { Route as AuditoriasRouteImport } from './routes/auditorias'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
-import { Route as FuncionariosRouteImport } from './routes/funcionarios'
 import { Route as IndicadoresRouteImport } from './routes/indicadores'
 import { Route as LoadingRouteImport } from './routes/loading'
 import { Route as MeuPerfilRouteImport } from './routes/meu-perfil'
@@ -23,6 +22,8 @@ import { Route as PlanosDeAcaoRouteImport } from './routes/planos-de-acao'
 import { Route as PoliticasRouteImport } from './routes/politicas'
 import { Route as PopsRouteImport } from './routes/pops'
 import { Route as ProjetosEEstrategiasRouteImport } from './routes/projetos-e-estrategias'
+import { Route as FuncionariosIndexRouteImport } from './routes/funcionarios/index'
+import { Route as FuncionariosIdRouteImport } from './routes/funcionarios/$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -42,11 +43,6 @@ const AuditoriasRoute = AuditoriasRouteImport.update({
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FuncionariosRoute = FuncionariosRouteImport.update({
-  id: '/funcionarios',
-  path: '/funcionarios',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndicadoresRoute = IndicadoresRouteImport.update({
@@ -94,13 +90,22 @@ const ProjetosEEstrategiasRoute = ProjetosEEstrategiasRouteImport.update({
   path: '/projetos-e-estrategias',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FuncionariosIndexRoute = FuncionariosIndexRouteImport.update({
+  id: '/funcionarios/',
+  path: '/funcionarios/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FuncionariosIdRoute = FuncionariosIdRouteImport.update({
+  id: '/funcionarios/$id',
+  path: '/funcionarios/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/atas-de-reuniao': typeof AtasDeReuniaoRoute
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
-  '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
   '/meu-perfil': typeof MeuPerfilRoute
@@ -110,13 +115,14 @@ export interface FileRoutesByFullPath {
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
+  '/funcionarios/$id': typeof FuncionariosIdRoute
+  '/funcionarios/': typeof FuncionariosIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/atas-de-reuniao': typeof AtasDeReuniaoRoute
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
-  '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
   '/meu-perfil': typeof MeuPerfilRoute
@@ -126,6 +132,8 @@ export interface FileRoutesByTo {
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
+  '/funcionarios/$id': typeof FuncionariosIdRoute
+  '/funcionarios': typeof FuncionariosIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -133,7 +141,6 @@ export interface FileRoutesById {
   '/atas-de-reuniao': typeof AtasDeReuniaoRoute
   '/auditorias': typeof AuditoriasRoute
   '/configuracoes': typeof ConfiguracoesRoute
-  '/funcionarios': typeof FuncionariosRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
   '/meu-perfil': typeof MeuPerfilRoute
@@ -143,6 +150,8 @@ export interface FileRoutesById {
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
+  '/funcionarios/$id': typeof FuncionariosIdRoute
+  '/funcionarios/': typeof FuncionariosIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,7 +160,6 @@ export interface FileRouteTypes {
     | '/atas-de-reuniao'
     | '/auditorias'
     | '/configuracoes'
-    | '/funcionarios'
     | '/indicadores'
     | '/loading'
     | '/meu-perfil'
@@ -161,13 +169,14 @@ export interface FileRouteTypes {
     | '/politicas'
     | '/pops'
     | '/projetos-e-estrategias'
+    | '/funcionarios/$id'
+    | '/funcionarios/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/atas-de-reuniao'
     | '/auditorias'
     | '/configuracoes'
-    | '/funcionarios'
     | '/indicadores'
     | '/loading'
     | '/meu-perfil'
@@ -177,13 +186,14 @@ export interface FileRouteTypes {
     | '/politicas'
     | '/pops'
     | '/projetos-e-estrategias'
+    | '/funcionarios/$id'
+    | '/funcionarios'
   id:
     | '__root__'
     | '/'
     | '/atas-de-reuniao'
     | '/auditorias'
     | '/configuracoes'
-    | '/funcionarios'
     | '/indicadores'
     | '/loading'
     | '/meu-perfil'
@@ -193,6 +203,8 @@ export interface FileRouteTypes {
     | '/politicas'
     | '/pops'
     | '/projetos-e-estrategias'
+    | '/funcionarios/$id'
+    | '/funcionarios/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -200,7 +212,6 @@ export interface RootRouteChildren {
   AtasDeReuniaoRoute: typeof AtasDeReuniaoRoute
   AuditoriasRoute: typeof AuditoriasRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
-  FuncionariosRoute: typeof FuncionariosRoute
   IndicadoresRoute: typeof IndicadoresRoute
   LoadingRoute: typeof LoadingRoute
   MeuPerfilRoute: typeof MeuPerfilRoute
@@ -210,6 +221,8 @@ export interface RootRouteChildren {
   PoliticasRoute: typeof PoliticasRoute
   PopsRoute: typeof PopsRoute
   ProjetosEEstrategiasRoute: typeof ProjetosEEstrategiasRoute
+  FuncionariosIdRoute: typeof FuncionariosIdRoute
+  FuncionariosIndexRoute: typeof FuncionariosIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -240,13 +253,6 @@ declare module '@tanstack/react-router' {
       path: '/configuracoes'
       fullPath: '/configuracoes'
       preLoaderRoute: typeof ConfiguracoesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/funcionarios': {
-      id: '/funcionarios'
-      path: '/funcionarios'
-      fullPath: '/funcionarios'
-      preLoaderRoute: typeof FuncionariosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/indicadores': {
@@ -312,6 +318,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjetosEEstrategiasRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/funcionarios/': {
+      id: '/funcionarios/'
+      path: '/funcionarios'
+      fullPath: '/funcionarios/'
+      preLoaderRoute: typeof FuncionariosIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/funcionarios/$id': {
+      id: '/funcionarios/$id'
+      path: '/funcionarios/$id'
+      fullPath: '/funcionarios/$id'
+      preLoaderRoute: typeof FuncionariosIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -320,7 +340,6 @@ const rootRouteChildren: RootRouteChildren = {
   AtasDeReuniaoRoute: AtasDeReuniaoRoute,
   AuditoriasRoute: AuditoriasRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
-  FuncionariosRoute: FuncionariosRoute,
   IndicadoresRoute: IndicadoresRoute,
   LoadingRoute: LoadingRoute,
   MeuPerfilRoute: MeuPerfilRoute,
@@ -330,6 +349,8 @@ const rootRouteChildren: RootRouteChildren = {
   PoliticasRoute: PoliticasRoute,
   PopsRoute: PopsRoute,
   ProjetosEEstrategiasRoute: ProjetosEEstrategiasRoute,
+  FuncionariosIdRoute: FuncionariosIdRoute,
+  FuncionariosIndexRoute: FuncionariosIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
