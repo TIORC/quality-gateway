@@ -14,6 +14,371 @@ export type Database = {
   }
   public: {
     Tables: {
+      apuracoes: {
+        Row: {
+          created_at: string
+          fechado: boolean
+          id: string
+          indicador_id: string
+          lancado_em: string | null
+          lancado_por: string
+          mes_referencia: string
+          meta_no_mes: number | null
+          plano_acao_id: string | null
+          status: string
+          updated_at: string
+          valor_realizado: number | null
+        }
+        Insert: {
+          created_at?: string
+          fechado?: boolean
+          id?: string
+          indicador_id: string
+          lancado_em?: string | null
+          lancado_por?: string
+          mes_referencia: string
+          meta_no_mes?: number | null
+          plano_acao_id?: string | null
+          status?: string
+          updated_at?: string
+          valor_realizado?: number | null
+        }
+        Update: {
+          created_at?: string
+          fechado?: boolean
+          id?: string
+          indicador_id?: string
+          lancado_em?: string | null
+          lancado_por?: string
+          mes_referencia?: string
+          meta_no_mes?: number | null
+          plano_acao_id?: string | null
+          status?: string
+          updated_at?: string
+          valor_realizado?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apuracoes_indicador_id_fkey"
+            columns: ["indicador_id"]
+            isOneToOne: false
+            referencedRelation: "indicadores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apuracoes_plano_acao_id_fkey"
+            columns: ["plano_acao_id"]
+            isOneToOne: false
+            referencedRelation: "planos_de_acao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ata_acoes: {
+        Row: {
+          ata: string
+          descricao: string
+          id: string
+          plano_acao: string | null
+          prazo: string | null
+          responsavel: string | null
+          setor_destino: string
+          status_sugestao: string
+          trecho_origem: string
+        }
+        Insert: {
+          ata: string
+          descricao?: string
+          id?: string
+          plano_acao?: string | null
+          prazo?: string | null
+          responsavel?: string | null
+          setor_destino: string
+          status_sugestao?: string
+          trecho_origem?: string
+        }
+        Update: {
+          ata?: string
+          descricao?: string
+          id?: string
+          plano_acao?: string | null
+          prazo?: string | null
+          responsavel?: string | null
+          setor_destino?: string
+          status_sugestao?: string
+          trecho_origem?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ata_acoes_ata_fkey"
+            columns: ["ata"]
+            isOneToOne: false
+            referencedRelation: "atas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ata_acoes_plano_acao_fkey"
+            columns: ["plano_acao"]
+            isOneToOne: false
+            referencedRelation: "planos_de_acao"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ata_acoes_responsavel_fkey"
+            columns: ["responsavel"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ata_acoes_setor_destino_fkey"
+            columns: ["setor_destino"]
+            isOneToOne: false
+            referencedRelation: "setores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ata_arquivos: {
+        Row: {
+          arquivo: string
+          ata: string
+          enviado_em: string
+          enviado_por: string
+          id: string
+          nome_original: string
+          tamanho: number
+        }
+        Insert: {
+          arquivo?: string
+          ata: string
+          enviado_em?: string
+          enviado_por: string
+          id?: string
+          nome_original?: string
+          tamanho?: number
+        }
+        Update: {
+          arquivo?: string
+          ata?: string
+          enviado_em?: string
+          enviado_por?: string
+          id?: string
+          nome_original?: string
+          tamanho?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ata_arquivos_ata_fkey"
+            columns: ["ata"]
+            isOneToOne: false
+            referencedRelation: "atas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ata_arquivos_enviado_por_fkey"
+            columns: ["enviado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ata_assinaturas: {
+        Row: {
+          assinado_em: string
+          ata: string
+          hash_conteudo: string
+          id: string
+          usuario: string
+        }
+        Insert: {
+          assinado_em?: string
+          ata: string
+          hash_conteudo?: string
+          id?: string
+          usuario: string
+        }
+        Update: {
+          assinado_em?: string
+          ata?: string
+          hash_conteudo?: string
+          id?: string
+          usuario?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ata_assinaturas_ata_fkey"
+            columns: ["ata"]
+            isOneToOne: false
+            referencedRelation: "atas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ata_assinaturas_usuario_fkey"
+            columns: ["usuario"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ata_setores_citados: {
+        Row: {
+          ata: string
+          id: string
+          setor: string
+          trecho: string
+        }
+        Insert: {
+          ata: string
+          id?: string
+          setor: string
+          trecho?: string
+        }
+        Update: {
+          ata?: string
+          id?: string
+          setor?: string
+          trecho?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ata_setores_citados_ata_fkey"
+            columns: ["ata"]
+            isOneToOne: false
+            referencedRelation: "atas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ata_setores_citados_setor_fkey"
+            columns: ["setor"]
+            isOneToOne: false
+            referencedRelation: "setores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      atas: {
+        Row: {
+          created_at: string
+          criado_por: string
+          data_reuniao: string
+          id: string
+          origem: string
+          status: string
+          texto: string
+          tipo_reuniao: string | null
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          criado_por: string
+          data_reuniao: string
+          id?: string
+          origem?: string
+          status?: string
+          texto?: string
+          tipo_reuniao?: string | null
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string
+          data_reuniao?: string
+          id?: string
+          origem?: string
+          status?: string
+          texto?: string
+          tipo_reuniao?: string | null
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atas_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atas_tipo_reuniao_fkey"
+            columns: ["tipo_reuniao"]
+            isOneToOne: false
+            referencedRelation: "tipos_reuniao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      auditorias: {
+        Row: {
+          auditados: Json
+          auditores: Json
+          codigo: string
+          created_at: string
+          criada_por_email: string
+          criada_por_nome: string
+          data_planejada: string | null
+          evidencias: string
+          id: string
+          norma: string
+          relatorio: string
+          resultado: string
+          resultado_ref: string
+          setores_auditados: Json
+          status: string
+          tipo: string
+          titulo: string
+          unidade: string
+          updated_at: string
+        }
+        Insert: {
+          auditados?: Json
+          auditores?: Json
+          codigo?: string
+          created_at?: string
+          criada_por_email?: string
+          criada_por_nome?: string
+          data_planejada?: string | null
+          evidencias?: string
+          id?: string
+          norma?: string
+          relatorio?: string
+          resultado?: string
+          resultado_ref?: string
+          setores_auditados?: Json
+          status?: string
+          tipo?: string
+          titulo?: string
+          unidade?: string
+          updated_at?: string
+        }
+        Update: {
+          auditados?: Json
+          auditores?: Json
+          codigo?: string
+          created_at?: string
+          criada_por_email?: string
+          criada_por_nome?: string
+          data_planejada?: string | null
+          evidencias?: string
+          id?: string
+          norma?: string
+          relatorio?: string
+          resultado?: string
+          resultado_ref?: string
+          setores_auditados?: Json
+          status?: string
+          tipo?: string
+          titulo?: string
+          unidade?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cargos: {
         Row: {
           created_at: string
@@ -180,6 +545,125 @@ export type Database = {
         }
         Relationships: []
       }
+      grupo_membros: {
+        Row: {
+          colaborador_id: string
+          created_at: string
+          grupo_id: string
+          id: string
+        }
+        Insert: {
+          colaborador_id: string
+          created_at?: string
+          grupo_id: string
+          id?: string
+        }
+        Update: {
+          colaborador_id?: string
+          created_at?: string
+          grupo_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grupo_membros_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_acessos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grupos_acessos: {
+        Row: {
+          created_at: string
+          descricao: string
+          id: string
+          modulos_perm: Json
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string
+          id?: string
+          modulos_perm?: Json
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descricao?: string
+          id?: string
+          modulos_perm?: Json
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      indicadores: {
+        Row: {
+          ativo: boolean
+          automatico: boolean
+          created_at: string
+          criado_de_modelo: boolean
+          descricao: string
+          fonte: string
+          formula_descricao: string
+          id: string
+          meta: number | null
+          nome: string
+          periodicidade: string
+          regra_automatica: string
+          responsavel_id: string
+          responsavel_nome: string
+          sentido: string
+          setor: string
+          unidade: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          automatico?: boolean
+          created_at?: string
+          criado_de_modelo?: boolean
+          descricao?: string
+          fonte?: string
+          formula_descricao?: string
+          id?: string
+          meta?: number | null
+          nome: string
+          periodicidade?: string
+          regra_automatica?: string
+          responsavel_id?: string
+          responsavel_nome?: string
+          sentido?: string
+          setor?: string
+          unidade?: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          automatico?: boolean
+          created_at?: string
+          criado_de_modelo?: boolean
+          descricao?: string
+          fonte?: string
+          formula_descricao?: string
+          id?: string
+          meta?: number | null
+          nome?: string
+          periodicidade?: string
+          regra_automatica?: string
+          responsavel_id?: string
+          responsavel_nome?: string
+          sentido?: string
+          setor?: string
+          unidade?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notificacoes: {
         Row: {
           autor_email: string
@@ -225,20 +709,293 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "notificacoes_pop_id_fkey"
-            columns: ["pop_id"]
-            isOneToOne: false
-            referencedRelation: "pops"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "notificacoes_plano_id_fkey"
             columns: ["plano_id"]
             isOneToOne: false
             referencedRelation: "planos_de_acao"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "notificacoes_pop_id_fkey"
+            columns: ["pop_id"]
+            isOneToOne: false
+            referencedRelation: "pops"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      ocorrencia_fluxos: {
+        Row: {
+          created_at: string
+          criado_por_email: string
+          criado_por_nome: string
+          etapas: Json
+          id: string
+          publicada: boolean
+          tipo_id: string
+          versao: number
+        }
+        Insert: {
+          created_at?: string
+          criado_por_email?: string
+          criado_por_nome?: string
+          etapas?: Json
+          id?: string
+          publicada?: boolean
+          tipo_id: string
+          versao?: number
+        }
+        Update: {
+          created_at?: string
+          criado_por_email?: string
+          criado_por_nome?: string
+          etapas?: Json
+          id?: string
+          publicada?: boolean
+          tipo_id?: string
+          versao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocorrencia_fluxos_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "ocorrencia_tipos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ocorrencia_formularios: {
+        Row: {
+          campos: Json
+          created_at: string
+          criado_por_email: string
+          criado_por_nome: string
+          id: string
+          publicada: boolean
+          tipo_id: string
+          versao: number
+        }
+        Insert: {
+          campos?: Json
+          created_at?: string
+          criado_por_email?: string
+          criado_por_nome?: string
+          id?: string
+          publicada?: boolean
+          tipo_id: string
+          versao?: number
+        }
+        Update: {
+          campos?: Json
+          created_at?: string
+          criado_por_email?: string
+          criado_por_nome?: string
+          id?: string
+          publicada?: boolean
+          tipo_id?: string
+          versao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocorrencia_formularios_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "ocorrencia_tipos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ocorrencia_historico: {
+        Row: {
+          acao: string
+          anexos: Json
+          autor_email: string
+          autor_id: string
+          autor_nome: string
+          comentario: string
+          created_at: string
+          de: string
+          id: string
+          macro: string
+          ocorrencia_id: string
+          para: string
+          subetapa: string
+        }
+        Insert: {
+          acao?: string
+          anexos?: Json
+          autor_email?: string
+          autor_id?: string
+          autor_nome?: string
+          comentario?: string
+          created_at?: string
+          de?: string
+          id?: string
+          macro?: string
+          ocorrencia_id: string
+          para?: string
+          subetapa?: string
+        }
+        Update: {
+          acao?: string
+          anexos?: Json
+          autor_email?: string
+          autor_id?: string
+          autor_nome?: string
+          comentario?: string
+          created_at?: string
+          de?: string
+          id?: string
+          macro?: string
+          ocorrencia_id?: string
+          para?: string
+          subetapa?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocorrencia_historico_ocorrencia_id_fkey"
+            columns: ["ocorrencia_id"]
+            isOneToOne: false
+            referencedRelation: "ocorrencias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ocorrencia_tipos: {
+        Row: {
+          ativo: boolean
+          cor: string
+          created_at: string
+          descricao: string
+          icone: string
+          id: string
+          nome: string
+          ordem: number
+          setor_padrao: string
+          sla_dias: Json
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          cor?: string
+          created_at?: string
+          descricao?: string
+          icone?: string
+          id?: string
+          nome: string
+          ordem?: number
+          setor_padrao?: string
+          sla_dias?: Json
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          cor?: string
+          created_at?: string
+          descricao?: string
+          icone?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          setor_padrao?: string
+          sla_dias?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ocorrencias: {
+        Row: {
+          aberta_por_email: string
+          aberta_por_id: string
+          aberta_por_nome: string
+          aberta_por_setor: string
+          avaliacao: Json | null
+          created_at: string
+          encerrada_em: string | null
+          etapa_entrou_em: string
+          fluxo_versao: number
+          formulario_versao: number
+          id: string
+          macro_atual: string
+          numero: string
+          prazo_etapa: string | null
+          procedencia: string
+          reaberturas: number
+          responsavel_email: string
+          responsavel_id: string
+          responsavel_nome: string
+          respostas: Json
+          status: string
+          subetapa_atual_id: string
+          subetapa_atual_nome: string
+          tipo_cor: string
+          tipo_id: string
+          tipo_nome: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          aberta_por_email?: string
+          aberta_por_id?: string
+          aberta_por_nome?: string
+          aberta_por_setor?: string
+          avaliacao?: Json | null
+          created_at?: string
+          encerrada_em?: string | null
+          etapa_entrou_em?: string
+          fluxo_versao?: number
+          formulario_versao?: number
+          id?: string
+          macro_atual?: string
+          numero?: string
+          prazo_etapa?: string | null
+          procedencia?: string
+          reaberturas?: number
+          responsavel_email?: string
+          responsavel_id?: string
+          responsavel_nome?: string
+          respostas?: Json
+          status?: string
+          subetapa_atual_id?: string
+          subetapa_atual_nome?: string
+          tipo_cor?: string
+          tipo_id: string
+          tipo_nome?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          aberta_por_email?: string
+          aberta_por_id?: string
+          aberta_por_nome?: string
+          aberta_por_setor?: string
+          avaliacao?: Json | null
+          created_at?: string
+          encerrada_em?: string | null
+          etapa_entrou_em?: string
+          fluxo_versao?: number
+          formulario_versao?: number
+          id?: string
+          macro_atual?: string
+          numero?: string
+          prazo_etapa?: string | null
+          procedencia?: string
+          reaberturas?: number
+          responsavel_email?: string
+          responsavel_id?: string
+          responsavel_nome?: string
+          respostas?: Json
+          status?: string
+          subetapa_atual_id?: string
+          subetapa_atual_nome?: string
+          tipo_cor?: string
+          tipo_id?: string
+          tipo_nome?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       plano_comentarios: {
         Row: {
@@ -350,9 +1107,7 @@ export type Database = {
         Row: {
           anexos: Json
           checklist: Json
-          tempo_segundos: number
-          timer_inicio: string | null
-          codigo: string
+          codigo: string | null
           concluida_em: string | null
           created_at: string
           descricao: string
@@ -370,6 +1125,8 @@ export type Database = {
           seguidores_ids: string[]
           setor: string
           status: string
+          tempo_segundos: number
+          timer_inicio: string | null
           titulo: string
           updated_at: string
           vinculo_id: string
@@ -378,9 +1135,7 @@ export type Database = {
         Insert: {
           anexos?: Json
           checklist?: Json
-          tempo_segundos?: number
-          timer_inicio?: string | null
-          codigo?: string
+          codigo?: string | null
           concluida_em?: string | null
           created_at?: string
           descricao?: string
@@ -398,6 +1153,8 @@ export type Database = {
           seguidores_ids?: string[]
           setor?: string
           status?: string
+          tempo_segundos?: number
+          timer_inicio?: string | null
           titulo: string
           updated_at?: string
           vinculo_id?: string
@@ -406,9 +1163,7 @@ export type Database = {
         Update: {
           anexos?: Json
           checklist?: Json
-          tempo_segundos?: number
-          timer_inicio?: string | null
-          codigo?: string
+          codigo?: string | null
           concluida_em?: string | null
           created_at?: string
           descricao?: string
@@ -426,6 +1181,8 @@ export type Database = {
           seguidores_ids?: string[]
           setor?: string
           status?: string
+          tempo_segundos?: number
+          timer_inicio?: string | null
           titulo?: string
           updated_at?: string
           vinculo_id?: string
@@ -1001,6 +1758,117 @@ export type Database = {
           },
         ]
       }
+      projeto_grupos: {
+        Row: {
+          created_at: string
+          grupo_id: string
+          id: string
+          pode_editar: boolean
+          pode_ver: boolean
+          projeto_id: string
+        }
+        Insert: {
+          created_at?: string
+          grupo_id: string
+          id?: string
+          pode_editar?: boolean
+          pode_ver?: boolean
+          projeto_id: string
+        }
+        Update: {
+          created_at?: string
+          grupo_id?: string
+          id?: string
+          pode_editar?: boolean
+          pode_ver?: boolean
+          projeto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projeto_grupos_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_acessos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projeto_grupos_projeto_id_fkey"
+            columns: ["projeto_id"]
+            isOneToOne: false
+            referencedRelation: "projetos_estrategicos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projetos_estrategicos: {
+        Row: {
+          codigo: string
+          created_at: string
+          fim_previsto: string | null
+          fim_real: string | null
+          frentes: Json
+          grupo_alvo: string
+          id: string
+          inicio: string | null
+          kanban_colunas: Json
+          nome: string
+          objetivo: string
+          prioridade: string
+          responsavel_email: string
+          responsavel_id: string
+          responsavel_nome: string
+          setor: string
+          status: string
+          swot: Json
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          codigo: string
+          created_at?: string
+          fim_previsto?: string | null
+          fim_real?: string | null
+          frentes?: Json
+          grupo_alvo?: string
+          id?: string
+          inicio?: string | null
+          kanban_colunas?: Json
+          nome: string
+          objetivo?: string
+          prioridade?: string
+          responsavel_email?: string
+          responsavel_id?: string
+          responsavel_nome?: string
+          setor?: string
+          status?: string
+          swot?: Json
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          codigo?: string
+          created_at?: string
+          fim_previsto?: string | null
+          fim_real?: string | null
+          frentes?: Json
+          grupo_alvo?: string
+          id?: string
+          inicio?: string | null
+          kanban_colunas?: Json
+          nome?: string
+          objetivo?: string
+          prioridade?: string
+          responsavel_email?: string
+          responsavel_id?: string
+          responsavel_nome?: string
+          setor?: string
+          status?: string
+          swot?: Json
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       setores: {
         Row: {
           created_at: string
@@ -1021,6 +1889,42 @@ export type Database = {
           id?: string
           nome?: string
           ordem?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tipos_reuniao: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          dia_previsto: number | null
+          id: string
+          nome: string
+          participantes: Json
+          periodicidade: string
+          signatarios: Json
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          dia_previsto?: number | null
+          id?: string
+          nome: string
+          participantes?: Json
+          periodicidade?: string
+          signatarios?: Json
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          dia_previsto?: number | null
+          id?: string
+          nome?: string
+          participantes?: Json
+          periodicidade?: string
+          signatarios?: Json
           updated_at?: string
         }
         Relationships: []
@@ -1110,7 +2014,168 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      atualizar_ata: {
+        Args: {
+          ata_id: string
+          data_reuniao: string
+          email_caller: string
+          texto?: string
+          titulo: string
+        }
+        Returns: {
+          created_at: string
+          criado_por: string
+          data_reuniao: string
+          id: string
+          origem: string
+          status: string
+          texto: string
+          tipo_reuniao: string | null
+          titulo: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atas"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      atualizar_tipo_reuniao: {
+        Args: {
+          dia_previsto: number
+          email_caller: string
+          id: string
+          nome: string
+          participantes?: Json
+          periodicidade: string
+          signatarios?: Json
+        }
+        Returns: {
+          ativo: boolean
+          created_at: string
+          dia_previsto: number | null
+          id: string
+          nome: string
+          participantes: Json
+          periodicidade: string
+          signatarios: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tipos_reuniao"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      criar_ata: {
+        Args: {
+          data_reuniao: string
+          email_caller: string
+          origem: string
+          texto?: string
+          tipo_reuniao: string
+          titulo: string
+        }
+        Returns: {
+          created_at: string
+          criado_por: string
+          data_reuniao: string
+          id: string
+          origem: string
+          status: string
+          texto: string
+          tipo_reuniao: string | null
+          titulo: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "atas"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      criar_tipo_reuniao: {
+        Args: {
+          dia_previsto: number
+          email_caller: string
+          nome: string
+          participantes?: Json
+          periodicidade: string
+          signatarios?: Json
+        }
+        Returns: {
+          ativo: boolean
+          created_at: string
+          dia_previsto: number | null
+          id: string
+          nome: string
+          participantes: Json
+          periodicidade: string
+          signatarios: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tipos_reuniao"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      eh_participante_do_tipo: {
+        Args: { tipo_id: string; usuario_id: string }
+        Returns: boolean
+      }
+      mudar_ativo_tipo_reuniao: {
+        Args: { ativo?: boolean; email_caller: string; id: string }
+        Returns: {
+          ativo: boolean
+          created_at: string
+          dia_previsto: number | null
+          id: string
+          nome: string
+          participantes: Json
+          periodicidade: string
+          signatarios: Json
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tipos_reuniao"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mudar_status_acao: {
+        Args: { acao_id: string; email_caller: string; novo_status: string }
+        Returns: undefined
+      }
+      pode_criar_ata: {
+        Args: { email_caller: string; origem: string; tipo_id: string }
+        Returns: boolean
+      }
+      pode_editar_ata: {
+        Args: { ata_id: string; email_caller: string }
+        Returns: boolean
+      }
+      pode_gerenciar_tipos_reuniao: {
+        Args: { email_caller: string }
+        Returns: boolean
+      }
       pop_recalcular_contadores: { Args: { alvo: string }; Returns: undefined }
+      salvar_leitura_assistida: {
+        Args: {
+          acoes?: Json
+          ata_id: string
+          email_caller: string
+          setores?: Json
+        }
+        Returns: undefined
+      }
+      setor_id_por_nome: { Args: { nome: string }; Returns: string }
+      usuario_id_por_email: { Args: { email: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never

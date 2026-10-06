@@ -157,7 +157,7 @@ function DetalheCorpo({
         setEtapas(etapasCarregadas);
         setFormulario(formularioCarregado);
         setEventos(historico);
-        setEtapaRespostas(o.respostas[`__etapa_${o.macroAtual}_${o.subetapaAtualId}`] ?? {});
+        setEtapaRespostas((o.respostas[`__etapa_${o.macroAtual}_${o.subetapaAtualId}`] as Respostas | undefined) ?? {});
         setCarregando(false);
       })
       .catch(() => {
@@ -188,8 +188,9 @@ function DetalheCorpo({
     if (atualizada) {
       setO(atualizada);
       setEtapaRespostas(
-        atualizada.respostas[`__etapa_${atualizada.macroAtual}_${atualizada.subetapaAtualId}`] ??
-          {},
+        (atualizada.respostas[
+          `__etapa_${atualizada.macroAtual}_${atualizada.subetapaAtualId}`
+        ] as Respostas | undefined) ?? {},
       );
     }
     setEventos(historico);
