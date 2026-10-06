@@ -155,6 +155,9 @@ export function FlowBuilder({
                       s={s}
                       macro={macro}
                       onPatch={(p) => atualizarSubetapa(macro, i, p)}
+                      colaboradores={colaboradores}
+                      setores={setores}
+                      cargos={cargos}
                     />
                     <div className="mt-3 flex justify-end gap-1">
                       <Button
@@ -282,9 +285,12 @@ interface SubetapaEditorProps {
   s: SubetapaFluxo;
   macro: MacroEtapa;
   onPatch: (p: Partial<SubetapaFluxo>) => void;
+  colaboradores?: { id: string; nome: string; email: string }[];
+  setores?: string[];
+  cargos?: string[];
 }
 
-function SubetapaEditor({ s, onPatch }: SubetapaEditorProps) {
+function SubetapaEditor({ s, onPatch, colaboradores, setores, cargos }: SubetapaEditorProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-end gap-2">
