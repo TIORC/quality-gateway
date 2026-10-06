@@ -1425,9 +1425,11 @@ function NovoColaboradorDialog({
   }
 
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
-  const niveisDisponiveis = podeDarAdministracao
-    ? NIVEIS_ACESSO
-    : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador");
+  const niveisDisponiveis = (
+    podeDarAdministracao
+      ? NIVEIS_ACESSO
+      : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador")
+  ).filter((nivel) => nivel.rotulo !== "Desenvolvedor do Sistema");
 
   function alternarGrupo(grupo: string) {
     setGrupos((atual) =>
@@ -1750,9 +1752,13 @@ function GerirColaboradorDialog({
 
   const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
-  const niveisDisponiveis = podeDarAdministracao
-    ? NIVEIS_ACESSO
-    : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador");
+  const ehDevSistema = colaborador?.nivelAcesso === "Desenvolvedor do Sistema";
+  const niveisDisponiveis = ehDevSistema
+    ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo === "Desenvolvedor do Sistema")
+    : (podeDarAdministracao
+        ? NIVEIS_ACESSO
+        : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador")
+      ).filter((nivel) => nivel.rotulo !== "Desenvolvedor do Sistema");
 
   function trocarSetor(novoSetor: string) {
     setSetor(novoSetor);
@@ -1893,7 +1899,7 @@ function GerirColaboradorDialog({
           </div>
 
           <Campo rotulo="Nível de acesso">
-            <Select value={nivelAcesso} onValueChange={setNivelAcesso}>
+            <Select value={nivelAcesso} onValueChange={setNivelAcesso} disabled={ehDevSistema}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
