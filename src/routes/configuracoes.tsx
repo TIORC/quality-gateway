@@ -1041,7 +1041,7 @@ function ColaboradoresTab({
   const podeDarAdministracao =
     session?.role === "admin" ||
     usuarioAtual?.nivelAcesso === "Administrador" ||
-    usuarioAtual?.nivelAcesso === "Desenvolvedor";
+    usuarioAtual?.nivelAcesso === "Desenvolvedor do Sistema";
 
   const filtrados = lista.filter((colaborador) => {
     const termo = busca.trim().toLowerCase();

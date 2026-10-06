@@ -38,12 +38,10 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
 const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
 
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
+  "Desenvolvedor do Sistema": TODAS_AS_ROTAS,
   Administrador: TODAS_AS_ROTAS,
   "Gestor da Qualidade": TODAS_AS_ROTAS,
-  "Auxiliar da Qualidade": ROTAS_ABERTAS,
-  Diretoria: ROTAS_ABERTAS,
   "Líder de setor": ROTAS_ABERTAS,
-  Desenvolvedor: ROTAS_ABERTAS,
   Colaborador: ROTAS_ABERTAS,
   "Colaborador de outra unidade": ROTAS_ABERTAS,
 };
@@ -54,15 +52,14 @@ export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> 
   // Admin/gestor sempre têm tudo, independente do nível do colaborador.
   if (session.role === "admin" || session.role === "gestor") return new Set(TODAS_AS_ROTAS);
   const nivel = session.nivelAcesso;
-  if (!nivel || !ROTAS_POR_NIVEL[nivel]) return new Set();
+  // Nível desconhecido/vazio: nunca libera Configurações.
+  if (!nivel || !ROTAS_POR_NIVEL[nivel]) return new Set(ROTAS_ABERTAS);
   return new Set(ROTAS_POR_NIVEL[nivel]);
 }
 
 /** Indica se a sessão pode abrir a rota informada. */
 export function rotaPermitida(session: UserSession | null, path: string): boolean {
   const permitidas = rotasPermitidas(session);
-  // Sem mapa para o nível (ex.: colaborador sem vínculo): não restringe.
-  if (permitidas.size === 0) return true;
   // Caminhos dinâmicos herdam a permissão da rota raiz (ex.: /funcionarios/$id).
   if ([...permitidas].some((rota) => path.startsWith(`${rota}/`))) return true;
   return permitidas.has(path as AppRoutePath);
@@ -139,7 +136,11 @@ export function ehUsuarioDaQualidade(session: UserSession | null | undefined): b
  */
 export function ehAdministrador(session: UserSession | null | undefined): boolean {
   if (!session) return false;
-  return session.role === "admin" || session.nivelAcesso === "Administrador";
+  return (
+    session.role === "admin" ||
+    session.nivelAcesso === "Administrador" ||
+    session.nivelAcesso === "Desenvolvedor do Sistema"
+  );
 }
 
 /**
@@ -159,7 +160,7 @@ export function podeGerenciarConteudo(session: UserSession | null | undefined): 
 export function podePlanejarAuditoria(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (ehUsuarioDaQualidade(session)) return true;
-  return session.nivelAcesso === "Administrador" || session.nivelAcesso === "Desenvolvedor";
+  return ehAdministrador(session);
 }
 
 /* -------------------------------------------------------------------------- */

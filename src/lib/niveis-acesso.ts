@@ -1,52 +1,42 @@
 export const NIVEIS_ACESSO = [
-  {
-    rotulo: "Administrador",
-    descricao:
-      "Acesso total e irrestrito. Gerencia usuários e concede permissões de administração a qualquer pessoa.",
-  },
-  {
-    rotulo: "Gestor da Qualidade",
-    descricao: "Acesso total. Cria e publica documentos, atas, projetos e indicadores.",
-  },
-  {
-    rotulo: "Auxiliar da Qualidade",
-    descricao: "Elabora e apura, mas não libera divulgação de POP.",
-  },
-  {
-    rotulo: "Diretoria",
-    descricao: "Enxerga tudo em leitura. Assina atas e aprova políticas.",
-  },
-  {
-    rotulo: "Líder de setor",
-    descricao: "Seu setor: ações, documentos, ocorrências e projetos.",
-  },
-  {
-    rotulo: "Desenvolvedor",
-    descricao:
-      "Acesso como colaborador: suas ações, o que segue e o que foi divulgado ao seu setor.",
-  },
-  {
-    rotulo: "Colaborador",
-    descricao: "Suas ações, o que segue e o que foi divulgado a ele.",
-  },
-  {
-    rotulo: "Colaborador de outra unidade",
-    descricao: "Somente POPs expressamente liberados.",
-  },
+  { rotulo: "Desenvolvedor do Sistema", descricao: "Acesso a tudo, imutável. Exclusivo da TI." },
+  { rotulo: "Gestor da Qualidade", descricao: "Dono do sistema. Acesso total, inclusive Configurações." },
+  { rotulo: "Administrador", descricao: "Opera e vê absolutamente tudo, inclusive Configurações." },
+  { rotulo: "Líder de setor", descricao: "Vê e aprova os POPs e políticas do seu setor." },
+  { rotulo: "Colaborador", descricao: "Vê os POPs e políticas do seu setor." },
+  { rotulo: "Colaborador de outra unidade", descricao: "Apenas lê os POPs e políticas." },
 ] as const;
 
 /** Rótulos dos níveis de acesso (mesma ordem do array acima). */
 export const ROTULOS_NIVEIS_ACESSO = NIVEIS_ACESSO.map((nivel) => nivel.rotulo);
 
 /** Níveis que enxergam todos os POPs, sem liberação nem filtro de setor. */
-export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>(["Administrador", "Gestor da Qualidade"]);
+export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
+  "Desenvolvedor do Sistema",
+  "Administrador",
+  "Gestor da Qualidade",
+]);
 
 /** Níveis que filtram POPs e políticas pelo setor do colaborador. */
 export const NIVEIS_FILTRAM_POR_SETOR = new Set<string>([
   "Colaborador",
   "Líder de setor",
-  "Desenvolvedor",
 ]);
+
+/** Níveis com acesso total (inclusive Configurações). */
+export const NIVEIS_GESTAO = new Set<string>([
+  "Desenvolvedor do Sistema",
+  "Gestor da Qualidade",
+  "Administrador",
+]);
+
+/** Papel interno derivado do nível de acesso (o nível sempre prevalece). */
+export function roleDoNivel(nivel: string): "admin" | "gestor" | "usuario" {
+  if (nivel === "Gestor da Qualidade") return "gestor";
+  if (nivel === "Administrador" || nivel === "Desenvolvedor do Sistema" || nivel === "Desenvolvedor")
+    return "admin";
+  return "usuario";
+}
 
 /** Nível que vê somente o que foi liberado individualmente. */
 export const NIVEL_SOMENTE_LIBERADOS = "Colaborador de outra unidade";
