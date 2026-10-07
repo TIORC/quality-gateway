@@ -1849,7 +1849,7 @@ function GerirColaboradorDialog({
                 onChange={(evento) => setEmail(evento.target.value)}
                 placeholder="nome@empresa.com.br"
                 type="email"
-                disabled={ehDesenvolvedorDoSistema}
+                disabled={ehDevSistema}
               />
             </Campo>
           </div>
@@ -1929,7 +1929,7 @@ function GerirColaboradorDialog({
                 {nivelSelecionado.descricao}
               </p>
             ) : null}
-            {ehDesenvolvedorDoSistema ? (
+            {ehDevSistema ? (
               <p className="mt-1.5 text-xs leading-relaxed text-[#6D28D9]">
                 Nível exclusivo da TI Maracas: e-mail, nível e status são imutáveis.
               </p>
