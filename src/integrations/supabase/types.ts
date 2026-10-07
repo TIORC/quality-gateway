@@ -429,6 +429,7 @@ export type Database = {
           perm_excluir_documentos: boolean
           perm_excluir_planos: boolean
           perm_modificar_documentos: boolean
+          permissoes_extras: Json
           processos_lidos: number
           processos_visualizados: number
           setor: string
@@ -451,6 +452,7 @@ export type Database = {
           perm_excluir_documentos?: boolean
           perm_excluir_planos?: boolean
           perm_modificar_documentos?: boolean
+          permissoes_extras?: Json
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
@@ -473,6 +475,7 @@ export type Database = {
           perm_excluir_documentos?: boolean
           perm_excluir_planos?: boolean
           perm_modificar_documentos?: boolean
+          permissoes_extras?: Json
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
