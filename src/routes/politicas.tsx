@@ -42,6 +42,7 @@ import { getSession, type UserSession } from "@/lib/auth";
 import { organizacaoDisponivel } from "@/lib/organizacao";
 import {
   ehLiderancaDaQualidade,
+  ehUsuarioDaQualidade,
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
   podeModificarDocumentos,
@@ -61,11 +62,13 @@ import {
   carregarPoliticasAcessiveis,
   carregarLeiturasPoliticaDoUsuario,
   criarPolitica,
+  diasParaVencimento,
   enviarSugestaoPolitica,
   excluirPolitica,
   listarLeiturasPolitica,
   listarSugestoesPolitica,
   politicasDisponiveis,
+  politicaVencendo,
   registrarLeituraPolitica,
   marcarSugestaoConcluidaPolitica,
   type ParecerPolitica,
@@ -155,6 +158,9 @@ function Politicas() {
   const podeAdicionar = podeAdicionarDocumentos(sessao);
   const podeModificar = podeModificarDocumentos(sessao);
   const podeExcluir = podeExcluirDocumentos(sessao);
+  // A aba "Vencendo" é exclusiva do setor da Qualidade (e da liderança).
+  const verVencendo = ehUsuarioDaQualidade(sessao);
+  const abasVisiveis = ABAS.filter((aba) => aba.valor !== "vencendo" || verVencendo);
 
   useBloquearAtalhosDocumento(politicaAberta !== null);
 
@@ -203,18 +209,29 @@ function Politicas() {
     };
   }, [sessao?.email]);
 
-  function precisaLer(item: PoliticaItem): boolean {
+  // "Lido" é sempre da pessoa logada: leitura dela, da revisão vigente (não é o
+  // parecer global gravado na política, que vale para todos).
+  function jaLi(item: PoliticaItem): boolean {
     const leitura = leiturasUsuario[item.id];
-    if (!leitura || leitura.decisao === "discordo") return true;
-    if (!usarBanco && item.parecer) return false;
-    return (leitura.revisaoLida || 0) < item.revisao;
+    if (!leitura) return !usarBanco && item.parecer?.tipo === "concordo";
+    if (leitura.decisao === "discordo") return false;
+    return (leitura.revisaoLida || 0) >= item.revisao;
   }
 
   function listaDaAba(valor: string) {
     if (valor === "todas") return itens;
-    if (valor === "preciso-ler") return itens.filter((i) => precisaLer(i));
+    if (valor === "preciso-ler") return itens.filter((i) => !jaLi(i));
     if (valor === "meu-parecer") return itens.filter((i) => i.parecer || i.sugestoes.length > 0);
-    if (valor === "vencendo") return itens.filter((i) => i.status === "Em aprovação");
+    if (valor === "vencendo") {
+      if (!verVencendo) return [];
+      return itens
+        .filter((i) => politicaVencendo(i))
+        .sort(
+          (a, b) =>
+            (diasParaVencimento(a.dataVencimento) ?? 0) -
+            (diasParaVencimento(b.dataVencimento) ?? 0),
+        );
+    }
     return itens;
   }
 
@@ -342,7 +359,7 @@ function Politicas() {
       ) : (
         <Tabs defaultValue="todas">
           <TabsList>
-            {ABAS.map((aba) => (
+            {abasVisiveis.map((aba) => (
               <TabsTrigger key={aba.valor} value={aba.valor} className="gap-1.5">
                 {aba.rotulo}
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
@@ -352,11 +369,13 @@ function Politicas() {
             ))}
           </TabsList>
 
-          {ABAS.map((aba) => (
+          {abasVisiveis.map((aba) => (
             <TabsContent key={aba.valor} value={aba.valor}>
               <ListaPoliticas
                 itens={listaDaAba(aba.valor)}
                 leituras={leiturasUsuario}
+                jaLi={jaLi}
+                mostrarVencimento={verVencendo}
                 onNova={() => setNovaPolitica(true)}
                 podeAdicionar={podeAdicionar}
                 podeModificar={podeModificar}
@@ -458,6 +477,8 @@ function exemplosIniciais(): PoliticaItem[] {
 function ListaPoliticas({
   itens,
   leituras,
+  jaLi,
+  mostrarVencimento,
   onNova,
   podeAdicionar,
   podeModificar,
@@ -468,6 +489,8 @@ function ListaPoliticas({
 }: {
   itens: PoliticaItem[];
   leituras: Record<string, PoliticaLeitura>;
+  jaLi: (item: PoliticaItem) => boolean;
+  mostrarVencimento: boolean;
   onNova: () => void;
   podeAdicionar: boolean;
   podeModificar: boolean;
@@ -523,7 +546,11 @@ function ListaPoliticas({
               </span>
               {(() => {
                 const leitura = leituras[item.id];
-                if (leitura && leitura.decisao !== "discordo" && (leitura.revisaoLida || 0) < item.revisao) {
+                if (
+                  leitura &&
+                  leitura.decisao !== "discordo" &&
+                  (leitura.revisaoLida || 0) < item.revisao
+                ) {
                   return (
                     <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
                       Releitura pendente
@@ -547,19 +574,39 @@ function ListaPoliticas({
                 <span className="max-w-[180px] truncate">{item.anexo.nome}</span>
               </span>
             ) : null}
-            {item.parecer ? (
+            {mostrarVencimento
+              ? (() => {
+                  const dias = diasParaVencimento(item.dataVencimento ?? "");
+                  if (dias === null || dias > 30) return null;
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-200 bg-amber-50 text-[11px] text-amber-700"
+                    >
+                      {dias < 0
+                        ? `Vencida há ${-dias} dia(s)`
+                        : dias === 0
+                          ? "Vence hoje"
+                          : `Vence em ${dias} dia(s)`}
+                    </Badge>
+                  );
+                })()
+              : null}
+            {jaLi(item) ? (
               <Badge
                 variant="outline"
-                className={cn(
-                  "text-[11px]",
-                  item.parecer.tipo === "concordo"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-rose-50 text-rose-700 border-rose-200",
-                )}
+                className="border-emerald-200 bg-emerald-50 text-[11px] font-bold text-emerald-700"
               >
-                {item.parecer.tipo === "concordo" ? "Lido" : "Discordo"}
+                LIDO
               </Badge>
-            ) : null}
+            ) : (
+              <Badge
+                variant="outline"
+                className="border-rose-200 bg-rose-50 text-[11px] font-bold text-rose-700"
+              >
+                NÃO LIDO
+              </Badge>
+            )}
 
             <Button type="button" variant="outline" size="sm" onClick={() => onAbrir(item)}>
               Abrir
@@ -1183,6 +1230,7 @@ function PoliticaDetalhe({
               usuarioEmail: sessao?.email ?? "",
               usuarioNome: sessao?.nome ?? "",
               decisao: item.parecer.tipo,
+              revisaoLida: 0,
               createdAt: item.parecer.data,
             },
           ]
@@ -1194,13 +1242,16 @@ function PoliticaDetalhe({
   const emailAtual = (sessao?.email ?? "").trim().toLowerCase();
   // Releitura indispensável: só vale a leitura da revisão vigente.
   const leituraPropria = leitores.some(
-    (l) => l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) >= item.revisao,
+    (l) =>
+      l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) >= item.revisao,
   );
   const leituraAntiga = leitores.find(
-    (l) => l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) < item.revisao,
+    (l) =>
+      l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) < item.revisao,
   );
   // O usuário vê "Leitura registrada" quando ele próprio já leu (a gestão vê o total).
-  const jaLeu = leituraPropria || (!!item.parecer && item.parecer.tipo !== "discordo" && leituraPropria);
+  const jaLeu =
+    leituraPropria || (!!item.parecer && item.parecer.tipo !== "discordo" && leituraPropria);
   // Visão de gestão: Administrador e Gestor da Qualidade.
   const gestao = ehLiderancaDaQualidade(sessao);
 
@@ -1226,8 +1277,8 @@ function PoliticaDetalhe({
           </p>
           {leituraAntiga && !leituraPropria ? (
             <p className="mt-2 text-[12.5px] font-semibold text-[#B45309]">
-              Você leu a {rotuloRevisao(leituraAntiga.revisaoLida || 1)}. Leia o documento abaixo
-              e confirme com o botão “LIDO” para registrar a ciência nesta revisão.
+              Você leu a {rotuloRevisao(leituraAntiga.revisaoLida || 1)}. Leia o documento abaixo e
+              confirme com o botão “LIDO” para registrar a ciência nesta revisão.
             </p>
           ) : null}
         </div>

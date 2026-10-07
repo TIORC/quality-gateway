@@ -12,6 +12,7 @@ import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
 import {
   ehAdministrador,
   podeAdicionarDocumentos,
+  podeGerenciarCadastros,
   podeExcluirDocumentos,
   podeModificarDocumentos,
   temAcessoTotalPops,
@@ -708,6 +709,78 @@ export async function carregarPops(): Promise<{
   return { setores, pops: aplicarContadores(pops, contadores) };
 }
 
+/**
+ * Quem pode cadastrar/remover setores da grade de POPs: Administrador,
+ * Desenvolvedor do Sistema e Gestor da Qualidade.
+ */
+export function podeGerenciarSetoresPop(sessao: UserSession | null | undefined): boolean {
+  return podeGerenciarCadastros(sessao);
+}
+
+/** Cria um setor na grade de POPs e devolve o registro persistido. */
+export async function criarSetorPop(nomeInformado: string): Promise<SetorPop> {
+  const nome = nomeInformado.trim().replace(/\s+/g, " ");
+  if (!nome) throw new Error("Informe o nome do setor.");
+  const client = exigirCloud();
+
+  const { data: existentes, error: erroLista } = await client
+    .from("pop_setores")
+    .select("id,nome,prefixo,ordem");
+  if (erroLista) throw traduzErro(erroLista);
+  const lista = existentes ?? [];
+
+  const chave = normalizarSetor(nome);
+  if (lista.some((setor) => normalizarSetor(setor.nome) === chave)) {
+    throw new Error("Já existe um setor com esse nome.");
+  }
+
+  const slug = chave.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "setor";
+  let id = slug;
+  for (let n = 2; lista.some((setor) => setor.id === id); n += 1) id = `${slug}-${n}`;
+
+  // Prefixo do código do POP: 3 primeiras letras do nome, sem repetir um existente.
+  const letras = chave
+    .replace(/[^a-z0-9]/g, "")
+    .toUpperCase()
+    .padEnd(3, "X");
+  const usados = new Set(lista.map((setor) => setor.prefixo.toUpperCase()));
+  let prefixo = letras.slice(0, 3);
+  for (let n = 3; usados.has(prefixo) && n < letras.length; n += 1) {
+    prefixo = letras.slice(0, n + 1);
+  }
+  for (let n = 2; usados.has(prefixo); n += 1) prefixo = `${letras.slice(0, 3)}${n}`;
+
+  const ordem = lista.reduce((maior, setor) => Math.max(maior, setor.ordem), 0) + 1;
+  const { data, error } = await client
+    .from("pop_setores")
+    .insert({ id, nome, prefixo, categoria: nome.toUpperCase(), icone: "layers", ordem })
+    .select("id,nome,prefixo,categoria,icone,ordem,created_at")
+    .single();
+  if (error) throw traduzErro(error);
+  if (!data) throw new Error("Não foi possível criar o setor.");
+  return setorDoRow(data);
+}
+
+/**
+ * Remove um setor da grade de POPs. Só é permitido quando nenhum POP o usa:
+ * a FK `pops.setor_id` é ON DELETE CASCADE e apagaria os POPs junto.
+ */
+export async function removerSetorPop(setorId: string): Promise<void> {
+  const client = exigirCloud();
+  const { count, error: erroContagem } = await client
+    .from("pops")
+    .select("id", { count: "exact", head: true })
+    .or(`setor_id.eq.${setorId},setores_responsaveis.cs.{${setorId}}`);
+  if (erroContagem) throw traduzErro(erroContagem);
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      "Este setor ainda possui POPs. Mova ou exclua os POPs antes de remover o setor.",
+    );
+  }
+  const { error } = await client.from("pop_setores").delete().eq("id", setorId);
+  if (error) throw traduzErro(error);
+}
+
 /** Indica se o usuário pertence ao setor da Qualidade. */
 export function ehSetorQualidade(sessao: UserSession | null | undefined): boolean {
   return normalizarSetor(sessao?.setor) === "qualidade";
@@ -923,7 +996,8 @@ async function atualizarPopCloud(
  */
 async function notificarNovaRevisaoPop(pop: Pop): Promise<void> {
   const client = exigirCloud();
-  const mudanca = pop.observacaoRevisao.trim() || "O documento foi atualizado. Abra para ler a nova versão.";
+  const mudanca =
+    pop.observacaoRevisao.trim() || "O documento foi atualizado. Abra para ler a nova versão.";
   const rotulo = `Revisão ${String(pop.revisao).padStart(2, "0")}`;
   const titulo = `Nova revisão para reler: ${pop.codigo} — ${rotulo}`;
   const mensagem = `O que mudou na ${rotulo}: ${mudanca}`;
@@ -938,7 +1012,10 @@ async function notificarNovaRevisaoPop(pop: Pop): Promise<void> {
     .select("usuario_email,usuario_nome")
     .eq("pop_id", pop.id);
   const mapa = new Map<string, string>();
-  for (const l of [...(leitores ?? []), ...(visiveis ?? [])] as { usuario_email: string; usuario_nome: string }[]) {
+  for (const l of [...(leitores ?? []), ...(visiveis ?? [])] as {
+    usuario_email: string;
+    usuario_nome: string;
+  }[]) {
     const email = l.usuario_email.trim().toLowerCase();
     if (email && !mapa.has(email)) mapa.set(email, l.usuario_nome ?? "");
   }
@@ -1240,7 +1317,9 @@ export async function marcarSugestaoConcluidaPop(
     .from("pop_sugestoes")
     .select("usuario_email, usuario_nome, sugestao, pop_id")
     .eq("id", sugestaoId)
-    .maybeSingle() as unknown as Promise<{ data: { usuario_email: string; usuario_nome: string; sugestao: string; pop_id: string } | null }>);
+    .maybeSingle() as unknown as Promise<{
+    data: { usuario_email: string; usuario_nome: string; sugestao: string; pop_id: string } | null;
+  }>);
 
   if (sugestao) {
     const { data: pop } = await (client
@@ -1695,9 +1774,10 @@ export async function registrarLeitura(
   let revisaoLida = revisao ?? 0;
   if (!revisaoLida) {
     const { data } = await client.from("pops").select("revisao").eq("id", popId).maybeSingle();
-    revisaoLida = typeof (data as { revisao?: unknown } | null)?.revisao === "number"
-      ? ((data as { revisao: number }).revisao)
-      : 1;
+    revisaoLida =
+      typeof (data as { revisao?: unknown } | null)?.revisao === "number"
+        ? (data as { revisao: number }).revisao
+        : 1;
   }
   const linha: Record<string, unknown> = {
     pop_id: popId,
@@ -1707,20 +1787,16 @@ export async function registrarLeitura(
     justificativa: decisao === "discordo" ? justificativa : "",
     revisao_lida: revisaoLida,
   };
-  const { error } = await client.from("pop_leituras").upsert(
-    linha as never,
-    {
-      onConflict: "pop_id,usuario_email",
-    },
-  );
+  const { error } = await client.from("pop_leituras").upsert(linha as never, {
+    onConflict: "pop_id,usuario_email",
+  });
   if (error) {
     // Banco sem a migration 20261007: grava sem revisao_lida.
     if (String((error as { message?: unknown }).message ?? "").includes("revisao_lida")) {
       delete linha.revisao_lida;
-      const { error: erro2 } = await client.from("pop_leituras").upsert(
-        linha as never,
-        { onConflict: "pop_id,usuario_email" },
-      );
+      const { error: erro2 } = await client
+        .from("pop_leituras")
+        .upsert(linha as never, { onConflict: "pop_id,usuario_email" });
       if (erro2) throw traduzErro(erro2);
       return;
     }

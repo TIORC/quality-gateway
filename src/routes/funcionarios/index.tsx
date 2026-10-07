@@ -3,6 +3,7 @@ import { CheckCircle2, Eye, FileCheck2, Search, UserX, Users } from "lucide-reac
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { PanelShell } from "@/components/panel-shell";
+import { Paginacao, usePaginacao } from "@/components/paginacao";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -133,6 +134,8 @@ function Funcionarios() {
     return bateBusca && bateStatus && bateSetor;
   });
 
+  const paginacao = usePaginacao(filtrados, [busca, status, setor]);
+
   const ativos = funcionarios.filter((funcionario) => funcionario.status === "Ativo").length;
   const inativos = funcionarios.length - ativos;
   const totalLidos = funcionarios.reduce(
@@ -251,7 +254,7 @@ function Funcionarios() {
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map((funcionario) => {
+                {paginacao.itensDaPagina.map((funcionario) => {
                   const percentual =
                     funcionario.processosVisualizados > 0
                       ? Math.min(
@@ -359,10 +362,17 @@ function Funcionarios() {
             <p className="mt-1 text-sm text-[#64748B]">Ajuste a busca ou os filtros.</p>
           </div>
         )}
+
+        <Paginacao
+          pagina={paginacao.pagina}
+          totalPaginas={paginacao.totalPaginas}
+          onMudar={paginacao.irParaPagina}
+        />
       </div>
 
       <p className="mt-3 text-[12px] text-[#94A3B8]">
-        Exibindo {filtrados.length} de {funcionarios.length} funcionário(s) cadastrado(s).
+        Exibindo {paginacao.inicio}–{paginacao.fim} de {filtrados.length} funcionário(s)
+        {filtrados.length !== funcionarios.length ? ` (${funcionarios.length} cadastrados)` : ""}.
       </p>
     </PanelShell>
   );

@@ -1,7 +1,8 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import LoadingScreen from "@/components/loading-screen";
-import { isAuthenticated } from "@/lib/auth";
+import { getSession, isAuthenticated } from "@/lib/auth";
+import { rotaInicial } from "@/lib/permissoes";
 
 export const Route = createFileRoute("/loading")({
   head: () => ({
@@ -29,7 +30,7 @@ function LoadingPage() {
   return (
     <LoadingScreen
       onComplete={() => {
-        router.navigate({ to: "/painel", replace: true });
+        router.navigate({ to: rotaInicial(getSession()), replace: true });
       }}
     />
   );

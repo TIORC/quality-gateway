@@ -1,5 +1,4 @@
 export const NIVEIS_ACESSO = [
-<<<<<<< HEAD
   {
     rotulo: "Desenvolvedor do Sistema",
     descricao:
@@ -39,14 +38,6 @@ export const NIVEIS_ACESSO = [
     rotulo: "Colaborador de outra unidade",
     descricao: "Somente POPs expressamente liberados.",
   },
-=======
-  { rotulo: "Desenvolvedor do Sistema", descricao: "Acesso a tudo, imutável. Exclusivo da TI." },
-  { rotulo: "Gestor da Qualidade", descricao: "Dono do sistema. Acesso total, inclusive Configurações." },
-  { rotulo: "Administrador", descricao: "Opera e vê absolutamente tudo, inclusive Configurações." },
-  { rotulo: "Líder de setor", descricao: "Vê e aprova os POPs e políticas do seu setor." },
-  { rotulo: "Colaborador", descricao: "Vê os POPs e políticas do seu setor." },
-  { rotulo: "Colaborador de outra unidade", descricao: "Apenas lê os POPs e políticas." },
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 ] as const;
 
 /** Rótulos dos níveis de acesso (mesma ordem do array acima). */
@@ -66,11 +57,7 @@ export const NIVEIS_RESERVADOS_GESTAO = new Set<string>([
 
 /** Níveis que enxergam todos os POPs, sem liberação nem filtro de setor. */
 export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
-<<<<<<< HEAD
   NIVEL_DESENVOLVEDOR_SISTEMA,
-=======
-  "Desenvolvedor do Sistema",
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
   "Administrador",
   "Gestor da Qualidade",
 ]);

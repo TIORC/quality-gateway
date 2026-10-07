@@ -69,8 +69,9 @@ import {
   type TipoOcorrencia,
 } from "@/lib/ocorrencias";
 import { getSession } from "@/lib/auth";
+import { normalizarSetor } from "@/lib/niveis-acesso";
 import { ehUsuarioDaQualidade } from "@/lib/permissoes";
-import { papelNaOcorrencia, veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
+import { veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
 
 export const Route = createFileRoute("/ocorrencias")({
@@ -143,7 +144,7 @@ function Ocorrencias() {
     const email = (session?.email ?? "").trim().toLowerCase();
     const colaboradorId = (session?.colaboradorId ?? "").trim();
     const propria =
-      o.abertaPorEmail.toLowerCase() === email ||
+      (!!email && o.abertaPorEmail.trim().toLowerCase() === email) ||
       (!!o.abertaPorId && o.abertaPorId === colaboradorId);
     const encarregado =
       o.status !== "encerrada" &&
@@ -153,9 +154,15 @@ function Ocorrencias() {
     if (!visivel) return false;
     if (aba === "abri") return propria;
     if (aba === "setor") {
+      // Do setor Qualidade: aberta por alguém da Qualidade ou que envolve a Qualidade.
       if (o.status === "encerrada") return false;
-      if (vêTudo) return true;
-      return papelNaOcorrencia(session, o) !== "leitor";
+      const daQualidade = (valor: unknown) =>
+        normalizarSetor(typeof valor === "string" ? valor : "") === "qualidade";
+      return (
+        daQualidade(o.abertaPorSetor) ||
+        daQualidade(o.respostas["area_envolvida"]) ||
+        daQualidade(o.respostas["setor"])
+      );
     }
     if (aba === "encerradas") return o.status === "encerrada";
     return o.status !== "encerrada";
@@ -359,11 +366,7 @@ function ListaOcorrencias({
               <span
                 className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
                 style={{
-                  backgroundColor: sla.atrasado
-                    ? "#FDECEE"
-                    : sla.critical
-                      ? "#FFFBEB"
-                      : "#ECFDF5",
+                  backgroundColor: sla.atrasado ? "#FDECEE" : sla.critical ? "#FFFBEB" : "#ECFDF5",
                   color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
                 }}
               >
@@ -393,8 +396,7 @@ function ListaOcorrencias({
 
             <div className="mt-3 flex-1 space-y-1 text-[12px] text-[#64748B]">
               <p>
-                <span className="text-[#94A3B8]">Responsável:</span>{" "}
-                {o.responsavelNome || "—"}
+                <span className="text-[#94A3B8]">Responsável:</span> {o.responsavelNome || "—"}
               </p>
               <p>
                 <span className="text-[#94A3B8]">Abertura:</span>{" "}
@@ -444,7 +446,8 @@ interface AbrirOcorrenciaDialogProps {
 }
 
 function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorrenciaDialogProps) {
-  const session = usePanelSession();
+  const sessaoCtx = usePanelSession();
+  const session = getSession() ?? sessaoCtx;
   const catalogo = useCatalogoOrganizacional();
   const [etapa, setEtapa] = useState<"tipo" | "formulario">("tipo");
   const [tipoId, setTipoId] = useState<string | null>(null);
@@ -595,115 +598,117 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
           </DialogDescription>
         </DialogHeader>
 
-        {etapa === "tipo" ? (
-          tipos.length === 0 ? (
-            <p className="rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-8 text-center text-[13px] text-[#64748B]">
-              Nenhum tipo cadastrado. Peça à Qualidade para cadastrar os tipos na aba
-              &quot;Configurar&quot;.
-            </p>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {tipos.map((t) => {
-                const Icone = iconeTipoOcorrencia(t.icone);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className="flex flex-col items-start gap-2 rounded-lg border border-[#D9E0EA] p-3 text-left transition hover:border-[#1E3A8A] hover:bg-[#F0F4FF]"
-                    onClick={() => void escolherTipo(t.id)}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="flex h-6 w-6 items-center justify-center rounded-full text-white"
-                        style={{ backgroundColor: t.cor }}
-                      >
-                        <Icone className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="text-[13px] font-semibold text-[#1F2937]">{t.nome}</span>
-                    </span>
-                    <span className="text-[11px] text-[#64748B]">
-                      {t.descricao || "Sem descrição"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )
-        ) : (
-          <div className="space-y-4">
-            {tipo && (
-              <div className="flex items-center gap-3 rounded-lg bg-[#F8FAFC] px-3 py-2">
-                <span
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-white"
-                  style={{ backgroundColor: tipo.cor }}
-                >
-                  {(() => {
-                    const I = iconeTipoOcorrencia(tipo.icone);
-                    return <I className="h-4 w-4" />;
-                  })()}
-                </span>
-                <div>
-                  <p className="text-[13px] font-semibold text-[#1F2937]">{tipo.nome}</p>
-                  <p className="text-[11px] text-[#64748B]">{tipo.descricao}</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={salvando}
-                  onClick={() => {
-                    setTipoId(null);
-                    setVersoes(null);
-                    setEtapa("tipo");
-                  }}
-                >
-                  Trocar tipo
-                </Button>
-              </div>
-            )}
-
-            {carregandoForm ? (
-              <div className="flex items-center justify-center py-10 text-sm text-[#64748B]">
-                Carregando formulário…
-              </div>
-            ) : naoConformidade ? (
-              <FormularioNaoConformidade
-                setores={catalogo.setores}
-                valor={nc}
-                onChange={(estado) => {
-                  setNc(estado);
-                  if (Object.keys(ncErros).length > 0) setNcErros({});
-                }}
-                erros={ncErros}
-                desabilitado={salvando}
-              />
+        <div className="max-h-[65vh] overflow-y-auto pr-2">
+          {etapa === "tipo" ? (
+            tipos.length === 0 ? (
+              <p className="rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-8 text-center text-[13px] text-[#64748B]">
+                Nenhum tipo cadastrado. Peça à Qualidade para cadastrar os tipos na aba
+                &quot;Configurar&quot;.
+              </p>
             ) : (
-              <FormularioDinamico
-                campos={versoes?.campos ?? ([] as CampoFormulario[])}
-                respostas={respostas}
-                onChange={(id, valor) => setRespostas((r) => ({ ...r, [id]: valor }))}
-                colaboradores={catalogo.colaboradores.map((c) => ({
-                  id: c.id,
-                  nome: c.nome,
-                  email: c.email ?? "",
-                }))}
-                onArquivos={(campoId, arquivos) =>
-                  setRespostas((r) => ({
-                    ...r,
-                    [campoId]: arquivos
-                      ? Array.from(arquivos).map((f) => ({
-                          nome: f.name,
-                          tipo: f.type,
-                          tamanho: f.size,
-                        }))
-                      : [],
-                  }))
-                }
-              />
-            )}
-          </div>
-        )}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {tipos.map((t) => {
+                  const Icone = iconeTipoOcorrencia(t.icone);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="flex flex-col items-start gap-2 rounded-lg border border-[#D9E0EA] p-3 text-left transition hover:border-[#1E3A8A] hover:bg-[#F0F4FF]"
+                      onClick={() => void escolherTipo(t.id)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-white"
+                          style={{ backgroundColor: t.cor }}
+                        >
+                          <Icone className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="text-[13px] font-semibold text-[#1F2937]">{t.nome}</span>
+                      </span>
+                      <span className="text-[11px] text-[#64748B]">
+                        {t.descricao || "Sem descrição"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            <div className="space-y-4">
+              {tipo && (
+                <div className="flex items-center gap-3 rounded-lg bg-[#F8FAFC] px-3 py-2">
+                  <span
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-white"
+                    style={{ backgroundColor: tipo.cor }}
+                  >
+                    {(() => {
+                      const I = iconeTipoOcorrencia(tipo.icone);
+                      return <I className="h-4 w-4" />;
+                    })()}
+                  </span>
+                  <div>
+                    <p className="text-[13px] font-semibold text-[#1F2937]">{tipo.nome}</p>
+                    <p className="text-[11px] text-[#64748B]">{tipo.descricao}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={salvando}
+                    onClick={() => {
+                      setTipoId(null);
+                      setVersoes(null);
+                      setEtapa("tipo");
+                    }}
+                  >
+                    Trocar tipo
+                  </Button>
+                </div>
+              )}
+
+              {carregandoForm ? (
+                <div className="flex items-center justify-center py-10 text-sm text-[#64748B]">
+                  Carregando formulário…
+                </div>
+              ) : naoConformidade ? (
+                <FormularioNaoConformidade
+                  setores={catalogo.setores}
+                  valor={nc}
+                  onChange={(estado) => {
+                    setNc(estado);
+                    if (Object.keys(ncErros).length > 0) setNcErros({});
+                  }}
+                  erros={ncErros}
+                  desabilitado={salvando}
+                />
+              ) : (
+                <FormularioDinamico
+                  campos={versoes?.campos ?? ([] as CampoFormulario[])}
+                  respostas={respostas}
+                  onChange={(id, valor) => setRespostas((r) => ({ ...r, [id]: valor }))}
+                  colaboradores={catalogo.colaboradores.map((c) => ({
+                    id: c.id,
+                    nome: c.nome,
+                    email: c.email ?? "",
+                  }))}
+                  onArquivos={(campoId, arquivos) =>
+                    setRespostas((r) => ({
+                      ...r,
+                      [campoId]: arquivos
+                        ? Array.from(arquivos).map((f) => ({
+                            nome: f.name,
+                            tipo: f.type,
+                            tamanho: f.size,
+                          }))
+                        : [],
+                    }))
+                  }
+                />
+              )}
+            </div>
+          )}
+        </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onFechar}>

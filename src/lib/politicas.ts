@@ -329,6 +329,24 @@ function dataParaComparar(valor: string): Date | null {
   return new Date(Number(ano), Number(mes) - 1, Number(dia));
 }
 
+/**
+ * Dias até o vencimento da política (negativo = já vencida).
+ * `null` quando não há data de vencimento válida.
+ */
+export function diasParaVencimento(dataVencimento: string): number | null {
+  const alvo = dataParaComparar(dataVencimento);
+  if (!alvo) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return Math.ceil((alvo.getTime() - hoje.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+/** Política vencida ou que vence dentro da janela (padrão: 30 dias). */
+export function politicaVencendo(item: PoliticaItem, janelaDias = 30): boolean {
+  const dias = diasParaVencimento(item.dataVencimento ?? "");
+  return dias !== null && dias <= janelaDias;
+}
+
 /** Exibe a data de vencimento como `dd/mm/aaaa`. */
 function exibirData(valor: string): string {
   if (/^\d{4}-\d{2}-\d{2}/.test(valor)) {

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PanelShell } from "@/components/panel-shell";
+import { GerenciarSetoresPopDialog } from "@/components/gerenciar-setores-pop-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -94,6 +95,7 @@ import {
   carregarLeiturasDoUsuario,
   carregarNotificacoes,
   carregarPopsAcessiveis,
+  podeGerenciarSetoresPop,
   contarNaoLidas,
   contarPopsPorSetor,
   criarAnotacao,
@@ -530,6 +532,8 @@ interface GradeProps {
   podeAdicionar: boolean;
   aoAbrirSetor: (id: string) => void;
   aoCriar: () => void;
+  /** Quando definido, mostra o pill "+ Cadastrar ou Remover Setor". */
+  aoGerenciarSetores?: (() => void) | undefined;
 }
 
 function GradeDeSetores({
@@ -540,6 +544,7 @@ function GradeDeSetores({
   podeAdicionar,
   aoAbrirSetor,
   aoCriar,
+  aoGerenciarSetores,
 }: GradeProps) {
   return (
     <>
@@ -555,12 +560,20 @@ function GradeDeSetores({
             Selecione um setor para navegar pelos POPs cadastrados.
           </p>
         </div>
-        {podeAdicionar ? (
-          <Button className="shrink-0" onClick={aoCriar}>
-            <Plus className="h-4 w-4" />
-            Novo POP
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {aoGerenciarSetores ? (
+            <Button variant="outline" className="rounded-full" onClick={aoGerenciarSetores}>
+              <Plus className="h-4 w-4" />
+              Cadastrar ou Remover Setor
+            </Button>
+          ) : null}
+          {podeAdicionar ? (
+            <Button className="shrink-0" onClick={aoCriar}>
+              <Plus className="h-4 w-4" />
+              Novo POP
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -2091,8 +2104,10 @@ function Pops() {
   const [popExcluindo, setPopExcluindo] = useState<Pop | null>(null);
   const [popEmDiscussao, setPopEmDiscussao] = useState<Pop | null>(null);
   const [popAberto, setPopAberto] = useState<Pop | null>(null);
+  const [setoresAberto, setSetoresAberto] = useState(false);
 
   const sessao = getSession();
+  const podeGerenciarSetores = podeGerenciarSetoresPop(sessao);
   const podeAdicionar = podeAdicionarDocumentos(sessao);
   const podeModificar = podeModificarDocumentos(sessao);
   const podeExcluir = podeExcluirDocumentos(sessao);
@@ -2355,6 +2370,7 @@ function Pops() {
         podeAdicionar={podeAdicionar}
         aoAbrirSetor={navegarParaSetor}
         aoCriar={abrirCriacao}
+        aoGerenciarSetores={podeGerenciarSetores ? () => setSetoresAberto(true) : undefined}
       />
     );
   } else {
@@ -2399,6 +2415,14 @@ function Pops() {
         codigosExistentes={pops.map((item) => item.codigo)}
         onFechar={() => setFormAberto(false)}
         onSalvo={buscarDados}
+      />
+
+      <GerenciarSetoresPopDialog
+        aberto={setoresAberto}
+        setores={setores}
+        contagens={contagens}
+        onFechar={() => setSetoresAberto(false)}
+        onAlterado={buscarDados}
       />
 
       <PopDiscussaoDialog

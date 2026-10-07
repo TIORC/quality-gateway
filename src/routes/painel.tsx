@@ -29,8 +29,8 @@ import {
   type DocumentoVencimento,
 } from "@/lib/politicas";
 import { listarPlanos } from "@/lib/planos-base";
-import { diasParaPrazo, planoAtrasado, type PlanoAcao } from "@/lib/planos";
-import { ehResponsavel, ehSeguidor } from "@/lib/planos-inter";
+import { diasParaPrazo, formatarPrazo, planoAtrasado, type PlanoAcao } from "@/lib/planos";
+import { ehResponsavel } from "@/lib/planos-inter";
 import {
   cn,
   formatarDataLongaBrasilia,
@@ -122,6 +122,29 @@ const SETOR_COLORS = [
 // Componentes auxiliares
 // ---------------------------------------------------------------------------
 
+interface ItemVencimento {
+  chave: string;
+  tipo: "pop" | "politica" | "acao";
+  id: string;
+  codigo: string;
+  titulo: string;
+  /** Dias até vencer (negativo = já vencido). */
+  diasRestantes: number;
+  dataExibicao: string;
+}
+
+const ROTULO_VENCIMENTO: Record<ItemVencimento["tipo"], string> = {
+  pop: "POP",
+  politica: "Política",
+  acao: "Ação",
+};
+
+const COR_VENCIMENTO: Record<ItemVencimento["tipo"], string> = {
+  pop: "bg-[#EEF2FF] text-[#4F46E5]",
+  politica: "bg-[#ECFDF5] text-[#047857]",
+  acao: "bg-[#FFF7ED] text-[#C2410C]",
+};
+
 interface SummaryCardProps {
   label: string;
   value: string;
@@ -165,7 +188,16 @@ function ChartCard({ title, className, children }: ChartCardProps) {
 // ---------------------------------------------------------------------------
 
 function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
-  const dados = contarPorCampo(planos, "status")
+  // Uma ação com prazo vencido (e não encerrada) conta como "Atrasada", igual ao
+  // cartão "Em atraso" e ao filtro de atraso da lista de Planos de Ação.
+  const mapaStatus: Record<string, number> = {};
+  for (const p of planos) {
+    const chave = planoAtrasado(p) ? "atrasada" : p.status;
+    mapaStatus[chave] = (mapaStatus[chave] || 0) + 1;
+  }
+  const dados = Object.entries(mapaStatus)
+    .map(([nome, total]) => ({ nome, total }))
+    .sort((a, b) => b.total - a.total)
     .filter((d) => d.nome in STATUS_LABELS)
     .map((d) => ({
       ...d,
@@ -422,13 +454,14 @@ function Painel() {
   const abertas = planos.filter((p) => STATUS_PENDENTES.has(p.status)).length;
   const atrasadas = planos.filter(planoAtrasado).length;
   const concluidas = planos.filter((p) => p.status === "concluida").length;
-  const taxaConclusao = totalAcoes > 0 ? Math.round((concluidas / totalAcoes) * 100) : 0;
+  // Canceladas saem da conta: nunca poderiam ser concluídas.
+  const canceladas = planos.filter((p) => p.status === "cancelado").length;
+  const acoesValidas = totalAcoes - canceladas;
+  const taxaConclusao = acoesValidas > 0 ? Math.round((concluidas / acoesValidas) * 100) : 0;
 
-  // "Minhas ações": sou responsável (edito) ou seguidor (acompanho).
+  // "Minhas ações": as que sou responsável (mesma regra da aba "Minhas" da lista).
   const minhasAbertas = planos.filter(
-    (p) =>
-      STATUS_PENDENTES.has(p.status) &&
-      (ehResponsavel(p, perfil ?? session) || ehSeguidor(p, perfil ?? session)),
+    (p) => STATUS_PENDENTES.has(p.status) && ehResponsavel(p, perfil ?? session),
   );
   const minhasAtrasadas = minhasAbertas.filter(planoAtrasado).length;
   const minhasOrdenadas = [...minhasAbertas].sort((a, b) => {
@@ -437,7 +470,37 @@ function Painel() {
     return (da ?? 9999) - (db ?? 9999);
   });
 
-  const setoresUnicos = new Set(planos.map((p) => p.setor)).size;
+  const setoresUnicos = new Set(planos.map((p) => p.setor).filter(Boolean)).size;
+
+  // Próximos vencimentos: documentos (POPs e políticas) e ações com prazo nos
+  // próximos 30 dias, incluindo o que já venceu, do mais urgente ao menos.
+  const vencimentos = useMemo<ItemVencimento[]>(() => {
+    const docs: ItemVencimento[] = documentosVencendo.map((doc) => ({
+      chave: `${doc.tipo}-${doc.id}`,
+      tipo: doc.tipo,
+      id: doc.id,
+      codigo: doc.codigo,
+      titulo: doc.titulo,
+      diasRestantes: doc.diasRestantes,
+      dataExibicao: doc.dataVencimentoExibicao,
+    }));
+    const acoes: ItemVencimento[] = [];
+    for (const p of planos) {
+      if (!STATUS_PENDENTES.has(p.status)) continue;
+      const dias = diasParaPrazo(p.prazo);
+      if (dias === null || dias > 30) continue;
+      acoes.push({
+        chave: `acao-${p.id}`,
+        tipo: "acao",
+        id: p.id,
+        codigo: p.codigo || "Ação",
+        titulo: p.titulo,
+        diasRestantes: dias,
+        dataExibicao: formatarPrazo(p.prazo),
+      });
+    }
+    return [...docs, ...acoes].sort((a, b) => a.diasRestantes - b.diasRestantes);
+  }, [documentosVencendo, planos]);
 
   function handleLogout() {
     logout();
@@ -548,7 +611,9 @@ function Painel() {
             {saudacao}, {nomeUsuario.split(" ")[0]}.
           </h1>
           <p className="mt-1.5 text-sm text-[#64748B]">
-            Você acompanha {abertas} planos de ação de {setoresUnicos} setores.
+            Você é responsável por {minhasAbertas.length}{" "}
+            {minhasAbertas.length === 1 ? "ação em aberto" : "ações em aberto"}. A organização tem{" "}
+            {abertas} em aberto, em {setoresUnicos} {setoresUnicos === 1 ? "setor" : "setores"}.
           </p>
         </div>
 
@@ -577,14 +642,14 @@ function Painel() {
             value={String(concluidas)}
             valueClass="text-[#059669]"
             accent="#059669"
-            footer="no período"
+            footer="no total"
           />
           <SummaryCard
             label="Taxa de conclusão"
             value={`${taxaConclusao}%`}
             valueClass="text-[#4F46E5]"
             accent="#4F46E5"
-            footer="do total atribuído"
+            footer="das ações não canceladas"
           />
         </section>
 
@@ -610,7 +675,7 @@ function Painel() {
             )}
           </ChartCard>
         </section>
-{/* Minhas ações: sou responsável (edito) ou seguidor (acompanho). */}
+        {/* Minhas ações: as que sou responsável. */}
         <section className="mt-5">
           <div className="flex flex-col rounded-xl border border-[#D9E0EA] bg-white">
             <div className="flex items-center justify-between px-5 pt-5">
@@ -623,7 +688,9 @@ function Painel() {
               </div>
               <button
                 type="button"
-                onClick={() => void router.navigate({ to: "/planos-de-acao", search: { abrir: undefined } })}
+                onClick={() =>
+                  void router.navigate({ to: "/planos-de-acao", search: { abrir: undefined } })
+                }
                 className="text-[13px] font-medium text-[#64748B] transition hover:text-[#1F2937]"
               >
                 ver todas →
@@ -660,9 +727,6 @@ function Painel() {
                         <span className="block truncate text-[12px] text-[#64748B]">
                           {p.setor}
                           {p.responsavelNome ? ` · ${p.responsavelNome}` : ""}
-                          {ehSeguidor(p, perfil ?? session) && !ehResponsavel(p, perfil ?? session)
-                            ? " · você acompanha como seguidor"
-                            : ""}
                         </span>
                       </span>
                       <StatusBadge status={p.status} />
@@ -680,36 +744,33 @@ function Painel() {
           <div className="flex flex-col rounded-xl border border-[#D9E0EA] bg-white lg:col-span-2">
             <div className="flex items-center justify-between px-5 pt-5">
               <h3 className="text-[14px] font-semibold text-[#1F2937]">Próximos vencimentos</h3>
-              <button
-                type="button"
-                className="text-[13px] font-medium text-[#64748B] transition hover:text-[#1F2937]"
-              >
-                ver todos →
-              </button>
             </div>
             <div className="mt-4 h-px w-full bg-[#E9EEF5]" />
-            {carregandoVencimentos ? (
+            {carregandoVencimentos || carregando ? (
               <div className="flex flex-1 items-center justify-center px-5 py-16">
                 <p className="text-sm text-[#94A3B8]">Carregando…</p>
               </div>
-            ) : documentosVencendo.length === 0 ? (
+            ) : vencimentos.length === 0 ? (
               <div className="flex flex-1 items-center justify-center px-5 py-16">
-                <p className="text-sm text-[#64748B]">
-                  Nenhum documento vencendo nos próximos 30 dias.
-                </p>
+                <p className="text-sm text-[#64748B]">Nada vencendo nos próximos 30 dias.</p>
               </div>
             ) : (
               <ul className="max-h-[360px] divide-y divide-[#E9EEF5] overflow-y-auto">
-                {documentosVencendo.map((doc) => {
+                {vencimentos.map((doc) => {
                   const vencido = doc.diasRestantes < 0;
                   const venceHoje = doc.diasRestantes === 0;
                   return (
-                    <li key={`${doc.tipo}-${doc.id}`}>
+                    <li key={doc.chave}>
                       <button
                         type="button"
                         onClick={() => {
                           if (doc.tipo === "pop") {
                             void router.navigate({ to: "/pops", search: { abrir: doc.id } });
+                          } else if (doc.tipo === "acao") {
+                            void router.navigate({
+                              to: "/planos-de-acao",
+                              search: { abrir: doc.id },
+                            });
                           } else {
                             void router.navigate({ to: "/politicas", search: { abrir: doc.id } });
                           }
@@ -719,12 +780,10 @@ function Painel() {
                         <span
                           className={cn(
                             "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                            doc.tipo === "pop"
-                              ? "bg-[#EEF2FF] text-[#4F46E5]"
-                              : "bg-[#ECFDF5] text-[#047857]",
+                            COR_VENCIMENTO[doc.tipo],
                           )}
                         >
-                          {doc.tipo === "pop" ? "POP" : "Política"}
+                          {ROTULO_VENCIMENTO[doc.tipo]}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-medium text-[#1F2937]">
@@ -748,7 +807,7 @@ function Painel() {
                                 : `Vence em ${doc.diasRestantes} d`}
                           </span>
                           <span className="block text-[11px] text-[#94A3B8]">
-                            {doc.dataVencimentoExibicao}
+                            {doc.dataExibicao}
                           </span>
                         </span>
                       </button>

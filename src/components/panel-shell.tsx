@@ -33,7 +33,7 @@ import {
   type UserSession,
 } from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
-import { rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
+import { rotaInicial, rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AppFooter } from "@/components/app-footer";
@@ -94,9 +94,9 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
         router.navigate({ to: "/", replace: true });
         return;
       }
-      // Rota fora das permissões do nível: vai para o Meu Perfil (sempre permitido).
+      // Rota fora das permissões do nível: vai para a página inicial permitida.
       if (!rotaPermitida(atual, location.pathname)) {
-        router.navigate({ to: "/meu-perfil", replace: true });
+        router.navigate({ to: rotaInicial(atual), replace: true });
         return;
       }
       setSession(atual);

@@ -4,7 +4,7 @@
  * Toda ação grava evento no histórico imutável e notifica pelo sino
  * (`public.notificacoes`, tipos `ocorrencia_*`).
  */
-import type { UserSession } from "@/lib/auth";
+import { getSession, type UserSession } from "@/lib/auth";
 import { traduzErro } from "@/lib/organizacao";
 import {
   ACOES_ETAPA_LABELS,
@@ -41,11 +41,16 @@ import {
 
 type Rec = Record<string, unknown>;
 
+/**
+ * Autor da ação. Se a tela não repassar a sessão (contexto nulo), usa a sessão
+ * persistida no navegador: o autor nunca pode ser gravado em branco.
+ */
 function autorDe(sessao: UserSession | null) {
+  const s = sessao ?? getSession();
   return {
-    autor_id: sessao?.colaboradorId ?? sessao?.id ?? "",
-    autor_nome: sessao?.nome ?? "",
-    autor_email: (sessao?.email ?? "").toLowerCase(),
+    autor_id: s?.colaboradorId || s?.id || "",
+    autor_nome: s?.nome ?? "",
+    autor_email: (s?.email ?? "").trim().toLowerCase(),
   };
 }
 
@@ -235,7 +240,7 @@ export async function abrirOcorrencia(
       aberta_por_id: str(autor["autor_id"]),
       aberta_por_nome: str(autor["autor_nome"]),
       aberta_por_email: str(autor["autor_email"]),
-      aberta_por_setor: sessao?.setor ?? "",
+      aberta_por_setor: (sessao ?? getSession())?.setor ?? "",
       responsavel_id: "",
       // Regra do portal: toda ocorrência (qualquer tipo) é do setor Qualidade.
       responsavel_nome: SETOR_RESPONSAVEL_OCORRENCIAS,
@@ -340,8 +345,7 @@ async function entrarEm(
   // Subetapa sem responsável, sem nome ou com responsável do tipo setor
   // assume automaticamente a Qualidade (pessoa/cargo explícitos são mantidos,
   // pois representam delegação feita pela própria Qualidade no fluxo).
-  const ehSetorOuVazio =
-    !sub || sub.responsavel.tipo === "setor" || !sub.responsavel.nome.trim();
+  const ehSetorOuVazio = !sub || sub.responsavel.tipo === "setor" || !sub.responsavel.nome.trim();
   const responsavelNome = ehSetorOuVazio
     ? SETOR_RESPONSAVEL_OCORRENCIAS
     : (sub?.responsavel.nome ?? "");
@@ -351,9 +355,7 @@ async function entrarEm(
     subetapa_atual_nome: sub?.nome ?? MACRO_ETAPA_LABELS[macro],
     responsavel_id: ehSetorOuVazio ? "" : (sub?.responsavel.id ?? ""),
     responsavel_nome: responsavelNome,
-    responsavel_email: ehSetorOuVazio
-      ? ""
-      : ((sub?.responsavel.email ?? "").toLowerCase()),
+    responsavel_email: ehSetorOuVazio ? "" : (sub?.responsavel.email ?? "").toLowerCase(),
     prazo_etapa: prazo,
     etapa_entrou_em: new Date().toISOString(),
     status: "em_andamento",

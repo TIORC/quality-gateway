@@ -1,18 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Briefcase,
-  Layers,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  UserPlus,
-  Users,
-  Wrench,
-} from "lucide-react";
+import { Layers, Pencil, Plus, Search, Trash2, UserPlus, Users, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { GruposAcessoTab, OrigensAcaoTab, TiposReuniaoTab } from "@/components/config-cadastros";
+import { ImportarColaboradoresDialog } from "@/components/importar-colaboradores-dialog";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
+import { Paginacao, usePaginacao } from "@/components/paginacao";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -35,7 +28,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
-import { criarAcessoColaborador, listarEmailsComLogin, type UserRole } from "@/lib/auth";
+import { criarAcessoColaborador, listarEmailsComLogin } from "@/lib/auth";
 import {
   NIVEL_DESENVOLVEDOR_SISTEMA,
   NIVEIS_ACESSO,
@@ -43,7 +36,9 @@ import {
   NIVEL_SOMENTE_LIBERADOS,
   normalizarSetor,
 } from "@/lib/niveis-acesso";
-import { ehLiderancaDaQualidade } from "@/lib/permissoes";
+import { listarGruposAcesso } from "@/lib/grupos";
+import { ehLiderancaDaQualidade, podeGerenciarCadastros } from "@/lib/permissoes";
+import type { GrupoAcesso } from "@/lib/projetos-crud";
 import { carregarPoliticas, type PoliticaItem } from "@/lib/politicas";
 import {
   carregarPops,
@@ -54,10 +49,9 @@ import {
 import * as org from "@/lib/organizacao";
 import type { Unidade } from "@/lib/organizacao";
 
-/** Senha de acesso + perfil de login informados nos diálogos de colaborador. */
+/** Senha de acesso informada nos diálogos de colaborador. */
 interface AcessoLogin {
   senha: string;
-  perfilLogin: UserRole;
 }
 
 export const Route = createFileRoute("/configuracoes")({
@@ -69,7 +63,6 @@ export const Route = createFileRoute("/configuracoes")({
 
 const ABAS = [
   { valor: "colaboradores", rotulo: "Colaboradores" },
-  { valor: "cargos", rotulo: "Cargos" },
   { valor: "unidades", rotulo: "Unidades e setores" },
   { valor: "grupos", rotulo: "Grupos de acesso" },
   { valor: "tipos-reuniao", rotulo: "Tipos de reunião" },
@@ -111,19 +104,20 @@ function corAcesso(nivel: string): string {
   }
 }
 
-interface CargoEmEdicao {
-  setorId: string;
-  cargo: CargoConfig | null;
-}
-
 function Configuracoes() {
   const gerenciador = useGerenciadorSetores();
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [unidadesCarregando, setUnidadesCarregando] = useState(true);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [gruposCadastrados, setGruposCadastrados] = useState<GrupoAcesso[]>([]);
+  const [gruposCarregando, setGruposCarregando] = useState(true);
+  const sessaoAtual = usePanelSession();
+  const podeGerenciar = podeGerenciarCadastros(sessaoAtual);
+  const gruposDisponiveis = [
+    ...new Set([...GRUPOS_PERSONALIZADOS, ...gruposCadastrados.map((grupo) => grupo.nome)]),
+  ];
   const [novoSetorAberto, setNovoSetorAberto] = useState(false);
   const [setorEmEdicao, setSetorEmEdicao] = useState<SetorConfig | null>(null);
-  const [cargoEmEdicao, setCargoEmEdicao] = useState<CargoEmEdicao | null>(null);
   const [setorParaRemover, setSetorParaRemover] = useState<SetorConfig | null>(null);
   const [novaUnidadeAberta, setNovaUnidadeAberta] = useState(false);
   const [unidadeEmEdicao, setUnidadeEmEdicao] = useState<Unidade | null>(null);
@@ -167,6 +161,24 @@ function Configuracoes() {
     };
   }, []);
 
+  useEffect(() => {
+    let ativo = true;
+    listarGruposAcesso(sessaoAtual)
+      .then((lista) => {
+        if (ativo) setGruposCadastrados(lista);
+      })
+      .catch(() => {
+        // A aba "Grupos de acesso" mostra o aviso; aqui só se usa a lista nos cadastros.
+      })
+      .finally(() => {
+        if (ativo) setGruposCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function fecharDialogosDeSetor() {
     setNovoSetorAberto(false);
     setSetorEmEdicao(null);
@@ -179,16 +191,6 @@ function Configuracoes() {
       gerenciador.criarSetor(nome);
     }
     fecharDialogosDeSetor();
-  }
-
-  function salvarCargo(setorDestinoId: string, nome: string) {
-    if (!cargoEmEdicao) return;
-    if (cargoEmEdicao.cargo) {
-      gerenciador.editarCargo(cargoEmEdicao.cargo.id, setorDestinoId, nome);
-    } else {
-      gerenciador.criarCargo(setorDestinoId, nome);
-    }
-    setCargoEmEdicao(null);
   }
 
   function pedirConfirmacaoDeRemocao(setorId: string) {
@@ -235,7 +237,7 @@ function Configuracoes() {
     setUnidadeParaRemover(null);
   }
 
-  // Ações de setores e cargos compartilhadas pelas abas "Cargos" e "Unidades e setores".
+  // Ações de setores usadas pela aba "Unidades e setores".
   const acoesSetores: SetoresTabProps = {
     setores: gerenciador.setores,
     colaboradores,
@@ -243,13 +245,8 @@ function Configuracoes() {
     criarSetor: gerenciador.criarSetor,
     renomearSetor: gerenciador.renomearSetor,
     removerSetor: pedirConfirmacaoDeRemocao,
-    criarCargo: gerenciador.criarCargo,
-    editarCargo: gerenciador.editarCargo,
-    removerCargo: gerenciador.removerCargo,
     onNovoSetor: () => setNovoSetorAberto(true),
     onEditarSetor: (setor) => setSetorEmEdicao(setor),
-    onNovoCargo: (setorId) => setCargoEmEdicao({ setorId, cargo: null }),
-    onEditarCargo: (setorId, cargo) => setCargoEmEdicao({ setorId, cargo }),
   };
 
   return (
@@ -287,10 +284,9 @@ function Configuracoes() {
             unidades={unidades}
             unidadesCarregando={unidadesCarregando}
             colaboradores={colaboradores}
+            onSetoresCriados={gerenciador.adicionarSetores}
+            gruposDisponiveis={gruposDisponiveis}
           />
-        </TabsContent>
-        <TabsContent value="cargos">
-          <CargosTab {...acoesSetores} colaboradores={colaboradores} />
         </TabsContent>
         <TabsContent value="unidades">
           <SetoresTab
@@ -304,25 +300,18 @@ function Configuracoes() {
           />
         </TabsContent>
         <TabsContent value="grupos">
-          <TabEmConstrucao
-            icone={Users}
-            titulo="Grupos de acesso"
-            descricao="Defina os grupos e os níveis de acesso de cada grupo."
+          <GruposAcessoTab
+            podeGerenciar={podeGerenciar}
+            grupos={gruposCadastrados}
+            carregando={gruposCarregando}
+            onChange={setGruposCadastrados}
           />
         </TabsContent>
         <TabsContent value="tipos-reuniao">
-          <TabEmConstrucao
-            icone={Users}
-            titulo="Tipos de reunião"
-            descricao="Cadastre os tipos de reunião usados nas atas."
-          />
+          <TiposReuniaoTab podeGerenciar={podeGerenciar} colaboradores={colaboradores} />
         </TabsContent>
         <TabsContent value="origens">
-          <TabEmConstrucao
-            icone={Wrench}
-            titulo="Origens de ação"
-            descricao="Cadastre as origens disponíveis ao abrir um plano de ação."
-          />
+          <OrigensAcaoTab podeGerenciar={podeGerenciar} />
         </TabsContent>
         <TabsContent value="lixeira">
           <TabEmConstrucao
@@ -340,16 +329,6 @@ function Configuracoes() {
         onFechar={fecharDialogosDeSetor}
         onSalvar={salvarSetor}
       />
-
-      {cargoEmEdicao ? (
-        <CargoDialog
-          setores={gerenciador.setores}
-          setorId={cargoEmEdicao.setorId}
-          cargo={cargoEmEdicao.cargo}
-          onFechar={() => setCargoEmEdicao(null)}
-          onSalvar={salvarCargo}
-        />
-      ) : null}
 
       <RemoverSetorDialog
         setor={setorParaRemover}
@@ -402,176 +381,6 @@ function TabEmConstrucao({ icone: Icone, titulo, descricao }: TabEmConstrucaoPro
   );
 }
 
-function CargosTab({
-  setores,
-  carregando,
-  colaboradores,
-  onNovoSetor,
-  onEditarSetor,
-  onNovoCargo,
-  onEditarCargo,
-  removerSetor,
-  removerCargo,
-}: SetoresTabProps) {
-  const [busca, setBusca] = useState("");
-
-  const termo = busca.trim().toLowerCase();
-  const totalCargos = setores.reduce((soma, setor) => soma + setor.cargos.length, 0);
-
-  const colunas = setores.map((setor) => {
-    const cargosVisiveis = setor.cargos.filter(
-      (cargo) => termo === "" || cargo.nome.toLowerCase().includes(termo),
-    );
-    const setorCombina = termo === "" || setor.nome.toLowerCase().includes(termo);
-    return { setor, cargosVisiveis, visivel: setorCombina || cargosVisiveis.length > 0 };
-  });
-
-  return (
-    <div className="mt-4">
-      <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-[#E9EEF5] p-3 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <p className="text-sm text-[#64748B]">
-              Cada setor tem a sua coluna de cargos. É daqui que sai a lista usada no cadastro de
-              colaboradores.
-            </p>
-            <p className="mt-1 text-[11px] text-[#94A3B8]">
-              {setores.length} setor(es) · {totalCargos} cargo(s)
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
-              <Input
-                value={busca}
-                onChange={(evento) => setBusca(evento.target.value)}
-                placeholder="Buscar setor ou cargo"
-                className="w-full pl-9 sm:w-[240px]"
-              />
-            </div>
-            <Button variant="outline" onClick={onNovoSetor}>
-              <Layers className="h-4 w-4" />
-              Novo setor
-            </Button>
-          </div>
-        </div>
-
-        {carregando ? (
-          <div className="flex items-center justify-center px-6 py-12 text-sm text-[#64748B]">
-            Carregando setores e cargos…
-          </div>
-        ) : setores.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EEF2F7]">
-              <Briefcase className="h-6 w-6 text-[#94A3B8]" />
-            </div>
-            <h3 className="mt-3 text-base font-semibold text-[#1F2937]">Nenhum setor</h3>
-            <p className="mt-1 text-sm text-[#64748B]">
-              Crie o primeiro setor para depois inserir os cargos dentro dele.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 bg-[#F8FAFC] p-4 md:grid-cols-2 xl:grid-cols-3">
-            {colunas.map(({ setor, cargosVisiveis, visivel }) =>
-              !visivel ? null : (
-                <div
-                  key={setor.id}
-                  className="flex flex-col overflow-hidden rounded-2xl border border-[#E9EEF5] bg-white shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-2 border-b border-[#E9EEF5] px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-semibold text-[#1F2937]">
-                        {setor.nome}
-                      </p>
-                      <p className="text-[11px] text-[#64748B]">{setor.cargos.length} cargo(s)</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        title={`Editar setor ${setor.nome}`}
-                        aria-label={`Editar setor ${setor.nome}`}
-                        onClick={() => onEditarSetor(setor)}
-                        className="rounded-md p-1.5 text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#1E3A8A]"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        title={`Remover setor ${setor.nome}`}
-                        aria-label={`Remover setor ${setor.nome}`}
-                        onClick={() => removerSetor(setor.id)}
-                        className="rounded-md p-1.5 text-[#94A3B8] transition hover:bg-[#FEF2F2] hover:text-[#E11D48]"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 divide-y divide-[#E9EEF5]">
-                    {cargosVisiveis.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-[12px] text-[#94A3B8]">
-                        Nenhum cargo neste setor.
-                      </p>
-                    ) : (
-                      cargosVisiveis.map((cargo) => {
-                        const quantidade = colaboradores.filter(
-                          (colaborador) => colaborador.cargo === cargo.nome,
-                        ).length;
-                        return (
-                          <div
-                            key={cargo.id}
-                            className="flex items-center justify-between gap-3 px-4 py-2.5"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-[13px] font-medium text-[#1F2937]">
-                                {cargo.nome}
-                              </p>
-                              <p className="text-[11px] text-[#94A3B8]">
-                                {quantidade > 0
-                                  ? `${quantidade} colaborador(es)`
-                                  : "Nenhum colaborador ainda"}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => onEditarCargo(setor.id, cargo)}
-                                className="text-[12px] font-medium text-[#1E3A8A] transition hover:text-[#1E40AF]"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removerCargo(cargo.id)}
-                                className="text-[12px] font-medium text-[#E11D48] transition hover:text-[#BE123C]"
-                              >
-                                Remover
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onNovoCargo(setor.id)}
-                    className="flex items-center justify-center gap-1.5 border-t border-[#E9EEF5] px-4 py-2.5 text-[12px] font-medium text-[#1E3A8A] transition hover:bg-[#F8FAFC]"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Adicionar cargo
-                  </button>
-                </div>
-              ),
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 interface CargoConfig {
   id: string;
   nome: string;
@@ -589,9 +398,6 @@ interface GerenciadorSetores {
   criarSetor: (nome: string) => void;
   renomearSetor: (setorId: string, nome: string) => void;
   removerSetor: (setorId: string) => void;
-  criarCargo: (setorId: string, nome: string) => void;
-  editarCargo: (cargoId: string, setorDestinoId: string, nome: string) => void;
-  removerCargo: (cargoId: string) => void;
 }
 
 interface SetoresTabProps extends GerenciadorSetores {
@@ -599,15 +405,14 @@ interface SetoresTabProps extends GerenciadorSetores {
   colaboradores: Colaborador[];
   onNovoSetor: () => void;
   onEditarSetor: (setor: SetorConfig) => void;
-  onNovoCargo: (setorId: string) => void;
-  onEditarCargo: (setorId: string, cargo: CargoConfig) => void;
 }
 
 /**
- * Estado único de setores e cargos, compartilhado pelas abas "Cargos" e
- * "Unidades e setores" da tela de Configurações. Os dados vêm do Lovable Cloud.
+ * Estado único dos setores da tela de Configurações. Os dados vêm do Lovable Cloud.
  */
-function useGerenciadorSetores(): GerenciadorSetores {
+function useGerenciadorSetores(): GerenciadorSetores & {
+  adicionarSetores: (novos: SetorConfig[]) => void;
+} {
   const [setores, setSetores] = useState<SetorConfig[]>([]);
   const [carregando, setCarregando] = useState(true);
 
@@ -623,7 +428,7 @@ function useGerenciadorSetores(): GerenciadorSetores {
         if (ativo) setSetores(lista);
       })
       .catch(() => {
-        if (ativo) toast.error("Não foi possível carregar os setores e cargos.");
+        if (ativo) toast.error("Não foi possível carregar os setores.");
       })
       .finally(() => {
         if (ativo) setCarregando(false);
@@ -633,17 +438,8 @@ function useGerenciadorSetores(): GerenciadorSetores {
     };
   }, []);
 
-  function atualizarSetor(setorAtualizado: SetorConfig) {
-    setSetores((atual) =>
-      atual.map((setor) => (setor.id === setorAtualizado.id ? setorAtualizado : setor)),
-    );
-  }
-
-  function recarregar() {
-    org
-      .carregarSetoresECargos()
-      .then(setSetores)
-      .catch(() => toast.error("Não foi possível atualizar os setores e cargos."));
+  function adicionarSetores(novos: SetorConfig[]) {
+    setSetores((atual) => [...atual, ...novos]);
   }
 
   function criarSetor(nome: string) {
@@ -673,36 +469,13 @@ function useGerenciadorSetores(): GerenciadorSetores {
       .catch(() => toast.error("Não foi possível remover o setor."));
   }
 
-  function criarCargo(setorId: string, nome: string) {
-    org
-      .criarCargo(setorId, nome)
-      .then(atualizarSetor)
-      .catch(() => toast.error("Não foi possível criar o cargo."));
-  }
-
-  function editarCargo(cargoId: string, setorDestinoId: string, nome: string) {
-    org
-      .editarCargo(cargoId, setorDestinoId, nome)
-      .then(recarregar)
-      .catch(() => toast.error("Não foi possível editar o cargo."));
-  }
-
-  function removerCargo(cargoId: string) {
-    org
-      .removerCargo(cargoId)
-      .then(recarregar)
-      .catch(() => toast.error("Não foi possível remover o cargo."));
-  }
-
   return {
     setores,
     carregando,
     criarSetor,
     renomearSetor,
     removerSetor,
-    criarCargo,
-    editarCargo,
-    removerCargo,
+    adicionarSetores,
   };
 }
 
@@ -714,10 +487,7 @@ function SetoresTab({
   unidadesCarregando,
   onNovoSetor,
   onEditarSetor,
-  onNovoCargo,
-  onEditarCargo,
   removerSetor,
-  removerCargo,
   onNovaUnidade,
   onEditarUnidade,
   onRemoverUnidade,
@@ -732,10 +502,7 @@ function SetoresTab({
 
   const termo = busca.trim().toLowerCase();
   const filtrados = setores.filter(
-    (setor) =>
-      termo === "" ||
-      setor.nome.toLowerCase().includes(termo) ||
-      setor.cargos.some((cargo) => cargo.nome.toLowerCase().includes(termo)),
+    (setor) => termo === "" || setor.nome.toLowerCase().includes(termo),
   );
 
   return (
@@ -745,7 +512,7 @@ function SetoresTab({
           <div>
             <h3 className="text-[14px] font-semibold text-[#1F2937]">Unidades</h3>
             <p className="mt-1 text-sm text-[#64748B]">
-              Unidades em que os setores e cargos abaixo são aplicados.
+              Unidades em que os setores abaixo são aplicados.
             </p>
           </div>
           <Button
@@ -801,10 +568,9 @@ function SetoresTab({
       <div className="overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-[#E9EEF5] p-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h3 className="text-[14px] font-semibold text-[#1F2937]">Setores e cargos</h3>
+            <h3 className="text-[14px] font-semibold text-[#1F2937]">Setores</h3>
             <p className="mt-1 text-sm text-[#64748B]">
-              Crie o setor e insira os cargos dentro dele — exemplo: TI (Desenvolvedor,
-              Infraestrutura) e Qualidade (Coordenador, Auxiliar).
+              Cadastre, renomeie ou remova os setores da empresa.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -813,7 +579,7 @@ function SetoresTab({
               <Input
                 value={busca}
                 onChange={(evento) => setBusca(evento.target.value)}
-                placeholder="Buscar setor ou cargo"
+                placeholder="Buscar setor"
                 className="w-full pl-9 sm:w-[220px]"
               />
             </div>
@@ -826,7 +592,7 @@ function SetoresTab({
 
         {carregando ? (
           <div className="flex items-center justify-center px-6 py-12 text-sm text-[#64748B]">
-            Carregando setores e cargos…
+            Carregando setores…
           </div>
         ) : filtrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
@@ -838,8 +604,8 @@ function SetoresTab({
             </h3>
             <p className="mt-1 text-sm text-[#64748B]">
               {setores.length === 0
-                ? "Crie o primeiro setor para depois inserir os cargos."
-                : "Ajuste a busca para ver setores e cargos."}
+                ? "Crie o primeiro setor."
+                : "Ajuste a busca para ver os setores."}
             </p>
           </div>
         ) : (
@@ -854,7 +620,13 @@ function SetoresTab({
                     <p className="truncate text-[14px] font-semibold text-[#1F2937]">
                       {setor.nome}
                     </p>
-                    <p className="text-[11px] text-[#64748B]">{setor.cargos.length} cargo(s)</p>
+                    <p className="text-[11px] text-[#64748B]">
+                      {
+                        colaboradores.filter((colaborador) => colaborador.setor === setor.nome)
+                          .length
+                      }{" "}
+                      colaborador(es)
+                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -877,62 +649,6 @@ function SetoresTab({
                     </button>
                   </div>
                 </div>
-
-                <div className="flex-1 divide-y divide-[#E9EEF5]">
-                  {setor.cargos.length === 0 ? (
-                    <p className="px-4 py-6 text-center text-[12px] text-[#94A3B8]">
-                      Nenhum cargo neste setor
-                    </p>
-                  ) : (
-                    setor.cargos.map((cargo) => {
-                      const quantidade = colaboradores.filter(
-                        (colaborador) => colaborador.cargo === cargo.nome,
-                      ).length;
-                      return (
-                        <div
-                          key={cargo.id}
-                          className="flex items-center justify-between gap-3 px-4 py-2.5"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-medium text-[#1F2937]">
-                              {cargo.nome}
-                            </p>
-                            <p className="text-[11px] text-[#94A3B8]">
-                              {quantidade > 0
-                                ? `${quantidade} colaborador(es)`
-                                : "Nenhum colaborador ainda"}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => onEditarCargo(setor.id, cargo)}
-                              className="text-[12px] font-medium text-[#1E3A8A] transition hover:text-[#1E40AF]"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removerCargo(cargo.id)}
-                              className="text-[12px] font-medium text-[#E11D48] transition hover:text-[#BE123C]"
-                            >
-                              Remover
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onNovoCargo(setor.id)}
-                  className="flex items-center justify-center gap-1.5 border-t border-[#E9EEF5] px-4 py-2.5 text-[12px] font-medium text-[#1E3A8A] transition hover:bg-[#F8FAFC]"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Adicionar cargo
-                </button>
               </div>
             ))}
             <button
@@ -960,6 +676,8 @@ interface ColaboradoresTabProps {
   unidades: Unidade[];
   unidadesCarregando: boolean;
   colaboradores: Colaborador[];
+  onSetoresCriados: (novos: SetorConfig[]) => void;
+  gruposDisponiveis: string[];
 }
 
 function ColaboradoresTab({
@@ -967,6 +685,8 @@ function ColaboradoresTab({
   unidades,
   unidadesCarregando,
   colaboradores,
+  onSetoresCriados,
+  gruposDisponiveis,
 }: ColaboradoresTabProps) {
   const session = usePanelSession();
   const [lista, setLista] = useState<Colaborador[]>(colaboradores);
@@ -975,6 +695,7 @@ function ColaboradoresTab({
   const [unidade, setUnidade] = useState("todas");
   const [setor, setSetor] = useState("todos");
   const [novoAberto, setNovoAberto] = useState(false);
+  const [importarAberto, setImportarAberto] = useState(false);
   const [gerindo, setGerindo] = useState<Colaborador | null>(null);
   const [liberadosPorColaborador, setLiberadosPorColaborador] = useState<Record<string, number>>(
     {},
@@ -1049,24 +770,21 @@ function ColaboradoresTab({
   const podeDarAdministracao =
     session?.role === "admin" ||
     usuarioAtual?.nivelAcesso === "Administrador" ||
-<<<<<<< HEAD
     usuarioAtual?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA ||
     usuarioAtual?.nivelAcesso === "Desenvolvedor";
-=======
-    usuarioAtual?.nivelAcesso === "Desenvolvedor do Sistema";
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 
   const filtrados = lista.filter((colaborador) => {
     const termo = busca.trim().toLowerCase();
     const bateBusca =
       termo === "" ||
       colaborador.nome.toLowerCase().includes(termo) ||
-      colaborador.cargo.toLowerCase().includes(termo) ||
       (colaborador.email ?? "").toLowerCase().includes(termo);
     const bateUnidade = unidade === "todas" || colaborador.unidade === unidade;
     const bateSetor = setor === "todos" || colaborador.setor === setor;
     return bateBusca && bateUnidade && bateSetor;
   });
+
+  const paginacao = usePaginacao(filtrados, [busca, unidade, setor]);
 
   function adicionar(dados: Omit<Colaborador, "id">, acesso?: AcessoLogin) {
     org
@@ -1080,7 +798,7 @@ function ColaboradoresTab({
               criado.id,
               criado.email ?? dados.email ?? "",
               acesso.senha,
-              acesso.perfilLogin,
+              "usuario",
             );
             toast.success("Colaborador criado com acesso de login.");
             setEmailsComLogin((atual) => [
@@ -1129,12 +847,7 @@ function ColaboradoresTab({
 
     // Cria/atualiza o acesso de login quando o admin preencheu uma senha.
     if (acesso?.senha) {
-      criarAcessoColaborador(
-        colaborador.id,
-        colaborador.email ?? "",
-        acesso.senha,
-        acesso.perfilLogin,
-      )
+      criarAcessoColaborador(colaborador.id, colaborador.email ?? "", acesso.senha, "usuario")
         .then(() => {
           toast.success("Acesso de login salvo.");
           setEmailsComLogin((atual) =>
@@ -1217,6 +930,15 @@ function ColaboradoresTab({
             </SelectContent>
           </Select>
 
+          <Button
+            variant="outline"
+            className="rounded-full"
+            onClick={() => setImportarAberto(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Importar Colaboradores
+          </Button>
+
           <Button onClick={() => setNovoAberto(true)}>
             <Plus className="h-4 w-4" />
             Novo colaborador
@@ -1244,7 +966,7 @@ function ColaboradoresTab({
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map((colaborador) => {
+                {paginacao.itensDaPagina.map((colaborador) => {
                   const temLogin = emailsComLogin.includes(
                     (colaborador.email ?? "").trim().toLowerCase(),
                   );
@@ -1258,9 +980,6 @@ function ColaboradoresTab({
                           <div className="min-w-0">
                             <p className="truncate text-[13px] font-semibold text-[#1F2937]">
                               {colaborador.nome}
-                            </p>
-                            <p className="truncate text-[11px] text-[#64748B]">
-                              {colaborador.cargo}
                             </p>
                           </div>
                         </div>
@@ -1342,6 +1061,12 @@ function ColaboradoresTab({
             <p className="mt-1 text-sm text-[#64748B]">Ajuste a busca ou os filtros.</p>
           </div>
         ) : null}
+
+        <Paginacao
+          pagina={paginacao.pagina}
+          totalPaginas={paginacao.totalPaginas}
+          onMudar={paginacao.irParaPagina}
+        />
       </div>
 
       <div className="mt-6 rounded-2xl border border-[#D9E0EA] bg-white p-5 shadow-sm">
@@ -1368,9 +1093,30 @@ function ColaboradoresTab({
         onFechar={() => setNovoAberto(false)}
         onCriar={adicionar}
         podeDarAdministracao={podeDarAdministracao}
+        gruposDisponiveis={gruposDisponiveis}
         podeCriarLogin={
           session?.role === "admin" || session?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA
         }
+      />
+      <ImportarColaboradoresDialog
+        aberto={importarAberto}
+        setores={setores}
+        unidades={nomesUnidades}
+        cidadesUnidades={cidadesUnidades}
+        emailsExistentes={lista.map((item) => item.email ?? "").filter(Boolean)}
+        podeCriarLogin={
+          session?.role === "admin" || session?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA
+        }
+        emailsComLogin={emailsComLogin}
+        onSetoresCriados={onSetoresCriados}
+        onFechar={() => setImportarAberto(false)}
+        onImportado={(criados, emailsLogin) => {
+          setLista((atual) => [...criados, ...atual]);
+          setEmailsComLogin((atual) => [
+            ...atual,
+            ...emailsLogin.map((email) => email.trim().toLowerCase()),
+          ]);
+        }}
       />
       {gerindo ? (
         <GerirColaboradorDialog
@@ -1382,6 +1128,7 @@ function ColaboradoresTab({
           onFechar={() => setGerindo(null)}
           onSalvar={salvar}
           podeDarAdministracao={podeDarAdministracao}
+          gruposDisponiveis={gruposDisponiveis}
         />
       ) : null}
     </div>
@@ -1406,6 +1153,7 @@ interface NovoColaboradorDialogProps {
   onFechar: () => void;
   onCriar: (dados: Omit<Colaborador, "id">, acesso?: AcessoLogin) => void;
   podeDarAdministracao: boolean;
+  gruposDisponiveis: string[];
   /** Somente admins podem criar acesso de login para novos colaboradores. */
   podeCriarLogin: boolean;
 }
@@ -1419,38 +1167,21 @@ function NovoColaboradorDialog({
   onFechar,
   onCriar,
   podeDarAdministracao,
+  gruposDisponiveis,
   podeCriarLogin,
 }: NovoColaboradorDialogProps) {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
-  const [cargo, setCargo] = useState("");
   const [setor, setSetor] = useState(() => setores[0]?.nome ?? "");
   const [unidade, setUnidade] = useState(() => unidades[0] ?? "Matriz");
   const [nivelAcesso, setNivelAcesso] = useState("Colaborador");
   const [grupos, setGrupos] = useState<string[]>([]);
   const [senhaAcesso, setSenhaAcesso] = useState("");
-  const [perfilLogin, setPerfilLogin] = useState<UserRole>("usuario");
-
-  // Só aparecem no cadastro os cargos do setor escolhido.
-  const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
-
-  function trocarSetor(novoSetor: string) {
-    setSetor(novoSetor);
-    setCargo("");
-  }
 
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
-<<<<<<< HEAD
   const niveisDisponiveis = podeDarAdministracao
     ? NIVEIS_ACESSO
     : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
-=======
-  const niveisDisponiveis = (
-    podeDarAdministracao
-      ? NIVEIS_ACESSO
-      : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador")
-  ).filter((nivel) => nivel.rotulo !== "Desenvolvedor do Sistema");
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 
   function alternarGrupo(grupo: string) {
     setGrupos((atual) =>
@@ -1461,13 +1192,11 @@ function NovoColaboradorDialog({
   function limpar() {
     setNome("");
     setEmail("");
-    setCargo("");
     setSetor(setores[0]?.nome ?? "");
     setUnidade(unidades[0] ?? "Matriz");
     setNivelAcesso("Colaborador");
     setGrupos([]);
     setSenhaAcesso("");
-    setPerfilLogin("usuario");
   }
 
   function enviar() {
@@ -1476,7 +1205,7 @@ function NovoColaboradorDialog({
     onCriar(
       {
         nome: nome.trim(),
-        cargo: cargo || "Sem cargo",
+        cargo: "Sem cargo",
         email: email.trim(),
         unidade,
         cidade,
@@ -1485,7 +1214,7 @@ function NovoColaboradorDialog({
         ...(grupos.length > 0 ? { grupos: grupos.join(", ") } : {}),
         exclusao: "Sem acesso",
       },
-      podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso, perfilLogin } : undefined,
+      podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso } : undefined,
     );
     limpar();
   }
@@ -1533,7 +1262,7 @@ function NovoColaboradorDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Setor">
-              <Select value={setor} onValueChange={trocarSetor}>
+              <Select value={setor} onValueChange={setSetor}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione…" />
                 </SelectTrigger>
@@ -1545,9 +1274,6 @@ function NovoColaboradorDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
-                O cargo é escolhido depois, dentro do setor selecionado.
-              </p>
             </Campo>
 
             <Campo rotulo="Unidade">
@@ -1588,7 +1314,7 @@ function NovoColaboradorDialog({
 
           <Campo rotulo="Grupos personalizados">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {GRUPOS_PERSONALIZADOS.map((grupo) => (
+              {gruposDisponiveis.map((grupo) => (
                 <label
                   key={grupo}
                   htmlFor={`novo-grupo-${grupo}`}
@@ -1620,19 +1346,6 @@ function NovoColaboradorDialog({
                     Preencha para já criar o login deste colaborador.
                   </p>
                 </div>
-                <Select
-                  value={perfilLogin}
-                  onValueChange={(valor) => setPerfilLogin(valor as UserRole)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="usuario">Perfil de login: usuário</SelectItem>
-                    <SelectItem value="gestor">Perfil de login: gestor</SelectItem>
-                    <SelectItem value="admin">Perfil de login: admin</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </Campo>
           ) : null}
@@ -1668,6 +1381,7 @@ interface GerirColaboradorDialogProps {
     acesso?: AcessoLogin,
   ) => void;
   podeDarAdministracao: boolean;
+  gruposDisponiveis: string[];
 }
 
 function GerirColaboradorDialog({
@@ -1679,6 +1393,7 @@ function GerirColaboradorDialog({
   onFechar,
   onSalvar,
   podeDarAdministracao,
+  gruposDisponiveis,
 }: GerirColaboradorDialogProps) {
   const [setor, setSetor] = useState(colaborador?.setor ?? "Qualidade");
   const [unidade, setUnidade] = useState(colaborador?.unidade ?? "Matriz");
@@ -1686,21 +1401,14 @@ function GerirColaboradorDialog({
   const [exclusao, setExclusao] = useState(colaborador?.exclusao ?? "Sem acesso");
   const [nome, setNome] = useState(colaborador?.nome ?? "");
   const [email, setEmail] = useState(colaborador?.email ?? "");
-  const [cargo, setCargo] = useState(colaborador?.cargo ?? "Sem cargo");
   const [grupos, setGrupos] = useState<string[]>(
     colaborador?.grupos ? colaborador.grupos.split(", ").filter(Boolean) : [],
   );
   // Permissões de documentos (Qualidade): visíveis só para o setor Qualidade e
   // editáveis apenas pela liderança da Qualidade e administradores.
-  const [permAdicionar, setPermAdicionar] = useState(
-    colaborador?.permAdicionarDocumentos ?? false,
-  );
-  const [permModificar, setPermModificar] = useState(
-    colaborador?.permModificarDocumentos ?? false,
-  );
-  const [permExcluir, setPermExcluir] = useState(
-    colaborador?.permExcluirDocumentos ?? false,
-  );
+  const [permAdicionar, setPermAdicionar] = useState(colaborador?.permAdicionarDocumentos ?? false);
+  const [permModificar, setPermModificar] = useState(colaborador?.permModificarDocumentos ?? false);
+  const [permExcluir, setPermExcluir] = useState(colaborador?.permExcluirDocumentos ?? false);
   // Permissão dedicada a planos de ação: concedida pelo Gestor da Qualidade.
   const [permExcluirPlanos, setPermExcluirPlanos] = useState(
     colaborador?.permExcluirPlanos ?? false,
@@ -1715,12 +1423,10 @@ function GerirColaboradorDialog({
   // Criação de acesso de login: sessão de admin ou Desenvolvedor do Sistema.
   const sessionDialog = usePanelSession();
   const podeCriarLogin =
-    sessionDialog?.role === "admin" ||
-    sessionDialog?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
+    sessionDialog?.role === "admin" || sessionDialog?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
   // Edição das permissões de documentos: liderança da Qualidade e admins.
   const podeEditarPermissoes = ehLiderancaDaQualidade(sessionDialog);
   const [senhaAcesso, setSenhaAcesso] = useState("");
-  const [perfilLogin, setPerfilLogin] = useState<UserRole>("usuario");
 
   // Re-sincroniza as permissões ao trocar de colaborador no mesmo diálogo.
   useEffect(() => {
@@ -1764,18 +1470,14 @@ function GerirColaboradorDialog({
 
   function alternarLiberacaoPolitica(politicaId: string) {
     setPoliticaIdsLiberados((atual) =>
-      atual.includes(politicaId)
-        ? atual.filter((id) => id !== politicaId)
-        : [...atual, politicaId],
+      atual.includes(politicaId) ? atual.filter((id) => id !== politicaId) : [...atual, politicaId],
     );
   }
 
   const atual = colaborador;
   if (!atual) return null;
 
-  const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
-<<<<<<< HEAD
   // O Desenvolvedor do Sistema é imutável: o nível não pode ser trocado.
   const ehDesenvolvedorDoSistema = atual.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
   const niveisDisponiveis = ehDesenvolvedorDoSistema
@@ -1783,21 +1485,6 @@ function GerirColaboradorDialog({
     : podeDarAdministracao
       ? NIVEIS_ACESSO
       : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
-=======
-  const ehDevSistema = colaborador?.nivelAcesso === "Desenvolvedor do Sistema";
-  const niveisDisponiveis = ehDevSistema
-    ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo === "Desenvolvedor do Sistema")
-    : (podeDarAdministracao
-        ? NIVEIS_ACESSO
-        : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador")
-      ).filter((nivel) => nivel.rotulo !== "Desenvolvedor do Sistema");
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
-
-  function trocarSetor(novoSetor: string) {
-    setSetor(novoSetor);
-    const cargosDoNovoSetor = setores.find((item) => item.nome === novoSetor)?.cargos ?? [];
-    setCargo(cargosDoNovoSetor[0]?.nome ?? "Sem cargo");
-  }
 
   function alternarGrupo(grupo: string) {
     setGrupos((atualLista) =>
@@ -1813,7 +1500,8 @@ function GerirColaboradorDialog({
       id: atual.id,
       nome: nome.trim() || atual.nome,
       email: email.trim() || (atual.email ?? ""),
-      cargo: cargo.trim() || "Sem cargo",
+      // O cargo não é mais editável; preserva o valor já gravado.
+      cargo: atual.cargo || "Sem cargo",
       setor,
       unidade,
       nivelAcesso,
@@ -1826,7 +1514,7 @@ function GerirColaboradorDialog({
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
     const acesso: AcessoLogin | undefined =
-      podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso, perfilLogin } : undefined;
+      podeCriarLogin && senhaAcesso.trim() ? { senha: senhaAcesso } : undefined;
     onSalvar(
       atualizado,
       podeLiberar ? { pops: popIdsLiberados, politicas: politicaIdsLiberados } : null,
@@ -1848,9 +1536,7 @@ function GerirColaboradorDialog({
           </span>
           <div className="min-w-0">
             <p className="truncate text-[14px] font-semibold text-[#1F2937]">{colaborador.nome}</p>
-            <p className="truncate text-[12px] text-[#64748B]">
-              {colaborador.cargo} · {colaborador.email}
-            </p>
+            <p className="truncate text-[12px] text-[#64748B]">{colaborador.email}</p>
           </div>
         </div>
 
@@ -1877,7 +1563,7 @@ function GerirColaboradorDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Setor">
-              <Select value={setor} onValueChange={trocarSetor}>
+              <Select value={setor} onValueChange={setSetor}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1889,27 +1575,6 @@ function GerirColaboradorDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </Campo>
-
-            <Campo rotulo="Cargo">
-              <Select value={cargo} onValueChange={(valor) => setCargo(valor)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {cargosDoSetor.map((opcao) => (
-                    <SelectItem key={opcao.id} value={opcao.nome}>
-                      {opcao.nome}
-                    </SelectItem>
-                  ))}
-                  {cargosDoSetor.length === 0 ? (
-                    <SelectItem value="Sem cargo">Sem cargo</SelectItem>
-                  ) : null}
-                </SelectContent>
-              </Select>
-              <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
-                Trocar o setor atualiza a lista de cargos disponíveis.
-              </p>
             </Campo>
           </div>
 
@@ -1933,15 +1598,11 @@ function GerirColaboradorDialog({
           </div>
 
           <Campo rotulo="Nível de acesso">
-<<<<<<< HEAD
             <Select
               value={nivelAcesso}
               onValueChange={setNivelAcesso}
               disabled={ehDesenvolvedorDoSistema}
             >
-=======
-            <Select value={nivelAcesso} onValueChange={setNivelAcesso} disabled={ehDevSistema}>
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1967,7 +1628,7 @@ function GerirColaboradorDialog({
 
           <Campo rotulo="Grupos personalizados">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {GRUPOS_PERSONALIZADOS.map((grupo) => (
+              {gruposDisponiveis.map((grupo) => (
                 <label
                   key={grupo}
                   htmlFor={`gerir-grupo-${grupo}`}
@@ -2091,19 +1752,6 @@ function GerirColaboradorDialog({
                   Preencha para (re)criar o login deste colaborador.
                 </p>
               </div>
-              <Select
-                value={perfilLogin}
-                onValueChange={(valor) => setPerfilLogin(valor as UserRole)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="usuario">Perfil de login: usuário</SelectItem>
-                  <SelectItem value="gestor">Perfil de login: gestor</SelectItem>
-                  <SelectItem value="admin">Perfil de login: admin</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </Campo>
 
@@ -2263,81 +1911,6 @@ function SetorDialog({
   );
 }
 
-function CargoDialog({
-  setores,
-  setorId,
-  cargo,
-  onFechar,
-  onSalvar,
-}: {
-  setores: SetorConfig[];
-  setorId: string;
-  cargo: CargoConfig | null;
-  onFechar: () => void;
-  onSalvar: (setorDestinoId: string, nome: string) => void;
-}) {
-  const [nome, setNome] = useState(cargo?.nome ?? "");
-  const [destinoId, setDestinoId] = useState(setorId);
-
-  useEffect(() => {
-    setNome(cargo?.nome ?? "");
-    setDestinoId(setorId);
-  }, [cargo, setorId]);
-
-  return (
-    <Dialog open onOpenChange={(abre) => !abre && onFechar()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{cargo ? "Editar cargo" : "Novo cargo"}</DialogTitle>
-          <DialogDescription>
-            {cargo
-              ? `Edite o nome do cargo ou mova-o para outro setor.`
-              : "Defina o nome do cargo e o setor de destino."}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Nome do cargo</Label>
-            <Input
-              value={nome}
-              onChange={(evento) => setNome(evento.target.value)}
-              placeholder="Ex.: Desenvolvedor"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Setor de destino</Label>
-            <Select value={destinoId} onValueChange={setDestinoId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione…" />
-              </SelectTrigger>
-              <SelectContent>
-                {setores.map((opcao) => (
-                  <SelectItem key={opcao.id} value={opcao.id}>
-                    {opcao.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onFechar}>
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            onClick={() => onSalvar(destinoId, nome)}
-            className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-          >
-            Salvar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function RemoverSetorDialog({
   setor,
   onFechar,
@@ -2353,8 +1926,8 @@ function RemoverSetorDialog({
         <DialogHeader>
           <DialogTitle>Remover setor</DialogTitle>
           <DialogDescription>
-            Tem certeza que deseja remover o setor <strong>{setor?.nome}</strong>? Isso também
-            removerá todos os cargos associados.
+            Tem certeza que deseja remover o setor <strong>{setor?.nome}</strong>? Os colaboradores
+            já cadastrados nele não são apagados.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
