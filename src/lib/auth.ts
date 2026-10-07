@@ -1,3 +1,4 @@
+import { roleDoNivel } from "@/lib/niveis-acesso";
 /**
  * Autenticação do painel administrativo.
  *
@@ -148,6 +149,7 @@ export async function atualizarSessao(): Promise<UserSession | null> {
       setor: colaborador.setor || atual.setor,
       unidade: colaborador.unidade || atual.unidade,
       nivelAcesso: colaborador.nivel_acesso || atual.nivelAcesso,
+      role: colaborador.nivel_acesso ? roleDoNivel(colaborador.nivel_acesso) : atual.role,
       permAdicionarDocumentos: colaborador.perm_adicionar_documentos,
       permModificarDocumentos: colaborador.perm_modificar_documentos,
       permExcluirDocumentos: colaborador.perm_excluir_documentos,
@@ -345,7 +347,10 @@ export async function login(
         // O registro organizacional (colaboradores) prevalece sobre a fotografia
         // de `usuarios`: cargo, setor e nível de acesso refletem sempre o vínculo
         // atual, mesmo quando o usuário mudou de setor após criar o login.
-        if (colaborador.nivel_acesso) sessionBase.nivelAcesso = colaborador.nivel_acesso;
+        if (colaborador.nivel_acesso) {
+          sessionBase.nivelAcesso = colaborador.nivel_acesso;
+          sessionBase.role = roleDoNivel(colaborador.nivel_acesso);
+        }
         if (colaborador.cargo) sessionBase.cargo = colaborador.cargo;
         if (colaborador.setor) sessionBase.setor = colaborador.setor;
         if (usuario.email !== colaborador.email && colaborador.email) {

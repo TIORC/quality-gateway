@@ -147,7 +147,7 @@ function ProjetosEEstrategias() {
         colaboradores={catalogo.colaboradores}
         projetos={projetos}
         onFechar={() => setNovoProjetoAberto(false)}
-        onCriado={(p) => {
+        onCriado={(p: ProjetoEstrategico) => {
           setProjetos((lista) => [p, ...lista]);
           setNovoProjetoAberto(false);
           toast.success(`Projeto ${p.codigo} criado.`);
@@ -176,6 +176,8 @@ interface NovoProjetoDialogProps {
   setores: string[];
   colaboradores: Colaborador[];
   onFechar: () => void;
+  projetos?: ProjetoEstrategico[];
+  onCriado?: (p: ProjetoEstrategico) => void;
 }
 
 function NovoProjetoDialog({ aberto, setores, colaboradores, onFechar }: NovoProjetoDialogProps) {

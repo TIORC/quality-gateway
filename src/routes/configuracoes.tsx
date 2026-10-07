@@ -1049,8 +1049,12 @@ function ColaboradoresTab({
   const podeDarAdministracao =
     session?.role === "admin" ||
     usuarioAtual?.nivelAcesso === "Administrador" ||
+<<<<<<< HEAD
     usuarioAtual?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA ||
     usuarioAtual?.nivelAcesso === "Desenvolvedor";
+=======
+    usuarioAtual?.nivelAcesso === "Desenvolvedor do Sistema";
+>>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 
   const filtrados = lista.filter((colaborador) => {
     const termo = busca.trim().toLowerCase();
@@ -1436,9 +1440,17 @@ function NovoColaboradorDialog({
   }
 
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
+<<<<<<< HEAD
   const niveisDisponiveis = podeDarAdministracao
     ? NIVEIS_ACESSO
     : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
+=======
+  const niveisDisponiveis = (
+    podeDarAdministracao
+      ? NIVEIS_ACESSO
+      : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador")
+  ).filter((nivel) => nivel.rotulo !== "Desenvolvedor do Sistema");
+>>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 
   function alternarGrupo(grupo: string) {
     setGrupos((atual) =>
@@ -1763,6 +1775,7 @@ function GerirColaboradorDialog({
 
   const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
+<<<<<<< HEAD
   // O Desenvolvedor do Sistema é imutável: o nível não pode ser trocado.
   const ehDesenvolvedorDoSistema = atual.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
   const niveisDisponiveis = ehDesenvolvedorDoSistema
@@ -1770,6 +1783,15 @@ function GerirColaboradorDialog({
     : podeDarAdministracao
       ? NIVEIS_ACESSO
       : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
+=======
+  const ehDevSistema = colaborador?.nivelAcesso === "Desenvolvedor do Sistema";
+  const niveisDisponiveis = ehDevSistema
+    ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo === "Desenvolvedor do Sistema")
+    : (podeDarAdministracao
+        ? NIVEIS_ACESSO
+        : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador")
+      ).filter((nivel) => nivel.rotulo !== "Desenvolvedor do Sistema");
+>>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 
   function trocarSetor(novoSetor: string) {
     setSetor(novoSetor);
@@ -1911,11 +1933,15 @@ function GerirColaboradorDialog({
           </div>
 
           <Campo rotulo="Nível de acesso">
+<<<<<<< HEAD
             <Select
               value={nivelAcesso}
               onValueChange={setNivelAcesso}
               disabled={ehDesenvolvedorDoSistema}
             >
+=======
+            <Select value={nivelAcesso} onValueChange={setNivelAcesso} disabled={ehDevSistema}>
+>>>>>>> f852d6842f80714e32258d871461eb3b99acc344
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

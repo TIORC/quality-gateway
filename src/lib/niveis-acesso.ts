@@ -1,4 +1,5 @@
 export const NIVEIS_ACESSO = [
+<<<<<<< HEAD
   {
     rotulo: "Desenvolvedor do Sistema",
     descricao:
@@ -38,6 +39,14 @@ export const NIVEIS_ACESSO = [
     rotulo: "Colaborador de outra unidade",
     descricao: "Somente POPs expressamente liberados.",
   },
+=======
+  { rotulo: "Desenvolvedor do Sistema", descricao: "Acesso a tudo, imutável. Exclusivo da TI." },
+  { rotulo: "Gestor da Qualidade", descricao: "Dono do sistema. Acesso total, inclusive Configurações." },
+  { rotulo: "Administrador", descricao: "Opera e vê absolutamente tudo, inclusive Configurações." },
+  { rotulo: "Líder de setor", descricao: "Vê e aprova os POPs e políticas do seu setor." },
+  { rotulo: "Colaborador", descricao: "Vê os POPs e políticas do seu setor." },
+  { rotulo: "Colaborador de outra unidade", descricao: "Apenas lê os POPs e políticas." },
+>>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 ] as const;
 
 /** Rótulos dos níveis de acesso (mesma ordem do array acima). */
@@ -57,7 +66,11 @@ export const NIVEIS_RESERVADOS_GESTAO = new Set<string>([
 
 /** Níveis que enxergam todos os POPs, sem liberação nem filtro de setor. */
 export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
+<<<<<<< HEAD
   NIVEL_DESENVOLVEDOR_SISTEMA,
+=======
+  "Desenvolvedor do Sistema",
+>>>>>>> f852d6842f80714e32258d871461eb3b99acc344
   "Administrador",
   "Gestor da Qualidade",
 ]);
@@ -66,8 +79,22 @@ export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
 export const NIVEIS_FILTRAM_POR_SETOR = new Set<string>([
   "Colaborador",
   "Líder de setor",
-  "Desenvolvedor",
 ]);
+
+/** Níveis com acesso total (inclusive Configurações). */
+export const NIVEIS_GESTAO = new Set<string>([
+  "Desenvolvedor do Sistema",
+  "Gestor da Qualidade",
+  "Administrador",
+]);
+
+/** Papel interno derivado do nível de acesso (o nível sempre prevalece). */
+export function roleDoNivel(nivel: string): "admin" | "gestor" | "usuario" {
+  if (nivel === "Gestor da Qualidade") return "gestor";
+  if (nivel === "Administrador" || nivel === "Desenvolvedor do Sistema" || nivel === "Desenvolvedor")
+    return "admin";
+  return "usuario";
+}
 
 /** Nível que vê somente o que foi liberado individualmente. */
 export const NIVEL_SOMENTE_LIBERADOS = "Colaborador de outra unidade";
