@@ -1364,6 +1364,10 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
       pops = pops.filter((pop) => {
         const autorizados = pop.visualizadores ?? [];
         if (autorizados.length === 0) return true;
+        // POP Geral (ou liberado para "Geral") é visível para todos.
+        if (popEhGeral(pop)) return true;
+        if (autorizados.some((id) => id === "geral" || setorDeId(id, base.setores) === "geral"))
+          return true;
         return autorizados
           .map((id) => setorDeId(id, base.setores))
           .some((nome) => nome === meuSetor || nome === minhaUnidade);
