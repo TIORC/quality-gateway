@@ -772,11 +772,12 @@ export function podeAprovarLiderProcesso(
 }
 
 /** Sessão usada como autor na criação e nas aprovações. */
-function autorDaSessao(): { id: string; nome: string } {
+function autorDaSessao(): { id: string; nome: string; email: string } {
   const sessao = getSession();
   return {
     id: sessao?.colaboradorId || sessao?.id || "",
     nome: sessao?.nome ?? "",
+    email: sessao?.email ?? "",
   };
 }
 

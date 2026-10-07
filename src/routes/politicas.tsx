@@ -1184,6 +1184,7 @@ function PoliticaDetalhe({
               usuarioNome: sessao?.nome ?? "",
               decisao: item.parecer.tipo,
               createdAt: item.parecer.data,
+              revisaoLida: item.revisao,
             },
           ]
         : [];
