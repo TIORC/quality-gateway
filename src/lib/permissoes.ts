@@ -39,11 +39,7 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
 const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
 
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
-<<<<<<< HEAD
-  [NIVEL_DESENVOLVEDOR_SISTEMA]: TODAS_AS_ROTAS,
-=======
   "Desenvolvedor do Sistema": TODAS_AS_ROTAS,
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
   Administrador: TODAS_AS_ROTAS,
   "Gestor da Qualidade": TODAS_AS_ROTAS,
   "Líder de setor": ROTAS_ABERTAS,
@@ -147,11 +143,7 @@ export function ehAdministrador(session: UserSession | null | undefined): boolea
   return (
     session.role === "admin" ||
     session.nivelAcesso === "Administrador" ||
-<<<<<<< HEAD
-    session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA
-=======
     session.nivelAcesso === "Desenvolvedor do Sistema"
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
   );
 }
 
@@ -173,12 +165,7 @@ export function podeGerenciarConteudo(session: UserSession | null | undefined): 
 export function podePlanejarAuditoria(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (ehUsuarioDaQualidade(session)) return true;
-<<<<<<< HEAD
-  if (ehAdministrador(session)) return true;
-  return session.nivelAcesso === "Desenvolvedor";
-=======
   return ehAdministrador(session);
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 }
 
 /* -------------------------------------------------------------------------- */
