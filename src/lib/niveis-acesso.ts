@@ -1,52 +1,10 @@
 export const NIVEIS_ACESSO = [
-<<<<<<< HEAD
-  {
-    rotulo: "Desenvolvedor do Sistema",
-    descricao:
-      "Acesso total e irrestrito, exclusivo da TI Maracas. Registro imutável e não excluível.",
-  },
-  {
-    rotulo: "Administrador",
-    descricao:
-      "Acesso total e irrestrito. Gerencia usuários e concede permissões de administração a qualquer pessoa.",
-  },
-  {
-    rotulo: "Gestor da Qualidade",
-    descricao: "Acesso total. Cria e publica documentos, atas, projetos e indicadores.",
-  },
-  {
-    rotulo: "Auxiliar da Qualidade",
-    descricao: "Elabora e apura, mas não libera divulgação de POP.",
-  },
-  {
-    rotulo: "Diretoria",
-    descricao: "Enxerga tudo em leitura. Assina atas e aprova políticas.",
-  },
-  {
-    rotulo: "Líder de setor",
-    descricao: "Seu setor: ações, documentos, ocorrências e projetos.",
-  },
-  {
-    rotulo: "Desenvolvedor",
-    descricao:
-      "Acesso como colaborador: suas ações, o que segue e o que foi divulgado ao seu setor.",
-  },
-  {
-    rotulo: "Colaborador",
-    descricao: "Suas ações, o que segue e o que foi divulgado a ele.",
-  },
-  {
-    rotulo: "Colaborador de outra unidade",
-    descricao: "Somente POPs expressamente liberados.",
-  },
-=======
   { rotulo: "Desenvolvedor do Sistema", descricao: "Acesso a tudo, imutável. Exclusivo da TI." },
   { rotulo: "Gestor da Qualidade", descricao: "Dono do sistema. Acesso total, inclusive Configurações." },
   { rotulo: "Administrador", descricao: "Opera e vê absolutamente tudo, inclusive Configurações." },
   { rotulo: "Líder de setor", descricao: "Vê e aprova os POPs e políticas do seu setor." },
   { rotulo: "Colaborador", descricao: "Vê os POPs e políticas do seu setor." },
   { rotulo: "Colaborador de outra unidade", descricao: "Apenas lê os POPs e políticas." },
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
 ] as const;
 
 /** Rótulos dos níveis de acesso (mesma ordem do array acima). */
@@ -66,11 +24,7 @@ export const NIVEIS_RESERVADOS_GESTAO = new Set<string>([
 
 /** Níveis que enxergam todos os POPs, sem liberação nem filtro de setor. */
 export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
-<<<<<<< HEAD
-  NIVEL_DESENVOLVEDOR_SISTEMA,
-=======
   "Desenvolvedor do Sistema",
->>>>>>> f852d6842f80714e32258d871461eb3b99acc344
   "Administrador",
   "Gestor da Qualidade",
 ]);
