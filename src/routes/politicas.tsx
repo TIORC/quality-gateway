@@ -1217,7 +1217,8 @@ function PoliticaDetalhe({
       </div>
 
       <article className="rounded-2xl border border-[#D9E0EA] bg-white p-5 shadow-sm sm:p-7">
-        {/* Releitura indispensável: banner com o texto do que mudou na revisão. */}
+        {/* Releitura indispensável: só para quem tem leitura pendente. */}
+        {!leituraPropria ? (
         <div className="mb-4 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-3">
           <p className="text-[13px] font-bold text-[#92400E]">
             O que mudou na {rotuloRevisao(item.revisao)} — releitura indispensável
@@ -1232,6 +1233,7 @@ function PoliticaDetalhe({
             </p>
           ) : null}
         </div>
+        ) : null}
         {item.anexo ? (
           <PoliticaAnexoVisualizador anexo={item.anexo} />
         ) : (
