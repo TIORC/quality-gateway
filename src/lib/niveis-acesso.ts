@@ -1,5 +1,10 @@
 export const NIVEIS_ACESSO = [
   {
+    rotulo: "Desenvolvedor do Sistema",
+    descricao:
+      "Acesso total e irrestrito, exclusivo da TI Maracas. Registro imutável e não excluível.",
+  },
+  {
     rotulo: "Administrador",
     descricao:
       "Acesso total e irrestrito. Gerencia usuários e concede permissões de administração a qualquer pessoa.",
@@ -38,8 +43,24 @@ export const NIVEIS_ACESSO = [
 /** Rótulos dos níveis de acesso (mesma ordem do array acima). */
 export const ROTULOS_NIVEIS_ACESSO = NIVEIS_ACESSO.map((nivel) => nivel.rotulo);
 
+/**
+ * Nível exclusivo da TI Maracas: imutável no banco (trigger
+ * `colaboradores_travar_dev`) e com acesso total ao portal.
+ */
+export const NIVEL_DESENVOLVEDOR_SISTEMA = "Desenvolvedor do Sistema";
+
+/** Níveis que só podem ser atribuídos por quem já tem acesso de gestão. */
+export const NIVEIS_RESERVADOS_GESTAO = new Set<string>([
+  "Administrador",
+  NIVEL_DESENVOLVEDOR_SISTEMA,
+]);
+
 /** Níveis que enxergam todos os POPs, sem liberação nem filtro de setor. */
-export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>(["Administrador", "Gestor da Qualidade"]);
+export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
+  NIVEL_DESENVOLVEDOR_SISTEMA,
+  "Administrador",
+  "Gestor da Qualidade",
+]);
 
 /** Níveis que filtram POPs e políticas pelo setor do colaborador. */
 export const NIVEIS_FILTRAM_POR_SETOR = new Set<string>([

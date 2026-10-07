@@ -36,7 +36,13 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
 import { criarAcessoColaborador, listarEmailsComLogin, type UserRole } from "@/lib/auth";
-import { NIVEL_SOMENTE_LIBERADOS, NIVEIS_ACESSO, normalizarSetor } from "@/lib/niveis-acesso";
+import {
+  NIVEL_DESENVOLVEDOR_SISTEMA,
+  NIVEIS_ACESSO,
+  NIVEIS_RESERVADOS_GESTAO,
+  NIVEL_SOMENTE_LIBERADOS,
+  normalizarSetor,
+} from "@/lib/niveis-acesso";
 import { ehLiderancaDaQualidade } from "@/lib/permissoes";
 import { carregarPoliticas, type PoliticaItem } from "@/lib/politicas";
 import {
@@ -90,6 +96,8 @@ function iniciais(nome: string): string {
 
 function corAcesso(nivel: string): string {
   switch (nivel) {
+    case NIVEL_DESENVOLVEDOR_SISTEMA:
+      return "bg-[#F5F3FF] text-[#6D28D9]";
     case "Administrador":
       return "bg-[#FEF3C7] text-[#B45309]";
     case "Gestor da Qualidade":
@@ -1041,6 +1049,7 @@ function ColaboradoresTab({
   const podeDarAdministracao =
     session?.role === "admin" ||
     usuarioAtual?.nivelAcesso === "Administrador" ||
+    usuarioAtual?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA ||
     usuarioAtual?.nivelAcesso === "Desenvolvedor";
 
   const filtrados = lista.filter((colaborador) => {
@@ -1355,7 +1364,9 @@ function ColaboradoresTab({
         onFechar={() => setNovoAberto(false)}
         onCriar={adicionar}
         podeDarAdministracao={podeDarAdministracao}
-        podeCriarLogin={session?.role === "admin"}
+        podeCriarLogin={
+          session?.role === "admin" || session?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA
+        }
       />
       {gerindo ? (
         <GerirColaboradorDialog
@@ -1427,7 +1438,7 @@ function NovoColaboradorDialog({
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
   const niveisDisponiveis = podeDarAdministracao
     ? NIVEIS_ACESSO
-    : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador");
+    : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
 
   function alternarGrupo(grupo: string) {
     setGrupos((atual) =>
@@ -1689,9 +1700,11 @@ function GerirColaboradorDialog({
   const [politicaIdsLiberados, setPoliticaIdsLiberados] = useState<string[]>([]);
   const [liberacaoCarregando, setLiberacaoCarregando] = useState(false);
   const podeLiberar = nivelAcesso === NIVEL_SOMENTE_LIBERADOS;
-  // Criação de acesso de login: somente para sessão de admin.
+  // Criação de acesso de login: sessão de admin ou Desenvolvedor do Sistema.
   const sessionDialog = usePanelSession();
-  const podeCriarLogin = sessionDialog?.role === "admin";
+  const podeCriarLogin =
+    sessionDialog?.role === "admin" ||
+    sessionDialog?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
   // Edição das permissões de documentos: liderança da Qualidade e admins.
   const podeEditarPermissoes = ehLiderancaDaQualidade(sessionDialog);
   const [senhaAcesso, setSenhaAcesso] = useState("");
@@ -1750,9 +1763,13 @@ function GerirColaboradorDialog({
 
   const cargosDoSetor = setores.find((item) => item.nome === setor)?.cargos ?? [];
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
-  const niveisDisponiveis = podeDarAdministracao
-    ? NIVEIS_ACESSO
-    : NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== "Administrador");
+  // O Desenvolvedor do Sistema é imutável: o nível não pode ser trocado.
+  const ehDesenvolvedorDoSistema = atual.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
+  const niveisDisponiveis = ehDesenvolvedorDoSistema
+    ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo === NIVEL_DESENVOLVEDOR_SISTEMA)
+    : podeDarAdministracao
+      ? NIVEIS_ACESSO
+      : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
 
   function trocarSetor(novoSetor: string) {
     setSetor(novoSetor);
@@ -1831,6 +1848,7 @@ function GerirColaboradorDialog({
                 onChange={(evento) => setEmail(evento.target.value)}
                 placeholder="nome@empresa.com.br"
                 type="email"
+                disabled={ehDesenvolvedorDoSistema}
               />
             </Campo>
           </div>
@@ -1893,7 +1911,11 @@ function GerirColaboradorDialog({
           </div>
 
           <Campo rotulo="Nível de acesso">
-            <Select value={nivelAcesso} onValueChange={setNivelAcesso}>
+            <Select
+              value={nivelAcesso}
+              onValueChange={setNivelAcesso}
+              disabled={ehDesenvolvedorDoSistema}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1908,6 +1930,11 @@ function GerirColaboradorDialog({
             {nivelSelecionado ? (
               <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
                 {nivelSelecionado.descricao}
+              </p>
+            ) : null}
+            {ehDesenvolvedorDoSistema ? (
+              <p className="mt-1.5 text-xs leading-relaxed text-[#6D28D9]">
+                Nível exclusivo da TI Maracas: e-mail, nível e status são imutáveis.
               </p>
             ) : null}
           </Campo>

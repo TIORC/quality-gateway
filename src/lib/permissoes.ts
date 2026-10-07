@@ -12,6 +12,7 @@ import type { UserSession } from "@/lib/auth";
 import type { Ata, TipoReuniao } from "@/lib/atas";
 import {
   NIVEIS_ACESSO_TOTAL_POPS,
+  NIVEL_DESENVOLVEDOR_SISTEMA,
   NIVEL_SOMENTE_LIBERADOS,
   normalizarSetor,
 } from "@/lib/niveis-acesso";
@@ -38,6 +39,7 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
 const ROTAS_ABERTAS: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
 
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
+  [NIVEL_DESENVOLVEDOR_SISTEMA]: TODAS_AS_ROTAS,
   Administrador: TODAS_AS_ROTAS,
   "Gestor da Qualidade": TODAS_AS_ROTAS,
   "Auxiliar da Qualidade": ROTAS_ABERTAS,
@@ -87,11 +89,13 @@ export function veSomenteLiberados(session: UserSession | null): boolean {
 /**
  * Liderança da Qualidade: perfil "gestor", nível "Gestor da Qualidade" ou o
  * cargo "Coordenador da Qualidade". Sempre gerencia documentos, sem depender
- * das permissões individuais de colaborador.
+ * das permissões individuais de colaborador. O "Desenvolvedor do Sistema"
+ * herda este acesso (faz absolutamente tudo).
  */
 export function ehLiderancaDaQualidade(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (session.role === "admin" || session.role === "gestor") return true;
+  if (session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA) return true;
   return (
     session.nivelAcesso === "Gestor da Qualidade" || session.cargo === "Coordenador da Qualidade"
   );
@@ -134,12 +138,17 @@ export function ehUsuarioDaQualidade(session: UserSession | null | undefined): b
 }
 
 /**
- * Administrador do sistema (role `admin` ou nível "Administrador"). Enxerga o
- * andamento de tudo em leitura, sem as permissões de gestão da Qualidade.
+ * Administrador do sistema (role `admin`, nível "Administrador" ou nível
+ * "Desenvolvedor do Sistema"). Enxerga o andamento de tudo em leitura, sem as
+ * permissões de gestão da Qualidade.
  */
 export function ehAdministrador(session: UserSession | null | undefined): boolean {
   if (!session) return false;
-  return session.role === "admin" || session.nivelAcesso === "Administrador";
+  return (
+    session.role === "admin" ||
+    session.nivelAcesso === "Administrador" ||
+    session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA
+  );
 }
 
 /**
@@ -154,12 +163,14 @@ export function podeGerenciarConteudo(session: UserSession | null | undefined): 
 
 /**
  * Pode planejar auditorias: Qualidade (admin/gestor, Qualidade), nível
- * Administrador e nível Desenvolvedor. Demais perfis ficam em leitura.
+ * Administrador/Desenvolvedor do Sistema e nível Desenvolvedor. Demais perfis
+ * ficam em leitura.
  */
 export function podePlanejarAuditoria(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (ehUsuarioDaQualidade(session)) return true;
-  return session.nivelAcesso === "Administrador" || session.nivelAcesso === "Desenvolvedor";
+  if (ehAdministrador(session)) return true;
+  return session.nivelAcesso === "Desenvolvedor";
 }
 
 /* -------------------------------------------------------------------------- */

@@ -192,6 +192,8 @@ export type Database = {
           mensagem: string
           plano_id: string | null
           pop_id: string | null
+          politica_id: string | null
+          revisao: number | null
           tipo: string
           titulo: string
         }
@@ -206,6 +208,8 @@ export type Database = {
           mensagem?: string
           plano_id?: string | null
           pop_id?: string | null
+          politica_id?: string | null
+          revisao?: number | null
           tipo?: string
           titulo: string
         }
@@ -220,6 +224,8 @@ export type Database = {
           mensagem?: string
           plano_id?: string | null
           pop_id?: string | null
+          politica_id?: string | null
+          revisao?: number | null
           tipo?: string
           titulo?: string
         }
@@ -439,6 +445,7 @@ export type Database = {
           decisao: string
           id: string
           politica_id: string
+          revisao_lida: number
           updated_at: string
           usuario_email: string
           usuario_nome: string
@@ -448,6 +455,7 @@ export type Database = {
           decisao?: string
           id?: string
           politica_id: string
+          revisao_lida?: number
           updated_at?: string
           usuario_email: string
           usuario_nome?: string
@@ -457,6 +465,7 @@ export type Database = {
           decisao?: string
           id?: string
           politica_id?: string
+          revisao_lida?: number
           updated_at?: string
           usuario_email?: string
           usuario_nome?: string
@@ -665,6 +674,7 @@ export type Database = {
           id: string
           justificativa: string
           pop_id: string
+          revisao_lida: number
           updated_at: string
           usuario_email: string
           usuario_nome: string
@@ -675,6 +685,7 @@ export type Database = {
           id?: string
           justificativa?: string
           pop_id: string
+          revisao_lida?: number
           updated_at?: string
           usuario_email: string
           usuario_nome?: string
@@ -685,6 +696,7 @@ export type Database = {
           id?: string
           justificativa?: string
           pop_id?: string
+          revisao_lida?: number
           updated_at?: string
           usuario_email?: string
           usuario_nome?: string

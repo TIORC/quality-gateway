@@ -57,7 +57,12 @@ export function SinoNotificacoes() {
       setNaoLidas((v) => Math.max(0, v - 1));
     }
     setAberto(false);
-    if (n.planoId) {
+    // Revisão de documento: abre direto no documento para (re)leitura.
+    if (n.popId) {
+      void router.navigate({ to: "/pops", search: { abrir: n.popId } });
+    } else if (n.politicaId) {
+      void router.navigate({ to: "/politicas", search: { abrir: n.politicaId } });
+    } else if (n.planoId) {
       void router.navigate({ to: "/planos-de-acao", search: { abrir: n.planoId } });
     } else {
       void router.navigate({ to: "/painel" });

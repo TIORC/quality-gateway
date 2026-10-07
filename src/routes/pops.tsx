@@ -76,6 +76,7 @@ import {
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
   podeModificarDocumentos,
+  ehAdministrador,
   ehLiderancaDaQualidade,
   temAcessoTotalPops,
 } from "@/lib/permissoes";
@@ -1256,6 +1257,8 @@ function PopEtapas({ etapas }: { etapas: PopEtapa[] }) {
 interface SecaoLeituraSugestaoProps {
   leitura: PopLeitura | null;
   todasLeituras: PopLeitura[];
+  /** Revisão vigente — leitura antiga exige releitura (botão volta a aparecer). */
+  revisaoVigente: number;
   /** Verdadeiro apenas para Administrador e Gestor da Qualidade (visão de gestão). */
   podeVerGestao: boolean;
   sugestoes: PopSugestao[];
@@ -1272,6 +1275,7 @@ interface SecaoLeituraSugestaoProps {
 function SecaoLeituraSugestao({
   leitura,
   todasLeituras,
+  revisaoVigente,
   podeVerGestao,
   sugestoes,
   sugestaoAberta,
@@ -1283,8 +1287,13 @@ function SecaoLeituraSugestao({
   aoRegistrarLido,
   aoEnviarSugestao,
 }: SecaoLeituraSugestaoProps) {
-  const jaLeu = leitura !== null && leitura.decisao !== "discordo";
-  // Quem já registrou leitura não vê mais o botão "Lido".
+  // Releitura indispensável: leitura só vale para a revisão vigente.
+  const leituraEmDia =
+    leitura !== null && leitura.decisao !== "discordo" && (leitura.revisaoLida || 0) >= revisaoVigente;
+  const jaLeu = leituraEmDia;
+  const precisaReler =
+    leitura !== null && leitura.decisao !== "discordo" && (leitura.revisaoLida || 0) < revisaoVigente;
+  // Quem já registrou leitura na revisão vigente não vê mais o botão "Lido".
   const leitores = podeVerGestao
     ? todasLeituras.filter((l) => l.decisao !== "discordo")
     : [];
@@ -1293,6 +1302,12 @@ function SecaoLeituraSugestao({
 
   return (
     <section className="mt-5 border-t border-[#E9EEF5] pt-5">
+      {precisaReler ? (
+        <p className="mb-3 rounded-lg bg-[#FEF3C7] px-3 py-2 text-[12.5px] font-semibold text-[#92400E]">
+          Nova revisão disponível — sua leitura era da {rotuloRevisao(leitura?.revisaoLida || 1)}.
+          Releia o documento e confirme o “Lido” na {rotuloRevisao(revisaoVigente)}.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         {jaLeu ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ECFDF5] px-3 py-1.5 text-[12px] font-semibold text-[#047857]">
@@ -1517,7 +1532,7 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
     }
     setEnviando(true);
     try {
-      await registrarLeitura(popExibido.id, { email, nome }, "lido");
+      await registrarLeitura(popExibido.id, { email, nome }, "lido", "", popExibido.revisao);
       const [minhas, todas] = await Promise.all([
         carregarLeiturasDoUsuario(email),
         listarLeiturasPop(popExibido.id),
@@ -1573,6 +1588,22 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
             {pop.titulo}
           </h2>
           <StatusBadge status={popExibido.status} />
+        </div>
+        {/* Releitura indispensável: banner com o texto do que mudou na revisão. */}
+        <div className="mt-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-3">
+          <p className="flex items-center gap-1.5 text-[13px] font-bold text-[#92400E]">
+            <Megaphone className="h-4 w-4" />
+            O que mudou na {rotuloRevisao(popExibido.revisao)} — releitura indispensável
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[#78350F]">
+            {popExibido.observacaoRevisao || "Versão inicial do procedimento."}
+          </p>
+          {leitura && (leitura.revisaoLida || 0) < popExibido.revisao ? (
+            <p className="mt-2 text-[12.5px] font-semibold text-[#B45309]">
+              Você leu a {rotuloRevisao(leitura.revisaoLida || 1)}. Leia os tópicos abaixo e
+              confirme com o botão “Lido” para registrar a ciência nesta revisão.
+            </p>
+          ) : null}
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <Tag cor={COR_REVISAO} rotulo="Revisão">
@@ -1643,24 +1674,8 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
         ) : null}
 
         <div className="mt-5 space-y-3 border-t border-[#E9EEF5] pt-5">
-          <LinhaDetalhe rotulo="Objetivo / Quando utilizar">
-            <span className="whitespace-pre-wrap">{pop.objetivo || pop.descricao}</span>
-          </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Setores responsáveis do processo">
-            {(pop.setoresResponsaveis ?? []).length > 0
-              ? nomesDosSetores(pop.setoresResponsaveis, setores).join(", ")
-              : "—"}
-          </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Quem pode visualizar (ACESSO)">
-            {(pop.visualizadores ?? []).length > 0
-              ? nomesDosSetores(pop.visualizadores, setores).join(", ")
-              : "Todos os setores conforme as regras de divulgação do portal"}
-          </LinhaDetalhe>
           <LinhaDetalhe rotulo="Materiais necessários">
             <span className="whitespace-pre-wrap">{pop.materiaisSistemas}</span>
-          </LinhaDetalhe>
-          <LinhaDetalhe rotulo="Revisão">
-            {`${rotuloRevisao(popExibido.revisao)} — ${formatarDataRevisao(popExibido.dataRevisao)}`}
           </LinhaDetalhe>
           {(pop.linksRelacionados ?? []).length > 0 ? (
             <div className="text-[13.5px] leading-relaxed text-[#334155]">
@@ -1684,22 +1699,12 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
           ) : null}
         </div>
 
-        {pop.etapas && pop.etapas.length > 0 ? (
-          <div className="mt-5 border-t border-[#E9EEF5] pt-5">
-            <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#1E293B]">
-              Procedimento
-            </h3>
-            <div className="mt-3">
-              <PopEtapas etapas={pop.etapas} />
-            </div>
-          </div>
-        ) : null}
-
         <PopAnexoVisualizador pop={pop} />
 
         <SecaoLeituraSugestao
           leitura={leitura}
           todasLeituras={todasLeituras}
+          revisaoVigente={popExibido.revisao}
           podeVerGestao={ehLiderancaDaQualidade(sessao)}
           sugestoes={sugestoes}
           sugestaoAberta={sugestaoAberta}
@@ -1980,7 +1985,7 @@ function PopDiscussaoDialog({ aberto, pop, onFechar, onAtualizado }: PopDiscussa
   }
 
   const podeExcluir = (anotacao: PopAnotacao) =>
-    sessao?.email !== "" && (sessao?.role === "admin" || sessao?.email === anotacao.autorEmail);
+    sessao?.email !== "" && (ehAdministrador(sessao) || sessao?.email === anotacao.autorEmail);
 
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>

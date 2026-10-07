@@ -203,6 +203,14 @@ export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaIte
     throw new Error("Você não tem permissão para modificar documentos.");
   }
   const client = exigirCloud();
+  const anterior = await client
+    .from("politicas")
+    .select("revisao")
+    .eq("id", item.id)
+    .maybeSingle();
+  const revisaoAnterior = typeof (anterior.data as { revisao?: unknown } | null)?.revisao === "number"
+    ? ((anterior.data as { revisao: number }).revisao)
+    : item.revisao;
   const { data, error } = await client
     .from("politicas")
     .update(politicaParaInsercao(item))
@@ -211,7 +219,64 @@ export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaIte
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Política não encontrada.");
-  return politicaDoRow(data);
+  const salva = politicaDoRow(data);
+  if (salva.revisao > revisaoAnterior) {
+    void notificarNovaRevisaoPolitica(salva).catch(() => {});
+  }
+  return salva;
+}
+
+/** Notifica (via app) a nova revisão de uma política com o que mudou. */
+async function notificarNovaRevisaoPolitica(politica: PoliticaItem): Promise<void> {
+  const client = exigirCloud();
+  const sessao = getSession();
+  const mudanca = politica.observacaoRevisao.trim() || "O documento foi atualizado. Abra para ler a nova versão.";
+  const rotulo = `Revisão ${String(politica.revisao).padStart(2, "0")}`;
+  const titulo = `Nova revisão para reler: ${politica.codigo} — ${rotulo}`;
+  const mensagem = `O que mudou na ${rotulo}: ${mudanca}`;
+  const { data: leitores } = await client
+    .from("politica_leituras")
+    .select("usuario_email,usuario_nome")
+    .eq("politica_id", politica.id);
+  const mapa = new Map<string, string>();
+  for (const l of (leitores ?? []) as { usuario_email: string; usuario_nome: string }[]) {
+    const email = l.usuario_email.trim().toLowerCase();
+    if (email && !mapa.has(email)) mapa.set(email, l.usuario_nome ?? "");
+  }
+  let destinos = [...mapa.entries()];
+  if (destinos.length === 0) {
+    const { data: ativos } = await client
+      .from("colaboradores")
+      .select("email,nome")
+      .eq("status", "Ativo");
+    destinos = ((ativos ?? []) as { email: string; nome: string }[])
+      .map((c) => [c.email.trim().toLowerCase(), c.nome] as [string, string])
+      .filter(([email]) => email && email !== (sessao?.email ?? "").trim().toLowerCase());
+  }
+  if (destinos.length === 0) return;
+  for (const [email, nome] of destinos) {
+    const { data: existente } = await client
+      .from("notificacoes")
+      .select("id")
+      .eq("destinatario_email", email)
+      .eq("tipo", "revisao")
+      .eq("politica_id", politica.id)
+      .eq("revisao", politica.revisao)
+      .limit(1);
+    if (existente && existente.length > 0) continue;
+    const { error } = await client.from("notificacoes").insert({
+      destinatario_email: email,
+      destinatario_nome: nome,
+      titulo,
+      mensagem,
+      tipo: "revisao",
+      politica_id: politica.id,
+      revisao: politica.revisao,
+      autor_nome: sessao?.nome || "Qualidade",
+      autor_email: sessao?.email ?? "",
+    } as never);
+    if (error && !tabelaAusente(error)) throw traduzErro(error);
+  }
 }
 
 /** Remove uma política do banco. */
@@ -366,39 +431,63 @@ export async function listarLeiturasPolitica(politicaId: string): Promise<Politi
 
 /**
  * Registra (ou atualiza) a ciência do usuário sobre a política — botão "Lido".
+ * Grava a revisão vigente em `revisao_lida`: nova revisão exige releitura.
  */
 export async function registrarLeituraPolitica(
   politicaId: string,
   usuario: UsuarioFavorito,
   decisao: "lido" | "concordo" | "discordo",
+  revisao?: number,
 ): Promise<void> {
   const email = usuario.email.trim().toLowerCase();
   if (!email) throw new Error("Entre no portal para registrar sua leitura.");
 
   const client = exigirCloud();
+  let revisaoLida = revisao ?? 0;
+  if (!revisaoLida) {
+    const { data } = await client.from("politicas").select("revisao").eq("id", politicaId).maybeSingle();
+    revisaoLida = typeof (data as { revisao?: unknown } | null)?.revisao === "number"
+      ? ((data as { revisao: number }).revisao)
+      : 1;
+  }
+  const linha: Record<string, unknown> = {
+    politica_id: politicaId,
+    usuario_email: email,
+    usuario_nome: usuario.nome,
+    decisao,
+    revisao_lida: revisaoLida,
+  };
   const { error } = await client.from("politica_leituras").upsert(
-    {
-      politica_id: politicaId,
-      usuario_email: email,
-      usuario_nome: usuario.nome,
-      decisao,
-    },
+    linha as never,
     {
       onConflict: "politica_id,usuario_email",
     },
   );
-  if (error) throw traduzErro(error);
+  if (error) {
+    if (String((error as { message?: unknown }).message ?? "").includes("revisao_lida")) {
+      delete linha.revisao_lida;
+      const { error: erro2 } = await client.from("politica_leituras").upsert(
+        linha as never,
+        { onConflict: "politica_id,usuario_email" },
+      );
+      if (erro2) throw traduzErro(erro2);
+      return;
+    }
+    throw traduzErro(error);
+  }
 }
 
 function leituraPoliticaDoRow(row: PoliticaLeituraRow): PoliticaLeitura {
   const decisao: "lido" | "concordo" | "discordo" =
     row.decisao === "discordo" ? "discordo" : row.decisao === "lido" ? "lido" : "concordo";
+  const r = row as PoliticaLeituraRow & { revisao_lida?: unknown };
   return {
     id: row.id,
     politicaId: row.politica_id,
     usuarioEmail: row.usuario_email,
     usuarioNome: row.usuario_nome,
     decisao,
+    revisaoLida: typeof r.revisao_lida === "number" ? r.revisao_lida : 1,
     createdAt: row.created_at,
   };
 }
@@ -517,7 +606,14 @@ export interface PoliticaLeitura {
   usuarioEmail: string;
   usuarioNome: string;
   decisao: "lido" | "concordo" | "discordo";
+  /** Revisão lida. Só vale quando = revisão vigente (exige releitura). */
+  revisaoLida: number;
   createdAt: string;
+}
+
+/** `true` quando a leitura cobre a revisão vigente (sem releitura pendente). */
+export function leituraPoliticaCobreRevisao(leitura: PoliticaLeitura, revisaoVigente: number): boolean {
+  return (leitura.revisaoLida || 0) >= revisaoVigente;
 }
 
 export interface PoliticaSugestao {

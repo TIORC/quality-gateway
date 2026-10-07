@@ -6,12 +6,10 @@ import {
   FileText,
   History,
   Lightbulb,
-  Link2,
   Paperclip,
   Plus,
   Trash2,
   UploadCloud,
-  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -150,6 +148,8 @@ function Politicas() {
   const [itens, setItens] = useState<PoliticaItem[]>(() =>
     politicasDisponiveis() ? [] : exemplosIniciais(),
   );
+  // Leituras do usuário (revisão lida) para a aba "Preciso ler" exigir releitura.
+  const [leiturasUsuario, setLeiturasUsuario] = useState<Record<string, PoliticaLeitura>>({});
 
   const sessao = getSession();
   const podeAdicionar = podeAdicionarDocumentos(sessao);
@@ -188,9 +188,31 @@ function Politicas() {
     void router.navigate({ to: "/politicas", search: {} });
   }, [abrir, itens, politicaAberta, router]);
 
+  // Leituras do usuário para exigir releitura a cada nova revisão.
+  useEffect(() => {
+    const email = sessao?.email;
+    if (!email || !politicasDisponiveis()) return;
+    let ativo = true;
+    void carregarLeiturasPoliticaDoUsuario(email)
+      .then((mapa) => {
+        if (ativo) setLeiturasUsuario(mapa);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [sessao?.email]);
+
+  function precisaLer(item: PoliticaItem): boolean {
+    const leitura = leiturasUsuario[item.id];
+    if (!leitura || leitura.decisao === "discordo") return true;
+    if (!usarBanco && item.parecer) return false;
+    return (leitura.revisaoLida || 0) < item.revisao;
+  }
+
   function listaDaAba(valor: string) {
     if (valor === "todas") return itens;
-    if (valor === "preciso-ler") return itens.filter((i) => !i.parecer);
+    if (valor === "preciso-ler") return itens.filter((i) => precisaLer(i));
     if (valor === "meu-parecer") return itens.filter((i) => i.parecer || i.sugestoes.length > 0);
     if (valor === "vencendo") return itens.filter((i) => i.status === "Em aprovação");
     return itens;
@@ -231,6 +253,13 @@ function Politicas() {
     const alvo = itens.find((item) => item.id === id);
     setItens((atual) => atual.map((item) => (item.id === id ? { ...item, parecer } : item)));
     setPoliticaAberta((aberta) => (aberta && aberta.id === id ? { ...aberta, parecer } : aberta));
+    // Atualiza o mapa de leituras para a aba "Preciso ler" sair da pendência.
+    const email = sessao?.email;
+    if (email && politicasDisponiveis()) {
+      void carregarLeiturasPoliticaDoUsuario(email)
+        .then((mapa) => setLeiturasUsuario(mapa))
+        .catch(() => undefined);
+    }
     if (!usarBanco || !alvo) return;
     void atualizarPolitica({ ...alvo, parecer })
       .then((atualizada) =>
@@ -249,10 +278,14 @@ function Politicas() {
     };
     const alvo = itens.find((item) => item.id === id);
     setItens((atual) =>
-      atual.map((item) => (item.id === id ? { ...item, sugestoes: [sugestao, ...item.sugestoes] } : item)),
+      atual.map((item) =>
+        item.id === id ? { ...item, sugestoes: [sugestao, ...item.sugestoes] } : item,
+      ),
     );
     setPoliticaAberta((aberta) =>
-      aberta && aberta.id === id ? { ...aberta, sugestoes: [sugestao, ...aberta.sugestoes] } : aberta,
+      aberta && aberta.id === id
+        ? { ...aberta, sugestoes: [sugestao, ...aberta.sugestoes] }
+        : aberta,
     );
     if (!usarBanco || !alvo) return;
     void atualizarPolitica({ ...alvo, sugestoes: [sugestao, ...alvo.sugestoes] })
@@ -302,43 +335,39 @@ function Politicas() {
       {politicaAberta ? (
         <PoliticaDetalhe
           politica={itens.find((i) => i.id === politicaAberta.id) ?? politicaAberta}
-          podeModificar={podeModificar}
           onFechar={() => setPoliticaAberta(null)}
-          onEditar={(item) => {
-            setPoliticaAberta(null);
-            setPoliticaEmEdicao(item);
-          }}
           onParecer={registrarParecer}
           onSugestao={adicionarSugestao}
         />
       ) : (
-      <Tabs defaultValue="todas">
-        <TabsList>
-          {ABAS.map((aba) => (
-            <TabsTrigger key={aba.valor} value={aba.valor} className="gap-1.5">
-              {aba.rotulo}
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
-                {listaDaAba(aba.valor).length}
-              </span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <Tabs defaultValue="todas">
+          <TabsList>
+            {ABAS.map((aba) => (
+              <TabsTrigger key={aba.valor} value={aba.valor} className="gap-1.5">
+                {aba.rotulo}
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
+                  {listaDaAba(aba.valor).length}
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        {ABAS.map((aba) => (
-          <TabsContent key={aba.valor} value={aba.valor}>
-            <ListaPoliticas
-              itens={listaDaAba(aba.valor)}
-              onNova={() => setNovaPolitica(true)}
-              podeAdicionar={podeAdicionar}
-              podeModificar={podeModificar}
-              podeExcluir={podeExcluir}
-              onAbrir={(item) => setPoliticaAberta(item)}
-              onEditar={(item) => setPoliticaEmEdicao(item)}
-              onExcluir={(item) => setPoliticaParaExcluir(item)}
-            />
-          </TabsContent>
-        ))}
-      </Tabs>
+          {ABAS.map((aba) => (
+            <TabsContent key={aba.valor} value={aba.valor}>
+              <ListaPoliticas
+                itens={listaDaAba(aba.valor)}
+                leituras={leiturasUsuario}
+                onNova={() => setNovaPolitica(true)}
+                podeAdicionar={podeAdicionar}
+                podeModificar={podeModificar}
+                podeExcluir={podeExcluir}
+                onAbrir={(item) => setPoliticaAberta(item)}
+                onEditar={(item) => setPoliticaEmEdicao(item)}
+                onExcluir={(item) => setPoliticaParaExcluir(item)}
+              />
+            </TabsContent>
+          ))}
+        </Tabs>
       )}
 
       <PoliticaDialog
@@ -428,6 +457,7 @@ function exemplosIniciais(): PoliticaItem[] {
 
 function ListaPoliticas({
   itens,
+  leituras,
   onNova,
   podeAdicionar,
   podeModificar,
@@ -437,6 +467,7 @@ function ListaPoliticas({
   onExcluir,
 }: {
   itens: PoliticaItem[];
+  leituras: Record<string, PoliticaLeitura>;
   onNova: () => void;
   podeAdicionar: boolean;
   podeModificar: boolean;
@@ -490,6 +521,17 @@ function ListaPoliticas({
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                 {rotuloRevisao(item.revisao)}
               </span>
+              {(() => {
+                const leitura = leituras[item.id];
+                if (leitura && leitura.decisao !== "discordo" && (leitura.revisaoLida || 0) < item.revisao) {
+                  return (
+                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                      Releitura pendente
+                    </span>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <p className="line-clamp-1 text-xs text-[#64748B]">
               {item.objetivo || "Sem objetivo cadastrado."} ·{" "}
@@ -991,9 +1033,7 @@ function PoliticaDialog({
                 </p>
               )}
             </button>
-            {erroUpload ? (
-              <p className="text-xs font-medium text-rose-600">{erroUpload}</p>
-            ) : null}
+            {erroUpload ? <p className="text-xs font-medium text-rose-600">{erroUpload}</p> : null}
           </Campo>
         </div>
 
@@ -1014,12 +1054,15 @@ function PoliticaDialog({
   );
 }
 
-/* Tela de detalhe (página cheia) — mesma ordem + anexo + parecer/sugestão */
-function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParecer, onSugestao }: {
+/* Tela de detalhe — abre direto no documento da política + Ciência/Leituras. */
+function PoliticaDetalhe({
+  politica,
+  onFechar,
+  onParecer,
+  onSugestao,
+}: {
   politica: PoliticaItem;
-  podeModificar: boolean;
   onFechar: () => void;
-  onEditar: (item: PoliticaItem) => void;
   onParecer: (id: string, parecer: ParecerPolitica | null) => void;
   onSugestao: (id: string, texto: string) => void;
 }) {
@@ -1043,10 +1086,7 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
   useEffect(() => {
     if (!politicasDisponiveis()) return;
     let ativo = true;
-    Promise.all([
-      listarLeiturasPolitica(politicaId),
-      listarSugestoesPolitica(politicaId),
-    ])
+    Promise.all([listarLeiturasPolitica(politicaId), listarSugestoesPolitica(politicaId)])
       .then(([l, s]) => {
         if (ativo) {
           setLeituras(l);
@@ -1058,7 +1098,9 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
         setLeituras([]);
         setSugestoes([]);
       });
-    return () => { ativo = false; };
+    return () => {
+      ativo = false;
+    };
   }, [politicaId]);
 
   function confirmarLeitura() {
@@ -1069,7 +1111,7 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
       return;
     }
     setEnviando(true);
-    registrarLeituraPolitica(politicaId, usuario, "lido")
+    registrarLeituraPolitica(politicaId, usuario, "lido", item.revisao)
       .then(() => {
         // Recarrega as leituras e atualiza o parecer local
         return listarLeiturasPolitica(politicaId).then((novas) => {
@@ -1078,7 +1120,9 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
         });
       })
       .catch((erro) => {
-        toast.error(erro instanceof Error ? erro.message : "Não foi possível registrar sua leitura");
+        toast.error(
+          erro instanceof Error ? erro.message : "Não foi possível registrar sua leitura",
+        );
       })
       .finally(() => setEnviando(false));
   }
@@ -1148,10 +1192,15 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
 
   const leitores = todasLeituras;
   const emailAtual = (sessao?.email ?? "").trim().toLowerCase();
-  const leituraPropria = leitores.some((l) => l.usuarioEmail.trim().toLowerCase() === emailAtual);
+  // Releitura indispensável: só vale a leitura da revisão vigente.
+  const leituraPropria = leitores.some(
+    (l) => l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) >= item.revisao,
+  );
+  const leituraAntiga = leitores.find(
+    (l) => l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) < item.revisao,
+  );
   // O usuário vê "Leitura registrada" quando ele próprio já leu (a gestão vê o total).
-  const jaLeu =
-    leituraPropria || (!!item.parecer && item.parecer.tipo !== "discordo");
+  const jaLeu = leituraPropria || (!!item.parecer && item.parecer.tipo !== "discordo" && leituraPropria);
   // Visão de gestão: Administrador e Gestor da Qualidade.
   const gestao = ehLiderancaDaQualidade(sessao);
 
@@ -1167,113 +1216,143 @@ function PoliticaDetalhe({ politica, podeModificar, onFechar, onEditar, onParece
       </div>
 
       <article className="rounded-2xl border border-[#D9E0EA] bg-white p-5 shadow-sm sm:p-7">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="flex-1 text-lg font-bold tracking-tight text-[#1F2937] sm:text-xl">
-            {item.titulo || "Política sem título"}
-          </h2>
-          <Badge variant="outline" className={cn("text-[11px]", statusCor(item.status))}>{item.status}</Badge>
-          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{rotuloRevisao(item.revisao)}</span>
-        </div>
-        <p className="mt-2.5 text-[13px] text-[#64748B]">
-          Postada em {item.dataPostagem || "—"} · Revisão de {item.dataRevisao || "—"}
-        </p>
-
-        <div className="mt-6 space-y-4">
-          <DetalheItem rotulo="Código" valor={item.codigo} />
-          <DetalheItem rotulo="Título da política" valor={item.titulo} />
-          <DetalheItem rotulo="Objetivo" valor={item.objetivo} />
-          <div className="space-y-1">
-            <p className="text-[13px] font-semibold text-[#1F2937]">Setor/Área responsável</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(item.setores.length > 0 ? item.setores : ["Todos"]).map((s) => (<Badge key={s} variant="secondary" className="text-[11px]">{s}</Badge>))}
-            </div>
-            <p className="text-xs italic text-[#94A3B8]">Define o acesso à política.</p>
-          </div>
-          <DetalheItem rotulo="Aplicabilidade" valor={item.aplicabilidade} />
-          <div className="space-y-1">
-            <p className="text-[13px] font-semibold text-[#1F2937]">Links vinculados</p>
-            {item.links.length > 0 ? (<ul className="space-y-1">{item.links.map((link) => (<li key={link}><a href={/^https?:\/\//i.test(link) ? link : `https://${link}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[13px] font-medium text-[#1E3A8A] hover:underline"><Link2 className="h-3.5 w-3.5" />{link}</a></li>))}</ul>) : (<p className="text-[13px] text-[#94A3B8]">Nenhum link vinculado.</p>)}
-          </div>
-          <DetalheItem rotulo="Data da postagem" valor={item.dataPostagem} />
-          <DetalheItem rotulo="Status" valor={item.status} />
-          <PoliticaAnexoVisualizador anexo={item.anexo} />
-          <div className="rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
-            <p className="text-[13px] font-semibold text-[#1F2937]">Ciência / Leituras</p>
-            {gestao && jaLeu ? (
-              <p className="mt-1 text-[13px] text-[#475569]">
-                <span className="font-semibold text-emerald-700">Lido</span>{" "}
-                {leitores.length} {leitores.length === 1 ? "leitura" : "leituras"} registradas
-              </p>
-            ) : jaLeu ? (
-              <p className="mt-1 text-[13px] font-semibold text-emerald-700">
-                <Check className="mr-1 inline h-3.5 w-3.5" />Leitura registrada
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-[#64748B]">Registre aqui que leu a política, ou sugira uma melhoria.</p>
-            )}
-            {gestao && leitores.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {leitores.slice(0, 5).map((l) => (
-                  <span key={l.id} className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]">
-                    <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
-                  </span>
-                ))}
-                {leitores.length > 5 && (
-                  <span className="text-[11px] text-[#64748B]">+{leitores.length - 5} mais</span>
-                )}
-              </div>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {jaLeu ? null : (
-                <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmarLeitura} disabled={enviando}><Check className="h-4 w-4" />LIDO</Button>
-              )}
-              <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarSugestao((v) => !v)} disabled={enviando}><Lightbulb className="h-4 w-4" />Sugerir Melhoria</Button>
-            </div>
-            {mostrarSugestao ? (
-              <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-white p-3">
-                <Label className="text-[13px] font-medium">Sugestão de melhoria</Label>
-                <Textarea value={textoSugestao} onChange={(e) => setTextoSugestao(e.target.value)} placeholder="Descreva sua sugestão (vale mesmo se você concorda)." className="min-h-[70px]" />
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={() => setMostrarSugestao(false)} disabled={enviando}>Cancelar</Button>
-                  <Button type="button" size="sm" className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" onClick={enviarSugestao} disabled={!textoSugestao.trim() || enviando}>{enviando ? "Enviando..." : "Enviar sugestão"}</Button>
-                </div>
-              </div>
-            ) : null}
-            {sugestoesVisiveis.length > 0 ? (
-              <div className="mt-3 space-y-1.5">
-                {sugestoesVisiveis.map((s) => (
-                  <div key={s.id} className="rounded-lg border border-[#D9E0EA] bg-white p-2.5">
-                    <p className="text-[12px] font-semibold text-[#1F2937]">
-                      <Lightbulb className="mr-1 inline h-3 w-3 text-amber-500" />
-                      {s.usuarioNome || s.usuarioEmail} sugeriu
-                    </p>
-                    <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#475569]">{s.sugestao}</p>
-                  </div>
-                ))}
-              </div>
-            ) : gestao && item.sugestoes.length > 0 ? (
-              <ul className="mt-3 space-y-1.5">{item.sugestoes.map((s) => (<li key={s.id} className="rounded-lg bg-white p-2 text-xs text-[#475569] ring-1 ring-[#E9EEF5]"><span className="font-semibold text-[#1F2937]">Sugestão · {s.data}:</span> {s.texto}</li>))}</ul>
-            ) : null}
-          </div>
-          <div className="space-y-1">
-            <p className="flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]"><History className="h-4 w-4 text-[#64748B]" />Histórico de modificações</p>
-            {item.historico.length > 0 ? (<ul className="space-y-1.5">{item.historico.map((h) => (<li key={h.id} className="text-[13px] text-[#475569]"><span className="font-semibold text-[#1F2937]">{rotuloRevisao(h.numero)}</span>{" · "}{h.data}{h.observacao ? ` — ${h.observacao}` : ""}</li>))}</ul>) : (<p className="text-[13px] text-[#94A3B8]">Nenhuma modificação registrada.</p>)}
-          </div>
-          <DetalheItem rotulo="Data da revisão" valor={item.dataRevisao} />
-          <DetalheItem rotulo="Data de validade" valor={item.dataVencimento} />
-          <DetalheItem rotulo="Revisão" valor={rotuloRevisao(item.revisao)} />
-          <DetalheItem rotulo="Observação da revisão" valor={item.observacaoRevisao} />
-        </div>
-
-        <div className="mt-6 flex flex-col gap-2 border-t border-[#E9EEF5] pt-4 sm:flex-row sm:justify-end">
-          {podeModificar ? (
-            <Button type="button" variant="outline" onClick={() => onEditar(item)}>
-              <Edit3 className="h-4 w-4" /> Editar política
-            </Button>
+        {/* Releitura indispensável: banner com o texto do que mudou na revisão. */}
+        <div className="mb-4 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-3">
+          <p className="text-[13px] font-bold text-[#92400E]">
+            O que mudou na {rotuloRevisao(item.revisao)} — releitura indispensável
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[#78350F]">
+            {item.observacaoRevisao || "Publicação inicial da política."}
+          </p>
+          {leituraAntiga && !leituraPropria ? (
+            <p className="mt-2 text-[12.5px] font-semibold text-[#B45309]">
+              Você leu a {rotuloRevisao(leituraAntiga.revisaoLida || 1)}. Leia o documento abaixo
+              e confirme com o botão “LIDO” para registrar a ciência nesta revisão.
+            </p>
           ) : null}
-          <Button type="button" onClick={onFechar} className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]">
-            Voltar
-          </Button>
+        </div>
+        {item.anexo ? (
+          <PoliticaAnexoVisualizador anexo={item.anexo} />
+        ) : (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-800">
+            Esta política não possui documento anexado.
+          </p>
+        )}
+
+        <div className="mt-6 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
+          <p className="text-[13px] font-semibold text-[#1F2937]">Ciência / Leituras</p>
+          {gestao && jaLeu ? (
+            <p className="mt-1 text-[13px] text-[#475569]">
+              <span className="font-semibold text-emerald-700">Lido</span> {leitores.length}{" "}
+              {leitores.length === 1 ? "leitura" : "leituras"} registradas
+            </p>
+          ) : jaLeu ? (
+            <p className="mt-1 text-[13px] font-semibold text-emerald-700">
+              <Check className="mr-1 inline h-3.5 w-3.5" />
+              Leitura registrada
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-[#64748B]">
+              Registre aqui que leu a política, ou sugira uma melhoria.
+            </p>
+          )}
+          {gestao && leitores.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {leitores.slice(0, 5).map((l) => (
+                <span
+                  key={l.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]"
+                >
+                  <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
+                </span>
+              ))}
+              {leitores.length > 5 && (
+                <span className="text-[11px] text-[#64748B]">+{leitores.length - 5} mais</span>
+              )}
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {jaLeu ? null : (
+              <Button
+                type="button"
+                size="sm"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={confirmarLeitura}
+                disabled={enviando}
+              >
+                <Check className="h-4 w-4" />
+                LIDO
+              </Button>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setMostrarSugestao((v) => !v)}
+              disabled={enviando}
+            >
+              <Lightbulb className="h-4 w-4" />
+              Sugerir Melhoria
+            </Button>
+          </div>
+          {mostrarSugestao ? (
+            <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-white p-3">
+              <Label className="text-[13px] font-medium">Sugestão de melhoria</Label>
+              <Textarea
+                value={textoSugestao}
+                onChange={(e) => setTextoSugestao(e.target.value)}
+                placeholder="Descreva sua sugestão (vale mesmo se você concorda)."
+                className="min-h-[70px]"
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setMostrarSugestao(false)}
+                  disabled={enviando}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                  onClick={enviarSugestao}
+                  disabled={!textoSugestao.trim() || enviando}
+                >
+                  {enviando ? "Enviando..." : "Enviar sugestão"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {sugestoesVisiveis.length > 0 ? (
+            <div className="mt-3 space-y-1.5">
+              {sugestoesVisiveis.map((s) => (
+                <div key={s.id} className="rounded-lg border border-[#D9E0EA] bg-white p-2.5">
+                  <p className="text-[12px] font-semibold text-[#1F2937]">
+                    <Lightbulb className="mr-1 inline h-3 w-3 text-amber-500" />
+                    {s.usuarioNome || s.usuarioEmail} sugeriu
+                  </p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#475569]">
+                    {s.sugestao}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : gestao && item.sugestoes.length > 0 ? (
+            <ul className="mt-3 space-y-1.5">
+              {item.sugestoes.map((s) => (
+                <li
+                  key={s.id}
+                  className="rounded-lg bg-white p-2 text-xs text-[#475569] ring-1 ring-[#E9EEF5]"
+                >
+                  <span className="font-semibold text-[#1F2937]">Sugestão · {s.data}:</span>{" "}
+                  {s.texto}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       </article>
     </div>
@@ -1322,9 +1401,14 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
     <div className="space-y-2" onContextMenu={(evento) => evento.preventDefault()}>
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[13px] font-semibold text-[#1F2937]">Documento da política</p>
-        <Badge variant="outline" className="bg-[#EEF2F7] text-[10px] text-[#1E3A8A]">{badgeTipo}</Badge>
+        <Badge variant="outline" className="bg-[#EEF2F7] text-[10px] text-[#1E3A8A]">
+          {badgeTipo}
+        </Badge>
         <span className="text-xs font-medium text-[#64748B]">{anexo.nome}</span>
-        <Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+        <Badge
+          variant="outline"
+          className="ml-auto border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700"
+        >
           Somente leitura — download bloqueado
         </Badge>
       </div>
@@ -1352,10 +1436,3 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
     </div>
   );
 }
-function DetalheItem({ rotulo, valor }: { rotulo: string; valor: string }) {
-  if (!valor?.trim()) return null;
-  return (<div className="space-y-0.5"><p className="text-[13px] font-semibold text-[#1F2937]">{rotulo}</p><p className="whitespace-pre-line text-[13px] leading-relaxed text-[#475569]">{valor}</p></div>);
-}
-
-
-

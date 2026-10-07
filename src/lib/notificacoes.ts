@@ -7,18 +7,24 @@ import { traduzErro } from "@/lib/organizacao";
 
 export interface NotificacaoPainel {
   id: string; titulo: string; mensagem: string; tipo: string;
-  planoId: string | null; lida: boolean; createdAt: string;
+  planoId: string | null; popId: string | null; politicaId: string | null;
+  revisao: number | null;
+  lida: boolean; createdAt: string;
   autorNome: string;
 }
 
 type Linha = Record<string, unknown>;
 const str = (v: unknown, p = ""): string => (typeof v === "string" ? v : p);
+const numOuNulo = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
 function doRow(r: Record<string, unknown>): NotificacaoPainel {
   return {
     id: str(r["id"]), titulo: str(r["titulo"]), mensagem: str(r["mensagem"], ""),
     tipo: str(r["tipo"], ""),
     planoId: typeof r["plano_id"] === "string" ? (r["plano_id"] as string) : null,
+    popId: typeof r["pop_id"] === "string" ? (r["pop_id"] as string) : null,
+    politicaId: typeof r["politica_id"] === "string" ? (r["politica_id"] as string) : null,
+    revisao: numOuNulo(r["revisao"]),
     lida: Boolean(r["lida"]), createdAt: str(r["created_at"]),
     autorNome: str(r["autor_nome"], ""),
   };

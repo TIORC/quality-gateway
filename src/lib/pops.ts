@@ -10,6 +10,7 @@ import type { Json, Tables, TablesInsert } from "@/integrations/supabase/types";
 import { getSession, type UserSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
 import {
+  ehAdministrador,
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
   podeModificarDocumentos,
@@ -145,7 +146,14 @@ export interface PopLeitura {
   usuarioNome: string;
   decisao: DecisaoLeitura;
   justificativa: string;
+  /** Revisão lida ao registrar ciência. Só vale quando = revisão vigente. */
+  revisaoLida: number;
   createdAt: string;
+}
+
+/** `true` quando a leitura cobre a revisão vigente (sem releitura pendente). */
+export function leituraCobreRevisao(leitura: PopLeitura, revisaoVigente: number): boolean {
+  return (leitura.revisaoLida || 0) >= revisaoVigente;
 }
 
 /** Uma revisão anterior do POP (histórico de modificações). */
@@ -198,6 +206,8 @@ export interface Notificacao {
   mensagem: string;
   tipo: string;
   popId: string | null;
+  politicaId: string | null;
+  revisao: number | null;
   autorNome: string;
   autorEmail: string;
   lida: boolean;
@@ -738,7 +748,7 @@ export function podeAprovarLiderQualidade(sessao: UserSession | null | undefined
   if (!sessao) return false;
   if (sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
   return (
-    sessao.role === "admin" ||
+    ehAdministrador(sessao) ||
     sessao.role === "gestor" ||
     sessao.nivelAcesso === "Gestor da Qualidade"
   );
@@ -755,7 +765,7 @@ export function podeAprovarLiderProcesso(
   nomeSetorDoPop: string | null | undefined,
 ): boolean {
   if (!sessao || sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
-  if (sessao.role === "admin") return true;
+  if (ehAdministrador(sessao)) return true;
   const ehLiderDeSetor = sessao.nivelAcesso === "Líder de setor";
   if (pop.setorId === "geral") return ehLiderDeSetor || podeAprovarLiderQualidade(sessao);
   return ehLiderDeSetor && normalizarSetor(sessao.setor) === normalizarSetor(nomeSetorDoPop);
@@ -897,7 +907,79 @@ async function atualizarPopCloud(
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("POP não encontrado.");
-  return popDoRow(data);
+  const salvo = popDoRow(data);
+  // Fallback no app (além do trigger): garante a notificação de releitura
+  // com o texto do que mudou mesmo se o trigger ainda não foi aplicado.
+  if (geraNovaRevisao) {
+    void notificarNovaRevisaoPop(salvo).catch(() => {});
+  }
+  return salvo;
+}
+
+/**
+ * Notifica (via app) a nova revisão de um POP com o texto do que mudou.
+ * O trigger `pops_nova_revisao_trigger` faz o mesmo no banco; este fallback
+ * evita duplicatas (uma pendente por colaborador/revisão).
+ */
+async function notificarNovaRevisaoPop(pop: Pop): Promise<void> {
+  const client = exigirCloud();
+  const mudanca = pop.observacaoRevisao.trim() || "O documento foi atualizado. Abra para ler a nova versão.";
+  const rotulo = `Revisão ${String(pop.revisao).padStart(2, "0")}`;
+  const titulo = `Nova revisão para reler: ${pop.codigo} — ${rotulo}`;
+  const mensagem = `O que mudou na ${rotulo}: ${mudanca}`;
+  const autor = autorDaSessao();
+
+  const { data: leitores } = await client
+    .from("pop_leituras")
+    .select("usuario_email,usuario_nome")
+    .eq("pop_id", pop.id);
+  const { data: visiveis } = await client
+    .from("pop_visualizacoes")
+    .select("usuario_email,usuario_nome")
+    .eq("pop_id", pop.id);
+  const mapa = new Map<string, string>();
+  for (const l of [...(leitores ?? []), ...(visiveis ?? [])] as { usuario_email: string; usuario_nome: string }[]) {
+    const email = l.usuario_email.trim().toLowerCase();
+    if (email && !mapa.has(email)) mapa.set(email, l.usuario_nome ?? "");
+  }
+  // Sem histórico de leitura: avisa todos os ativos (o trigger refina).
+  let destinos = [...mapa.entries()];
+  if (destinos.length === 0) {
+    const { data: ativos } = await client
+      .from("colaboradores")
+      .select("email,nome")
+      .eq("status", "Ativo");
+    destinos = ((ativos ?? []) as { email: string; nome: string }[])
+      .map((c) => [c.email.trim().toLowerCase(), c.nome] as [string, string])
+      .filter(([email]) => email && email !== autor.email.trim().toLowerCase());
+  }
+  if (destinos.length === 0) return;
+
+  const linhas = destinos.map(([email, nome]) => ({
+    destinatario_email: email,
+    destinatario_nome: nome,
+    titulo,
+    mensagem,
+    tipo: "revisao",
+    pop_id: pop.id,
+    revisao: pop.revisao,
+    autor_nome: autor.nome || "Qualidade",
+    autor_email: autor.email,
+  }));
+  // Insere uma a uma ignorando duplicadas (sem restrição única no banco).
+  for (const linha of linhas) {
+    const { data: existente } = await client
+      .from("notificacoes")
+      .select("id")
+      .eq("destinatario_email", linha.destinatario_email)
+      .eq("tipo", "revisao")
+      .eq("pop_id", pop.id)
+      .eq("revisao", pop.revisao)
+      .limit(1);
+    if (existente && existente.length > 0) continue;
+    const { error } = await client.from("notificacoes").insert(linha as never);
+    if (error && !tabelaAusente(error)) throw traduzErro(error);
+  }
 }
 
 /** Aprova a 1ª etapa (líder do processo/setor). */
@@ -1032,7 +1114,7 @@ export async function duplicarPop(origem: Pop): Promise<Pop> {
  */
 export function podeVerVersoesAnteriores(sessao: UserSession | null | undefined): boolean {
   if (!sessao) return false;
-  if (sessao.role === "admin" || sessao.role === "gestor") return true;
+  if (ehAdministrador(sessao) || sessao.role === "gestor") return true;
   return sessao.nivelAcesso === "Gestor da Qualidade";
 }
 
@@ -1594,38 +1676,62 @@ export async function listarLeiturasPop(popId: string): Promise<PopLeitura[]> {
 
 /**
  * Registra (ou atualiza) a ciência do usuário sobre o POP — botão "Lido".
- * As decisões antigas (`concordo`/`discordo`) continuam aceitas e, ao discordar,
- * o banco notifica o Coordenador da Qualidade e o setor Qualidade (trigger da
- * migration 20260916020000).
+ * Grava a revisão vigente em `revisao_lida`: a leitura só vale para aquela
+ * revisão; nova revisão exige releitura. Ao discordar, o banco notifica a
+ * Qualidade (trigger da migration 20260916020000).
  */
 export async function registrarLeitura(
   popId: string,
   usuario: UsuarioFavorito,
   decisao: DecisaoLeitura,
   justificativa = "",
+  revisao?: number,
 ): Promise<void> {
   const email = usuario.email.trim().toLowerCase();
   if (!email) throw new Error("Entre no portal para registrar sua leitura.");
 
   const client = exigirCloud();
+  // Revisão vigente quando não informada — leitura sempre amarra a revisão.
+  let revisaoLida = revisao ?? 0;
+  if (!revisaoLida) {
+    const { data } = await client.from("pops").select("revisao").eq("id", popId).maybeSingle();
+    revisaoLida = typeof (data as { revisao?: unknown } | null)?.revisao === "number"
+      ? ((data as { revisao: number }).revisao)
+      : 1;
+  }
+  const linha: Record<string, unknown> = {
+    pop_id: popId,
+    usuario_email: email,
+    usuario_nome: usuario.nome,
+    decisao,
+    justificativa: decisao === "discordo" ? justificativa : "",
+    revisao_lida: revisaoLida,
+  };
   const { error } = await client.from("pop_leituras").upsert(
-    {
-      pop_id: popId,
-      usuario_email: email,
-      usuario_nome: usuario.nome,
-      decisao,
-      justificativa: decisao === "discordo" ? justificativa : "",
-    },
+    linha as never,
     {
       onConflict: "pop_id,usuario_email",
     },
   );
-  if (error) throw traduzErro(error);
+  if (error) {
+    // Banco sem a migration 20261007: grava sem revisao_lida.
+    if (String((error as { message?: unknown }).message ?? "").includes("revisao_lida")) {
+      delete linha.revisao_lida;
+      const { error: erro2 } = await client.from("pop_leituras").upsert(
+        linha as never,
+        { onConflict: "pop_id,usuario_email" },
+      );
+      if (erro2) throw traduzErro(erro2);
+      return;
+    }
+    throw traduzErro(error);
+  }
 }
 
 function leituraDoRow(row: PopLeituraRow): PopLeitura {
   const decisao: DecisaoLeitura =
     row.decisao === "discordo" ? "discordo" : row.decisao === "lido" ? "lido" : "concordo";
+  const r = row as PopLeituraRow & { revisao_lida?: unknown };
   return {
     id: row.id,
     popId: row.pop_id,
@@ -1633,6 +1739,7 @@ function leituraDoRow(row: PopLeituraRow): PopLeitura {
     usuarioNome: row.usuario_nome,
     decisao,
     justificativa: row.justificativa,
+    revisaoLida: typeof r.revisao_lida === "number" ? r.revisao_lida : 1,
     createdAt: row.created_at,
   };
 }
@@ -1716,6 +1823,7 @@ export async function marcarNotificacaoLida(id: string): Promise<void> {
 }
 
 function notificacaoDoRow(row: NotificacaoRow): Notificacao {
+  const r = row as NotificacaoRow & { politica_id?: unknown; revisao?: unknown };
   return {
     id: row.id,
     destinatarioEmail: row.destinatario_email,
@@ -1724,6 +1832,8 @@ function notificacaoDoRow(row: NotificacaoRow): Notificacao {
     mensagem: row.mensagem,
     tipo: row.tipo,
     popId: row.pop_id,
+    politicaId: typeof r.politica_id === "string" ? r.politica_id : null,
+    revisao: typeof r.revisao === "number" ? r.revisao : null,
     autorNome: row.autor_nome,
     autorEmail: row.autor_email,
     lida: row.lida,
