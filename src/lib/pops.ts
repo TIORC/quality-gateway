@@ -17,7 +17,7 @@ import {
   temAcessoTotalPops,
   veSomenteLiberados,
 } from "@/lib/permissoes";
-import { popDoSetorDoUsuario } from "@/lib/setor-documentos";
+import { popDoSetorDoUsuario, popEhGeral } from "@/lib/setor-documentos";
 
 type PopRow = Tables<"pops">;
 type PopInsert = TablesInsert<"pops">;
