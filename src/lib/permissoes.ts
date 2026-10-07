@@ -42,6 +42,24 @@ const ROTAS_PUBLICAS: AppRoutePath[] = ["/ocorrencias", "/pops", "/politicas", "
 const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
 
 /**
+ * Rotas abertas (compatibilidade com o remoto): tudo exceto Configurações.
+ * Mantido como alias para não quebrar `ROTAS_POR_NIVEL` vindo do origin/main.
+ */
+const ROTAS_ABERTAS: AppRoutePath[] = ROTAS_QUALIDADE;
+
+export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
+  "Desenvolvedor do Sistema": TODAS_AS_ROTAS,
+  Administrador: TODAS_AS_ROTAS,
+  "Gestor da Qualidade": TODAS_AS_ROTAS,
+  "Auxiliar da Qualidade": ROTAS_ABERTAS,
+  Diretoria: ROTAS_ABERTAS,
+  "Líder de setor": ROTAS_ABERTAS,
+  Desenvolvedor: ROTAS_ABERTAS,
+  Colaborador: ROTAS_ABERTAS,
+  "Colaborador de outra unidade": ROTAS_ABERTAS,
+};
+
+/**
  * Rotas que a sessão atual pode acessar:
  *  - Administrador, Gestor da Qualidade e Desenvolvedor do Sistema: todas;
  *  - Setor da Qualidade: todas menos Configurações;

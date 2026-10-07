@@ -18,7 +18,7 @@ import {
   temAcessoTotalPops,
   veSomenteLiberados,
 } from "@/lib/permissoes";
-import { popDoSetorDoUsuario } from "@/lib/setor-documentos";
+import { popDoSetorDoUsuario, popEhGeral } from "@/lib/setor-documentos";
 
 type PopRow = Tables<"pops">;
 type PopInsert = TablesInsert<"pops">;
@@ -845,11 +845,12 @@ export function podeAprovarLiderProcesso(
 }
 
 /** Sessão usada como autor na criação e nas aprovações. */
-function autorDaSessao(): { id: string; nome: string } {
+function autorDaSessao(): { id: string; nome: string; email: string } {
   const sessao = getSession();
   return {
     id: sessao?.colaboradorId || sessao?.id || "",
     nome: sessao?.nome ?? "",
+    email: sessao?.email ?? "",
   };
 }
 
@@ -1442,6 +1443,10 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
       pops = pops.filter((pop) => {
         const autorizados = pop.visualizadores ?? [];
         if (autorizados.length === 0) return true;
+        // POP Geral (ou liberado para "Geral") é visível para todos.
+        if (popEhGeral(pop)) return true;
+        if (autorizados.some((id) => id === "geral" || setorDeId(id, base.setores) === "geral"))
+          return true;
         return autorizados
           .map((id) => setorDeId(id, base.setores))
           .some((nome) => nome === meuSetor || nome === minhaUnidade);

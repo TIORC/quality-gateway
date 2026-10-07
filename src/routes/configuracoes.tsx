@@ -1180,7 +1180,7 @@ function NovoColaboradorDialog({
 
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
   const niveisDisponiveis = podeDarAdministracao
-    ? NIVEIS_ACESSO
+    ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== NIVEL_DESENVOLVEDOR_SISTEMA)
     : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
 
   function alternarGrupo(grupo: string) {
@@ -1478,13 +1478,13 @@ function GerirColaboradorDialog({
   if (!atual) return null;
 
   const nivelSelecionado = NIVEIS_ACESSO.find((nivel) => nivel.rotulo === nivelAcesso);
-  // O Desenvolvedor do Sistema é imutável: o nível não pode ser trocado.
   const ehDesenvolvedorDoSistema = atual.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
   const niveisDisponiveis = ehDesenvolvedorDoSistema
     ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo === NIVEL_DESENVOLVEDOR_SISTEMA)
     : podeDarAdministracao
-      ? NIVEIS_ACESSO
+      ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== NIVEL_DESENVOLVEDOR_SISTEMA)
       : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
+  const ehDevSistema = ehDesenvolvedorDoSistema;
 
   function alternarGrupo(grupo: string) {
     setGrupos((atualLista) =>
@@ -1556,7 +1556,7 @@ function GerirColaboradorDialog({
                 onChange={(evento) => setEmail(evento.target.value)}
                 placeholder="nome@empresa.com.br"
                 type="email"
-                disabled={ehDesenvolvedorDoSistema}
+                disabled={ehDevSistema}
               />
             </Campo>
           </div>
@@ -1619,7 +1619,7 @@ function GerirColaboradorDialog({
                 {nivelSelecionado.descricao}
               </p>
             ) : null}
-            {ehDesenvolvedorDoSistema ? (
+            {ehDevSistema ? (
               <p className="mt-1.5 text-xs leading-relaxed text-[#6D28D9]">
                 Nível exclusivo da TI Maracas: e-mail, nível e status são imutáveis.
               </p>

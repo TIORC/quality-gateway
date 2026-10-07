@@ -429,6 +429,7 @@ export type Database = {
           perm_excluir_documentos: boolean
           perm_excluir_planos: boolean
           perm_modificar_documentos: boolean
+          permissoes_extras: Json
           processos_lidos: number
           processos_visualizados: number
           setor: string
@@ -451,6 +452,7 @@ export type Database = {
           perm_excluir_documentos?: boolean
           perm_excluir_planos?: boolean
           perm_modificar_documentos?: boolean
+          permissoes_extras?: Json
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
@@ -473,6 +475,7 @@ export type Database = {
           perm_excluir_documentos?: boolean
           perm_excluir_planos?: boolean
           perm_modificar_documentos?: boolean
+          permissoes_extras?: Json
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
@@ -675,8 +678,8 @@ export type Database = {
           lida: boolean
           mensagem: string
           plano_id: string | null
-          pop_id: string | null
           politica_id: string | null
+          pop_id: string | null
           revisao: number | null
           tipo: string
           titulo: string
@@ -691,8 +694,8 @@ export type Database = {
           lida?: boolean
           mensagem?: string
           plano_id?: string | null
-          pop_id?: string | null
           politica_id?: string | null
+          pop_id?: string | null
           revisao?: number | null
           tipo?: string
           titulo: string
@@ -707,8 +710,8 @@ export type Database = {
           lida?: boolean
           mensagem?: string
           plano_id?: string | null
-          pop_id?: string | null
           politica_id?: string | null
+          pop_id?: string | null
           revisao?: number | null
           tipo?: string
           titulo?: string
@@ -719,6 +722,13 @@ export type Database = {
             columns: ["plano_id"]
             isOneToOne: false
             referencedRelation: "planos_de_acao"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notificacoes_politica_id_fkey"
+            columns: ["politica_id"]
+            isOneToOne: false
+            referencedRelation: "politicas"
             referencedColumns: ["id"]
           },
           {

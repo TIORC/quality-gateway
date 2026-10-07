@@ -1602,7 +1602,8 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
           </h2>
           <StatusBadge status={popExibido.status} />
         </div>
-        {/* Releitura indispensável: banner com o texto do que mudou na revisão. */}
+        {/* Releitura indispensável: só para quem tem leitura pendente. */}
+        {!(leitura && leitura.decisao !== "discordo" && (leitura.revisaoLida || 0) >= popExibido.revisao) ? (
         <div className="mt-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-3">
           <p className="flex items-center gap-1.5 text-[13px] font-bold text-[#92400E]">
             <Megaphone className="h-4 w-4" />
@@ -1618,6 +1619,7 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
             </p>
           ) : null}
         </div>
+        ) : null}
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <Tag cor={COR_REVISAO} rotulo="Revisão">
             {rotuloRevisao(popExibido.revisao)}

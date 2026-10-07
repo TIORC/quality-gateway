@@ -20,6 +20,8 @@ import { EMPRESA_ORCOMA } from "@/lib/dados";
 import * as org from "@/lib/organizacao";
 import type { PerfilColaborador } from "@/lib/organizacao";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
+import { PermissoesColaborador } from "@/components/permissoes-colaborador";
+import { NIVEIS_GESTAO } from "@/lib/niveis-acesso";
 
 export const Route = createFileRoute("/funcionarios/$id")({
   head: () => ({
@@ -292,6 +294,9 @@ function PerfilFuncionario() {
           </aside>
         </main>
       )}
+      {perfil && session && NIVEIS_GESTAO.has(session.nivelAcesso ?? "") ? (
+        <PermissoesColaborador colaboradorId={perfil.id} />
+      ) : null}
     </PanelShell>
   );
 }
