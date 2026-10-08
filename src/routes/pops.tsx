@@ -125,6 +125,8 @@ import {
   rotuloDoValor,
   rotuloRevisao,
   STATUS_POP,
+  arquivoDoAnexo,
+  ehDocxAnexo,
   textoDoAnexoOffice,
   urlAssinadaDoAnexo,
   type ConteudoRevisaoPop,
@@ -141,6 +143,7 @@ import {
 } from "@/lib/pops";
 import { cn, mascaraDataBr } from "@/lib/utils";
 import { PdfProtegido } from "@/components/pdf-protegido";
+import { DocxProtegido } from "@/components/docx-protegido";
 import { useBloquearAtalhosDocumento } from "@/hooks/use-bloquear-documento";
 
 export const Route = createFileRoute("/pops")({
@@ -418,7 +421,9 @@ function PopCard({
               <Eye className="h-3 w-3" /> Quem visualiza
             </span>
             <span className="text-right text-[12.5px] font-semibold text-[#1F2937]">
-              {(pop.visualizadores ?? []).length === 0
+              {(pop.visualizadores ?? []).length === 0 ||
+              (setores.length > 0 &&
+                setores.every((setor) => (pop.visualizadores ?? []).includes(setor.id)))
                 ? "Todos os setores"
                 : nomesDosSetores(pop.visualizadores, setores).join(", ")}
             </span>
@@ -809,15 +814,31 @@ interface SeletorSetoresProps {
   setores: SetorPop[];
   selecionados: string[];
   aoAlternar: (id: string) => void;
+  aoAlternarTodos: () => void;
 }
 
 /** Seleção múltipla de setores/unidades (Setores responsáveis e ACESSO). */
-function SeletorSetores({ setores, selecionados, aoAlternar }: SeletorSetoresProps) {
+function SeletorSetores({ setores, selecionados, aoAlternar, aoAlternarTodos }: SeletorSetoresProps) {
   if (setores.length === 0) {
     return <p className="text-[12px] text-[#94A3B8]">Nenhum setor cadastrado ainda.</p>;
   }
+  const todosMarcados = setores.every((setor) => selecionados.includes(setor.id));
   return (
     <div className="flex flex-wrap gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] p-2.5">
+      <button
+        type="button"
+        aria-pressed={todosMarcados}
+        onClick={aoAlternarTodos}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-semibold transition",
+          todosMarcados
+            ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+            : "border-dashed border-[#1E3A8A]/50 bg-white text-[#1E3A8A] hover:border-[#1E3A8A]",
+        )}
+      >
+        {todosMarcados ? <Check className="h-3 w-3" /> : null}
+        Todos os setores
+      </button>
       {setores.map((setor) => {
         const ativo = selecionados.includes(setor.id);
         return (
@@ -885,9 +906,25 @@ function PopFormDialog({
 
   /** Liga/desliga um setor de uma lista (responsáveis ou autorizados a ver). */
   function alternarSetor(campo: "setoresResponsaveis" | "visualizadores", id: string) {
+    aplicarSetores(campo, (lista) =>
+      lista.includes(id) ? lista.filter((item) => item !== id) : [...lista, id],
+    );
+  }
+
+  /** Marca todos os setores de uma vez; se já estiverem todos marcados, desmarca. */
+  function alternarTodosSetores(campo: "setoresResponsaveis" | "visualizadores") {
+    const ids = setores.map((setor) => setor.id);
+    aplicarSetores(campo, (lista) =>
+      ids.length > 0 && ids.every((id) => lista.includes(id)) ? [] : ids,
+    );
+  }
+
+  function aplicarSetores(
+    campo: "setoresResponsaveis" | "visualizadores",
+    calcular: (lista: string[]) => string[],
+  ) {
     setEntrada((atual) => {
-      const lista = atual[campo] ?? [];
-      const nova = lista.includes(id) ? lista.filter((item) => item !== id) : [...lista, id];
+      const nova = calcular(atual[campo] ?? []);
       const atualizado: EntradaPop = { ...atual, [campo]: nova };
       // O primeiro setor responsável define o vínculo do POP no banco e, ao
       // criar um POP novo, sugere o próximo código sequencial da área.
@@ -1030,6 +1067,7 @@ function PopFormDialog({
               setores={setores}
               selecionados={entrada.setoresResponsaveis ?? []}
               aoAlternar={(id) => alternarSetor("setoresResponsaveis", id)}
+              aoAlternarTodos={() => alternarTodosSetores("setoresResponsaveis")}
             />
             <p className="mt-1 text-[11.5px] text-[#94A3B8]">
               O primeiro setor selecionado é o vínculo do POP com a grade de setores.
@@ -1044,6 +1082,7 @@ function PopFormDialog({
               setores={setores}
               selecionados={entrada.visualizadores ?? []}
               aoAlternar={(id) => alternarSetor("visualizadores", id)}
+              aoAlternarTodos={() => alternarTodosSetores("visualizadores")}
             />
             <p className="mt-1 text-[11.5px] text-[#94A3B8]">
               Somente os setores e unidades marcados aqui enxergam esta revisão. Sem nenhuma seleção,
@@ -1165,9 +1204,9 @@ function LinhaDetalhe({ rotulo, children }: { rotulo: string; children: ReactNod
 }
 
 /** Visualizador embutido do anexo: PDF via <iframe> de URL assinada; DOCX em texto. */
-function PopAnexoVisualizador({ pop }: { pop: Pop }) {
-  const anexo = pop.anexo;
+function PopAnexoVisualizador({ anexo }: { anexo: Pop["anexo"] }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [arquivo, setArquivo] = useState<Blob | null>(null);
   const [texto, setTexto] = useState<string | null>(null);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -1176,19 +1215,25 @@ function PopAnexoVisualizador({ pop }: { pop: Pop }) {
     if (!anexo) return;
     let ativo = true;
     setUrl(null);
+    setArquivo(null);
     setTexto(null);
     setErro("");
     setCarregando(true);
     const ehPdf = anexo.tipo === "application/pdf" || anexo.nome.toLowerCase().endsWith(".pdf");
+    const ehWord = ehDocxAnexo(anexo.tipo, anexo.nome);
     const tarefa = ehPdf
       ? urlAssinadaDoAnexo(anexo.path).then((link) => {
           if (ativo) setUrl(link);
         })
-      : textoDoAnexoOffice(anexo.path).then((conteudo) => {
-          if (!ativo) return;
-          if (conteudo === null) setErro("Não foi possível extrair o texto deste arquivo.");
-          else setTexto(conteudo);
-        });
+      : ehWord
+        ? arquivoDoAnexo(anexo.path).then((blob) => {
+            if (ativo) setArquivo(blob);
+          })
+        : textoDoAnexoOffice(anexo.path).then((conteudo) => {
+            if (!ativo) return;
+            if (conteudo === null) setErro("Não foi possível extrair o texto deste arquivo.");
+            else setTexto(conteudo);
+          });
     tarefa
       .catch(() => {
         if (ativo) setErro("Não foi possível abrir o anexo agora. Tente novamente.");
@@ -1228,6 +1273,10 @@ function PopAnexoVisualizador({ pop }: { pop: Pop }) {
         <p className="px-4 py-6 text-center text-[13px] text-destructive">{erro}</p>
       ) : url ? (
         <PdfProtegido url={url} titulo={anexo.nome} />
+      ) : arquivo ? (
+        <div className="p-3">
+          <DocxProtegido arquivo={arquivo} />
+        </div>
       ) : texto !== null ? (
         <pre className="max-h-[65vh] overflow-auto whitespace-pre-wrap px-5 py-4 font-sans text-[13px] leading-relaxed text-[#334155]">
           {texto}
@@ -1307,8 +1356,11 @@ function SecaoLeituraSugestao({
   const precisaReler =
     leitura !== null && leitura.decisao !== "discordo" && (leitura.revisaoLida || 0) < revisaoVigente;
   // Quem já registrou leitura na revisão vigente não vê mais o botão "Lido".
+  // A gestão vê só quem leu a revisão vigente (leituras de revisões antigas não contam).
   const leitores = podeVerGestao
-    ? todasLeituras.filter((l) => l.decisao !== "discordo")
+    ? todasLeituras.filter(
+        (l) => l.decisao !== "discordo" && (l.revisaoLida || 0) >= revisaoVigente,
+      )
     : [];
   // Sugestões de melhoria: visíveis apenas à gestão (Administrador/Gestor).
   const sugestoesVisiveis = podeVerGestao ? sugestoes : [];
@@ -1714,7 +1766,7 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
           ) : null}
         </div>
 
-        <PopAnexoVisualizador pop={pop} />
+        <PopAnexoVisualizador anexo={pop.anexo} />
 
         <SecaoLeituraSugestao
           leitura={leitura}
@@ -1739,6 +1791,7 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
           pop={popExibido}
           revisoes={revisoes}
           podeVerAnteriores={podeVerAnteriores}
+          leituras={todasLeituras}
         />
 
         <footer className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-[#E9EEF5] pt-4">
@@ -1763,10 +1816,13 @@ interface HistoricoModificacoesProps {
   revisoes: PopRevisao[];
   /** Somente o gestor consulta o conteúdo das versões anteriores. */
   podeVerAnteriores: boolean;
+  /** Leituras do POP (quem leu cada revisão, para quem pode ver revisões anteriores). */
+  leituras: PopLeitura[];
 }
 
-function HistoricoModificacoes({ pop, revisoes, podeVerAnteriores }: HistoricoModificacoesProps) {
+function HistoricoModificacoes({ pop, revisoes, podeVerAnteriores, leituras }: HistoricoModificacoesProps) {
   const [versaoAberta, setVersaoAberta] = useState<PopRevisao | null>(null);
+  const [revisaoAberta, setRevisaoAberta] = useState<PopRevisao | null>(null);
 
   return (
     <section className="mt-5 border-t border-[#E9EEF5] pt-5">
@@ -1804,7 +1860,17 @@ function HistoricoModificacoes({ pop, revisoes, podeVerAnteriores }: HistoricoMo
             {revisoes.map((revisao) => (
               <tr key={revisao.id} className="border-t border-[#E9EEF5] bg-white">
                 <td className="px-3 py-2 text-[12.5px] font-semibold text-[#475569]">
-                  {rotuloRevisao(revisao.revisao)}
+                  {podeVerAnteriores ? (
+                    <button
+                      type="button"
+                      onClick={() => setRevisaoAberta(revisao)}
+                      className="underline decoration-dotted underline-offset-2 hover:text-[#1E3A8A]"
+                    >
+                      {rotuloRevisao(revisao.revisao)}
+                    </button>
+                  ) : (
+                    rotuloRevisao(revisao.revisao)
+                  )}
                 </td>
                 <td className="px-3 py-2 text-[12.5px] text-[#334155]">
                   {formatarDataRevisao(revisao.dataRevisao)}
@@ -1855,7 +1921,163 @@ function HistoricoModificacoes({ pop, revisoes, podeVerAnteriores }: HistoricoMo
           <VersaoArquivada conteudo={versaoAberta?.conteudo ?? {}} />
         </DialogContent>
       </Dialog>
+
+      <RevisaoAnteriorPopDialog
+        revisao={revisaoAberta}
+        pop={pop}
+        leituras={leituras}
+        onFechar={() => setRevisaoAberta(null)}
+      />
     </section>
+  );
+}
+
+/* Comparação de uma revisão anterior com a vigente — só para quem pode ver revisões anteriores. */
+interface RevisaoAnteriorPopDialogProps {
+  revisao: PopRevisao | null;
+  pop: Pop;
+  leituras: PopLeitura[];
+  onFechar: () => void;
+}
+
+function RevisaoAnteriorPopDialog({ revisao, pop, leituras, onFechar }: RevisaoAnteriorPopDialogProps) {
+  if (!revisao) return null;
+  const conteudo = revisao.conteudo;
+
+  const textoLista = (valor: unknown) =>
+    Array.isArray(valor)
+      ? valor.filter((v): v is string => typeof v === "string").join(", ")
+      : typeof valor === "string"
+        ? valor.trim()
+        : "";
+  const textoEtapas = (etapas: { nivel: number; texto: string }[] | undefined) =>
+    (etapas ?? []).map((e) => `${"    ".repeat(e.nivel)}${e.texto}`).join("\n").trim();
+
+  const campos = [
+    { rotulo: "Nome do POP", anterior: textoLista(conteudo.titulo), vigente: textoLista(pop.titulo) },
+    { rotulo: "Objetivo / Quando utilizar", anterior: textoLista(conteudo.objetivo), vigente: textoLista(pop.objetivo) },
+    { rotulo: "Materiais necessários", anterior: textoLista(conteudo.materiais), vigente: textoLista(pop.materiaisSistemas) },
+    { rotulo: "Links vinculados", anterior: textoLista(conteudo.links), vigente: textoLista(pop.linksRelacionados) },
+    { rotulo: "Procedimento", anterior: textoEtapas(conteudo.etapas), vigente: textoEtapas(pop.etapas) },
+    { rotulo: "Setores responsáveis", anterior: textoLista(conteudo.setoresResponsaveis), vigente: textoLista(pop.setoresResponsaveis) },
+    { rotulo: "Quem pode visualizar", anterior: textoLista(conteudo.visualizadores), vigente: textoLista(pop.visualizadores) },
+    { rotulo: "Descrição", anterior: textoLista(conteudo.descricao), vigente: textoLista(pop.descricao) },
+    { rotulo: "Documentos gerados", anterior: textoLista(conteudo.documentosGerados), vigente: textoLista(pop.documentosGerados) },
+    { rotulo: "Observações", anterior: textoLista(conteudo.observacoes), vigente: textoLista(pop.observacoes) },
+    { rotulo: "Documento", anterior: conteudo.anexo?.nome ?? "", vigente: pop.anexo?.nome ?? "" },
+  ];
+
+  // Quem leu e concordou: foto arquivada; sem ela, quem ainda tem esta revisão como última leitura.
+  const leitoresArquivados = Array.isArray(conteudo.leitores) ? conteudo.leitores : null;
+  const leitoresAtuais = leituras.filter(
+    (l) => l.revisaoLida === revisao.revisao && l.decisao !== "discordo",
+  );
+
+  return (
+    <Dialog open={true} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto pops-page">
+        <DialogHeader>
+          <DialogTitle>
+            {pop.codigo} — {rotuloRevisao(revisao.revisao)} (o que mudou em relação à {rotuloRevisao(pop.revisao)}, vigente)
+          </DialogTitle>
+          <DialogDescription>Visível apenas para quem gerencia a Qualidade.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">Observação da revisão</p>
+            <p className="mt-1 whitespace-pre-wrap text-[13px] text-[#475569]">{revisao.observacao || "—"}</p>
+          </section>
+
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">O que mudou</p>
+            <div className="mt-2 overflow-hidden rounded-xl border border-[#E9EEF5]">
+              <table className="w-full border-collapse text-left text-[12.5px]">
+                <thead className="bg-[#F8FAFC] text-[11px] uppercase tracking-wide text-[#64748B]">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Campo</th>
+                    <th className="px-3 py-2 font-semibold">{rotuloRevisao(revisao.revisao)}</th>
+                    <th className="px-3 py-2 font-semibold">{rotuloRevisao(pop.revisao)} (vigente)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campos.map((campo) => {
+                    const mudou = campo.anterior !== campo.vigente;
+                    return (
+                      <tr key={campo.rotulo} className="border-t border-[#E9EEF5] align-top">
+                        <td className="px-3 py-2 font-semibold text-[#1F2937]">
+                          {campo.rotulo}
+                          {mudou ? (
+                            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                              Alterado
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="whitespace-pre-line px-3 py-2 text-[#475569]">{campo.anterior || "—"}</td>
+                        <td className="whitespace-pre-line px-3 py-2 text-[#334155]">{campo.vigente || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">Documento desta revisão</p>
+            <div className="mt-2">
+              {conteudo.anexo?.path ? (
+                <PopAnexoVisualizador anexo={conteudo.anexo} />
+              ) : (
+                <p className="rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] p-3 text-[13px] text-[#64748B]">
+                  O documento desta revisão não foi arquivado (publicada antes desta atualização).
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">Quem leu e concordou</p>
+            {leitoresArquivados ? (
+              leitoresArquivados.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {leitoresArquivados.map((l) => (
+                    <span
+                      key={l.email}
+                      className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]"
+                    >
+                      <Check className="h-3 w-3" /> {l.nome} · {l.decisao === "concordo" ? "Li e concordo" : "Lido"}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-[13px] text-[#64748B]">Ninguém registrou leitura desta revisão.</p>
+              )
+            ) : (
+              <>
+                <p className="mt-1 text-[12px] text-[#64748B]">
+                  Esta revisão é anterior ao arquivamento de leituras. Abaixo, quem ainda tem esta revisão como última leitura.
+                </p>
+                {leitoresAtuais.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {leitoresAtuais.map((l) => (
+                      <span
+                        key={l.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]"
+                      >
+                        <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[13px] text-[#64748B]">Nenhuma leitura registrada.</p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2183,7 +2405,8 @@ function Pops() {
 
   // Deep link: abre um POP específico quando chega com `?abrir=<id>` (painel).
   useEffect(() => {
-    if (!abrir || popAberto) return;
+    // Abre também quando outro POP já está aberto (ex.: clique no sino de uma nova revisão).
+    if (!abrir || popAberto?.id === abrir) return;
     const alvo = pops.find((pop) => pop.id === abrir);
     if (!alvo) return;
     setPopAberto(alvo);

@@ -40,9 +40,12 @@ import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { supabase } from "@/integrations/supabase/client";
 import { getSession, type UserSession } from "@/lib/auth";
 import { organizacaoDisponivel } from "@/lib/organizacao";
+import { normalizarSetor, politicaDoSetor } from "@/lib/niveis-acesso";
 import {
   ehLiderancaDaQualidade,
   ehUsuarioDaQualidade,
+  podeGerenciarPoliticas,
+  podeVerRevisoesAnteriores,
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
   podeModificarDocumentos,
@@ -51,11 +54,14 @@ import {
   BUCKET_ANEXOS,
   ROTULO_TIPO_ANEXO,
   TIPOS_ANEXO_ACEITOS,
+  arquivoDoAnexo,
+  ehDocxAnexo,
   textoDoAnexoOffice,
   urlAssinadaDoAnexo,
 } from "@/lib/pops";
 import { cn, mascaraDataBr } from "@/lib/utils";
 import { PdfProtegido } from "@/components/pdf-protegido";
+import { DocxProtegido } from "@/components/docx-protegido";
 import { useBloquearAtalhosDocumento } from "@/hooks/use-bloquear-documento";
 import {
   atualizarPolitica,
@@ -67,6 +73,7 @@ import {
   excluirPolitica,
   listarLeiturasPolitica,
   listarSugestoesPolitica,
+  arquivarRevisaoPolitica,
   politicasDisponiveis,
   politicaVencendo,
   registrarLeituraPolitica,
@@ -76,6 +83,7 @@ import {
   type PoliticaItem,
   type PoliticaLeitura,
   type PoliticaSugestao,
+  type RevisaoPolitica,
   type SugestaoPolitica,
 } from "@/lib/politicas";
 
@@ -107,11 +115,20 @@ export const Route = createFileRoute("/politicas")({
 });
 
 const ABAS = [
-  { valor: "todas", rotulo: "Todas" },
-  { valor: "preciso-ler", rotulo: "Preciso ler" },
-  { valor: "meu-parecer", rotulo: "Meu parecer" },
-  { valor: "vencendo", rotulo: "Vencendo" },
+  { valor: "todas", rotulo: "Políticas divulgadas" },
+  { valor: "preciso-ler", rotulo: "Pendente leitura" },
+  { valor: "pendente-aprovacao", rotulo: "Pendente aprovação" },
+  { valor: "vencendo", rotulo: "Pendente revisão" },
 ] as const;
+
+/** Pessoa que ainda não leu a revisão vigente de uma política (pendência de leitura). */
+interface PendenteLeitura {
+  nome: string;
+  setor: string;
+}
+
+/** Abas exclusivas da gestão (Gestor da Qualidade, Administrador, Desenvolvedor e Líder de setor). */
+const ABAS_DA_GESTAO = new Set<string>(["pendente-aprovacao", "vencendo"]);
 
 const STATUS_POLITICA = ["Em aprovação", "Aprovado", "Divulgado"] as const;
 
@@ -159,8 +176,43 @@ function Politicas() {
   const podeModificar = podeModificarDocumentos(sessao);
   const podeExcluir = podeExcluirDocumentos(sessao);
   // A aba "Vencendo" é exclusiva do setor da Qualidade (e da liderança).
-  const verVencendo = ehUsuarioDaQualidade(sessao);
-  const abasVisiveis = ABAS.filter((aba) => aba.valor !== "vencendo" || verVencendo);
+  const verVencendo = podeGerenciarPoliticas(sessao);
+  const abasVisiveis = ABAS.filter((aba) => !ABAS_DA_GESTAO.has(aba.valor) || verVencendo);
+  const { colaboradores } = useCatalogoOrganizacional();
+  // Leituras de cada política divulgada, para a gestão ver quem ainda não leu (por setor).
+  const [leiturasPorPolitica, setLeiturasPorPolitica] = useState<Record<string, PoliticaLeitura[]>>({});
+
+  useEffect(() => {
+    if (!verVencendo || !politicasDisponiveis()) return;
+    let ativo = true;
+    const divulgadas = itens.filter((i) => i.status === "Divulgado");
+    Promise.all(divulgadas.map((i) => listarLeiturasPolitica(i.id).then((l) => [i.id, l] as const)))
+      .then((pares) => {
+        if (ativo) setLeiturasPorPolitica(Object.fromEntries(pares));
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [itens, verVencendo]);
+
+  /** Nomes de quem ainda deve ler a revisão vigente: a gestão vê todo o quadro; o líder, o próprio setor. */
+  function pendentesDaPolitica(item: PoliticaItem): PendenteLeitura[] {
+    if (!verVencendo) return [];
+    const lidos = new Set(
+      (leiturasPorPolitica[item.id] ?? [])
+        .filter((l) => l.decisao !== "discordo" && (l.revisaoLida || 0) >= item.revisao)
+        .map((l) => l.usuarioEmail.trim().toLowerCase()),
+    );
+    const gestaoGeral = ehLiderancaDaQualidade(sessao);
+    return colaboradores
+      .filter((c) => !!c.email?.trim())
+      .filter((c) => gestaoGeral || normalizarSetor(c.setor) === normalizarSetor(sessao?.setor))
+      .filter((c) => politicaDoSetor(item.setores, c.setor ?? ""))
+      .filter((c) => !lidos.has((c.email ?? "").trim().toLowerCase()))
+      .map((c) => ({ nome: c.nome, setor: c.setor?.trim() || "Sem setor" }));
+  }
+  const [pendentesAbertos, setPendentesAbertos] = useState<PoliticaItem | null>(null);
 
   useBloquearAtalhosDocumento(politicaAberta !== null);
 
@@ -187,7 +239,8 @@ function Politicas() {
 
   // Deep link: abre uma política específica quando chega com `?abrir=<id>` (painel).
   useEffect(() => {
-    if (!abrir || politicaAberta) return;
+    // Abre também quando outra política já está aberta (ex.: clique no sino de uma nova revisão).
+    if (!abrir || politicaAberta?.id === abrir) return;
     const alvo = itens.find((item) => item.id === abrir);
     if (!alvo) return;
     setPoliticaAberta(alvo);
@@ -219,9 +272,17 @@ function Politicas() {
   }
 
   function listaDaAba(valor: string) {
-    if (valor === "todas") return itens;
-    if (valor === "preciso-ler") return itens.filter((i) => !jaLi(i));
-    if (valor === "meu-parecer") return itens.filter((i) => i.parecer || i.sugestoes.length > 0);
+    if (valor === "todas") return itens.filter((i) => i.status === "Divulgado");
+    if (valor === "preciso-ler")
+      return itens.filter(
+        (i) =>
+          i.status === "Divulgado" &&
+          (verVencendo ? pendentesDaPolitica(i).length > 0 : !jaLi(i)),
+      );
+    if (valor === "pendente-aprovacao") {
+      if (!verVencendo) return [];
+      return itens.filter((i) => i.status === "Em aprovação");
+    }
     if (valor === "vencendo") {
       if (!verVencendo) return [];
       return itens
@@ -369,6 +430,12 @@ function Politicas() {
             ))}
           </TabsList>
 
+          <PendentesLeituraDialog
+            item={pendentesAbertos}
+            pendentes={pendentesAbertos ? pendentesDaPolitica(pendentesAbertos) : []}
+            onFechar={() => setPendentesAbertos(null)}
+          />
+
           {abasVisiveis.map((aba) => (
             <TabsContent key={aba.valor} value={aba.valor}>
               <ListaPoliticas
@@ -376,6 +443,12 @@ function Politicas() {
                 leituras={leiturasUsuario}
                 jaLi={jaLi}
                 mostrarVencimento={verVencendo}
+                pendentesDe={verVencendo && aba.valor === "preciso-ler" ? pendentesDaPolitica : undefined}
+                onVerPendentes={
+                  verVencendo && aba.valor === "preciso-ler"
+                    ? (item) => setPendentesAbertos(item)
+                    : undefined
+                }
                 onNova={() => setNovaPolitica(true)}
                 podeAdicionar={podeAdicionar}
                 podeModificar={podeModificar}
@@ -474,11 +547,73 @@ function exemplosIniciais(): PoliticaItem[] {
   ];
 }
 
+/* Modal "Os que não leram": pendentes de leitura da revisão vigente, agrupados por setor. */
+function PendentesLeituraDialog({
+  item,
+  pendentes,
+  onFechar,
+}: {
+  item: PoliticaItem | null;
+  pendentes: PendenteLeitura[];
+  onFechar: () => void;
+}) {
+  if (!item) return null;
+
+  const porSetor = new Map<string, string[]>();
+  for (const p of pendentes) {
+    porSetor.set(p.setor, [...(porSetor.get(p.setor) ?? []), p.nome]);
+  }
+  const setores = [...porSetor.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  return (
+    <Dialog open={true} onOpenChange={(aberto) => !aberto && onFechar()}>
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            Os que não leram — {item.codigo} · {rotuloRevisao(item.revisao)}
+          </DialogTitle>
+          <DialogDescription>
+            {pendentes.length === 1
+              ? "1 pessoa ainda não registrou a leitura desta revisão."
+              : `${pendentes.length} pessoas ainda não registraram a leitura desta revisão.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {setores.length === 0 ? (
+          <p className="text-[13px] text-[#64748B]">Todos já registraram a leitura.</p>
+        ) : (
+          <div className="space-y-4">
+            {setores.map((setor) => {
+              const nomes = (porSetor.get(setor) ?? []).sort((a, b) => a.localeCompare(b, "pt-BR"));
+              return (
+                <section key={setor}>
+                  <p className="text-[12px] font-bold uppercase tracking-wide text-foreground">
+                    {setor} <span className="font-semibold text-muted-foreground">({nomes.length})</span>
+                  </p>
+                  <ul className="mt-1.5 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                    {nomes.map((nome) => (
+                      <li key={`${setor}-${nome}`} className="text-[13px] text-foreground">
+                        {nome}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ListaPoliticas({
   itens,
   leituras,
   jaLi,
   mostrarVencimento,
+  pendentesDe,
+  onVerPendentes,
   onNova,
   podeAdicionar,
   podeModificar,
@@ -491,6 +626,10 @@ function ListaPoliticas({
   leituras: Record<string, PoliticaLeitura>;
   jaLi: (item: PoliticaItem) => boolean;
   mostrarVencimento: boolean;
+  /** Quem ainda não leu a revisão vigente (somente para a gestão). */
+  pendentesDe?: (item: PoliticaItem) => PendenteLeitura[];
+  /** Abre o modal "Os que não leram" (somente para a gestão). */
+  onVerPendentes?: (item: PoliticaItem) => void;
   onNova: () => void;
   podeAdicionar: boolean;
   podeModificar: boolean;
@@ -608,6 +747,17 @@ function ListaPoliticas({
               </Badge>
             )}
 
+            {pendentesDe && pendentesDe(item).length > 0 && onVerPendentes ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                onClick={() => onVerPendentes(item)}
+              >
+                Os que não leram
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" size="sm" onClick={() => onAbrir(item)}>
               Abrir
             </Button>
@@ -689,6 +839,9 @@ function PoliticaDialog({
   const [dataVencimento, setDataVencimento] = useState("");
   const [status, setStatus] = useState<string>("Em aprovação");
   const [dataRevisao, setDataRevisao] = useState(dataHojeBr());
+  // Número da revisão: editável por Desenvolvedor, Administrador e Gestor da Qualidade.
+  const [numeroRevisao, setNumeroRevisao] = useState("1");
+  const podeEditarNumeroRevisao = ehLiderancaDaQualidade(getSession());
   const [observacaoRevisao, setObservacaoRevisao] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
 
@@ -732,6 +885,7 @@ function PoliticaDialog({
       setDataVencimento(politica.dataVencimento ?? "");
       setStatus(politica.status ?? "Em aprovação");
       setDataRevisao(politica.dataRevisao ?? dataHojeBr());
+      setNumeroRevisao(String(politica.revisao ?? 1));
       setObservacaoRevisao(politica.observacaoRevisao ?? "");
       setArquivo(null);
     } else {
@@ -746,6 +900,7 @@ function PoliticaDialog({
       setDataVencimento("");
       setStatus("Em aprovação");
       setDataRevisao(dataHojeBr());
+      setNumeroRevisao("1");
       setObservacaoRevisao("");
       setArquivo(null);
     }
@@ -813,10 +968,48 @@ function PoliticaDialog({
       (observacaoRevisao.trim() !== (politica?.observacaoRevisao ?? "").trim() ||
         dataRevisao.trim() !== (politica?.dataRevisao ?? "").trim() ||
         !politica);
-    const novaRevisao = politica && houveAlteracaoRevisao ? revisaoAtual + 1 : revisaoAtual;
+    // Número informado pelo gestor: se for diferente do atual, a nova revisão segue a partir dele.
+    const numeroInformado = Number.parseInt(numeroRevisao, 10);
+    if (!Number.isInteger(numeroInformado) || numeroInformado < 1) {
+      toast.error("Informe um número de revisão válido (1 ou maior).");
+      return;
+    }
+    if (politica && podeEditarNumeroRevisao && numeroInformado < revisaoAtual) {
+      toast.error(`A revisão não pode ser menor que a atual (${rotuloRevisao(revisaoAtual)}).`);
+      return;
+    }
+    const revisaoManual = podeEditarNumeroRevisao && !!politica && numeroInformado !== revisaoAtual;
+    const geraRevisao = Boolean(houveAlteracaoRevisao) || revisaoManual;
+    const novaRevisao = !politica
+      ? podeEditarNumeroRevisao
+        ? numeroInformado
+        : 1
+      : revisaoManual
+        ? numeroInformado
+        : geraRevisao
+          ? revisaoAtual + 1
+          : revisaoAtual;
     const historicoBase = politica?.historico ?? [];
+    // Ao publicar nova revisão, a vigente é arquivada: documento, conteúdo e quem leu.
+    const arquivada =
+      politica && geraRevisao && organizacaoDisponivel()
+        ? await arquivarRevisaoPolitica(politica)
+        : {};
+    const entradaAtual = historicoBase.find((h) => h.numero === revisaoAtual);
+    const historicoAnterior = entradaAtual
+      ? historicoBase.map((h) => (h.numero === revisaoAtual ? { ...h, ...arquivada } : h))
+      : [
+          {
+            id: novaId(),
+            numero: revisaoAtual,
+            data: politica?.dataRevisao ?? "",
+            observacao: politica?.observacaoRevisao || "Publicação inicial da política.",
+            ...arquivada,
+          },
+          ...historicoBase,
+        ];
     const historico =
-      politica && houveAlteracaoRevisao
+      politica && geraRevisao
         ? [
             {
               id: novaId(),
@@ -824,7 +1017,7 @@ function PoliticaDialog({
               data: dataRevisao.trim() || dataHojeBr(),
               observacao: observacaoRevisao.trim() || "Revisão registrada.",
             },
-            ...historicoBase,
+            ...historicoAnterior,
           ]
         : historicoBase.length > 0
           ? historicoBase
@@ -1026,13 +1219,25 @@ function PoliticaDialog({
               />
             </Campo>
             <Campo rotulo="Revisão">
-              <Input
-                value={rotuloRevisao(politica ? politica.revisao : 1)}
-                disabled
-                className="bg-[#F8FAFC] text-[#64748B]"
-              />
+              {podeEditarNumeroRevisao ? (
+                <Input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={numeroRevisao}
+                  onChange={(e) => setNumeroRevisao(e.target.value)}
+                />
+              ) : (
+                <Input
+                  value={rotuloRevisao(politica ? politica.revisao : 1)}
+                  disabled
+                  className="bg-[#F8FAFC] text-[#64748B]"
+                />
+              )}
               <p className="text-xs italic text-[#94A3B8]">
-                Revisão 01, 02, 03… incrementada ao salvar.
+                {podeEditarNumeroRevisao
+                  ? "Informe o número desta revisão. A próxima atualização segue a partir dele (ex.: 3 → 4)."
+                  : "Revisão 01, 02, 03… incrementada ao salvar."}
               </p>
             </Campo>
           </div>
@@ -1120,6 +1325,7 @@ function PoliticaDetalhe({
   const [sugestoes, setSugestoes] = useState<PoliticaSugestao[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [marcandoSugestao, setMarcandoSugestao] = useState<string | null>(null);
+  const [revisaoAberta, setRevisaoAberta] = useState<RevisaoPolitica | null>(null);
   const politicaId = politica.id;
   const item = politica;
 
@@ -1148,7 +1354,7 @@ function PoliticaDetalhe({
     return () => {
       ativo = false;
     };
-  }, [politicaId]);
+  }, [politicaId, item.revisao]);
 
   function confirmarLeitura() {
     // Primeiro salva no banco (tabela politica_leituras), depois atualiza o estado local via onParecer
@@ -1158,7 +1364,7 @@ function PoliticaDetalhe({
       return;
     }
     setEnviando(true);
-    registrarLeituraPolitica(politicaId, usuario, "lido", item.revisao)
+    registrarLeituraPolitica(politicaId, usuario, "concordo", item.revisao)
       .then(() => {
         // Recarrega as leituras e atualiza o parecer local
         return listarLeiturasPolitica(politicaId).then((novas) => {
@@ -1182,7 +1388,7 @@ function PoliticaDetalhe({
       return;
     }
     setEnviando(true);
-    enviarSugestaoPolitica(politicaId, usuario, textoSugestao)
+    enviarSugestaoPolitica(politicaId, usuario, textoSugestao, item.revisao)
       .then(() => {
         setTextoSugestao("");
         setMostrarSugestao(false);
@@ -1214,18 +1420,16 @@ function PoliticaDetalhe({
       .finally(() => setMarcandoSugestao(null));
   }
 
-  // Leituras registradas (Cloud + fallback do parecer antigo, sem duplicar o usuário atual)
+  // Leituras da política. Fonte: tabela politica_leituras (uma linha por pessoa e revisão).
+  // O parecer global gravado na política NÃO é leitura de ninguém: só o modo demonstração
+  // (sem banco) usa o parecer como leitura.
   const todasLeituras = useMemo(() => {
-    const emailAtual = (sessao?.email ?? "").trim().toLowerCase();
-    const cloud = leituras.filter((l) => l.decisao !== "discordo");
-    const jaRegistrouNoCloud = cloud.some(
-      (l) => l.usuarioEmail.trim().toLowerCase() === emailAtual,
-    );
-    const json =
-      item.parecer && item.parecer.tipo !== "discordo" && !jaRegistrouNoCloud
+    const cloud = politicasDisponiveis() ? leituras.filter((l) => l.decisao !== "discordo") : [];
+    const demo =
+      !politicasDisponiveis() && item.parecer && item.parecer.tipo !== "discordo"
         ? [
             {
-              id: "json",
+              id: "demo",
               politicaId,
               usuarioEmail: sessao?.email ?? "",
               usuarioNome: sessao?.nome ?? "",
@@ -1235,8 +1439,8 @@ function PoliticaDetalhe({
             },
           ]
         : [];
-    return [...cloud, ...json];
-  }, [leituras, item.parecer, politicaId, sessao?.email, sessao?.nome]);
+    return [...cloud, ...demo];
+  }, [leituras, item.parecer, item.revisao, politicaId, sessao?.email, sessao?.nome]);
 
   const leitores = todasLeituras;
   const emailAtual = (sessao?.email ?? "").trim().toLowerCase();
@@ -1245,15 +1449,39 @@ function PoliticaDetalhe({
     (l) =>
       l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) >= item.revisao,
   );
+  // Gestão vê apenas quem leu a revisão vigente (leituras de revisões antigas não contam).
+  const leitoresVigentes = leitores.filter((l) => (l.revisaoLida || 0) >= item.revisao);
   const leituraAntiga = leitores.find(
     (l) =>
       l.usuarioEmail.trim().toLowerCase() === emailAtual && (l.revisaoLida || 0) < item.revisao,
   );
-  // O usuário vê "Leitura registrada" quando ele próprio já leu (a gestão vê o total).
-  const jaLeu =
-    leituraPropria || (!!item.parecer && item.parecer.tipo !== "discordo" && leituraPropria);
+  // "Leitura registrada" só quando a própria pessoa leu a revisão vigente.
+  const jaLeu = leituraPropria;
   // Visão de gestão: Administrador e Gestor da Qualidade.
   const gestao = ehLiderancaDaQualidade(sessao);
+  // Histórico de modificações: a revisão vigente sempre aparece, e as anteriores vêm de `historico`.
+  const linhasHistorico = [
+    {
+      id: "vigente",
+      numero: item.revisao,
+      data: item.dataRevisao,
+      observacao: item.observacaoRevisao,
+      vigente: true,
+      entrada: null as RevisaoPolitica | null,
+    },
+    ...item.historico
+      .filter((h) => h.numero !== item.revisao)
+      .map((h) => ({
+        id: h.id,
+        numero: h.numero,
+        data: h.data,
+        observacao: h.observacao,
+        vigente: false,
+        entrada: h as RevisaoPolitica | null,
+      })),
+  ].sort((a, b) => b.numero - a.numero);
+  // Revisões anteriores abrem a comparação só para quem pode ver (Desenvolvedor, Admin, Líder de setor, Gestor).
+  const verRevisoesAnteriores = podeVerRevisoesAnteriores(sessao);
 
   return (
     <div className="space-y-5">
@@ -1261,8 +1489,8 @@ function PoliticaDetalhe({
         <Button variant="ghost" size="sm" onClick={onFechar} className="text-[#64748B]">
           <ArrowLeft className="h-4 w-4" /> Voltar para as Políticas
         </Button>
-        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
-          {item.codigo}
+        <span className="max-w-[60%] truncate rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
+          {item.titulo}
         </span>
       </div>
 
@@ -1296,8 +1524,8 @@ function PoliticaDetalhe({
           <p className="text-[13px] font-semibold text-[#1F2937]">Ciência / Leituras</p>
           {gestao && jaLeu ? (
             <p className="mt-1 text-[13px] text-[#475569]">
-              <span className="font-semibold text-emerald-700">Lido</span> {leitores.length}{" "}
-              {leitores.length === 1 ? "leitura" : "leituras"} registradas
+              <span className="font-semibold text-emerald-700">Lido</span> {leitoresVigentes.length}{" "}
+              {leitoresVigentes.length === 1 ? "leitura" : "leituras"} registradas
             </p>
           ) : jaLeu ? (
             <p className="mt-1 text-[13px] font-semibold text-emerald-700">
@@ -1309,9 +1537,9 @@ function PoliticaDetalhe({
               Registre aqui que leu a política, ou sugira uma melhoria.
             </p>
           )}
-          {gestao && leitores.length > 0 ? (
+          {gestao && leitoresVigentes.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {leitores.slice(0, 5).map((l) => (
+              {leitoresVigentes.slice(0, 5).map((l) => (
                 <span
                   key={l.id}
                   className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]"
@@ -1319,8 +1547,8 @@ function PoliticaDetalhe({
                   <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
                 </span>
               ))}
-              {leitores.length > 5 && (
-                <span className="text-[11px] text-[#64748B]">+{leitores.length - 5} mais</span>
+              {leitoresVigentes.length > 5 && (
+                <span className="text-[11px] text-[#64748B]">+{leitoresVigentes.length - 5} mais</span>
               )}
             </div>
           ) : null}
@@ -1334,7 +1562,7 @@ function PoliticaDetalhe({
                 disabled={enviando}
               >
                 <Check className="h-4 w-4" />
-                LIDO
+                Li e concordo
               </Button>
             )}
             <Button
@@ -1379,21 +1607,41 @@ function PoliticaDetalhe({
               </div>
             </div>
           ) : null}
-          {sugestoesVisiveis.length > 0 ? (
-            <div className="mt-3 space-y-1.5">
-              {sugestoesVisiveis.map((s) => (
-                <div key={s.id} className="rounded-lg border border-[#D9E0EA] bg-white p-2.5">
-                  <p className="text-[12px] font-semibold text-[#1F2937]">
-                    <Lightbulb className="mr-1 inline h-3 w-3 text-amber-500" />
-                    {s.usuarioNome || s.usuarioEmail} sugeriu
-                  </p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#475569]">
-                    {s.sugestao}
-                  </p>
-                </div>
-              ))}
+          {gestao && sugestoesVisiveis.length > 0 ? (
+            <div className="mt-3 space-y-3">
+              {[
+                {
+                  chave: "atual",
+                  titulo: `Sugestões da ${rotuloRevisao(item.revisao)}`,
+                  lista: sugestoesVisiveis.filter((s) => s.revisao >= item.revisao),
+                },
+                {
+                  chave: "anteriores",
+                  titulo: "Sugestões de revisões anteriores",
+                  lista: sugestoesVisiveis.filter((s) => s.revisao < item.revisao),
+                },
+              ]
+                .filter((grupo) => grupo.lista.length > 0)
+                .map((grupo) => (
+                  <div key={grupo.chave} className="space-y-1.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
+                      {grupo.titulo}
+                    </p>
+                    {grupo.lista.map((s) => (
+                      <div key={s.id} className="rounded-lg border border-[#D9E0EA] bg-white p-2.5">
+                        <p className="text-[12px] font-semibold text-[#1F2937]">
+                          <Lightbulb className="mr-1 inline h-3 w-3 text-amber-500" />
+                          {s.usuarioNome || s.usuarioEmail} sugeriu
+                        </p>
+                        <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] text-[#475569]">
+                          {s.sugestao}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ))}
             </div>
-          ) : gestao && item.sugestoes.length > 0 ? (
+          ) : gestao && !politicasDisponiveis() && item.sugestoes.length > 0 ? (
             <ul className="mt-3 space-y-1.5">
               {item.sugestoes.map((s) => (
                 <li
@@ -1407,20 +1655,243 @@ function PoliticaDetalhe({
             </ul>
           ) : null}
         </div>
+
+        <section className="mt-5 border-t border-[#E9EEF5] pt-5">
+          <h3 className="inline-flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-wide text-[#1E293B]">
+            <History className="h-4 w-4 text-[#1E3A8A]" /> Histórico de modificações
+          </h3>
+          <div className="mt-3 overflow-hidden rounded-xl border border-[#E9EEF5]">
+            <table className="w-full border-collapse text-left">
+              <thead className="bg-[#F8FAFC]">
+                <tr className="text-[11px] uppercase tracking-wide text-[#64748B]">
+                  <th className="px-3 py-2 font-semibold">Revisão</th>
+                  <th className="px-3 py-2 font-semibold">Data da revisão</th>
+                  <th className="px-3 py-2 font-semibold">Observação da revisão</th>
+                  <th className="px-3 py-2 font-semibold">Versão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {linhasHistorico.map((linha) => (
+                  <tr key={linha.id} className="border-t border-[#E9EEF5] bg-white">
+                    <td
+                      className={cn(
+                        "px-3 py-2 text-[12.5px] font-semibold",
+                        linha.vigente ? "text-[#1E3A8A]" : "text-[#475569]",
+                      )}
+                    >
+                      {!linha.vigente && verRevisoesAnteriores && linha.entrada ? (
+                        <button
+                          type="button"
+                          onClick={() => setRevisaoAberta(linha.entrada)}
+                          className="underline decoration-dotted underline-offset-2 hover:text-[#1E3A8A]"
+                        >
+                          {rotuloRevisao(linha.numero)}
+                        </button>
+                      ) : (
+                        rotuloRevisao(linha.numero)
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-[12.5px] text-[#334155]">{linha.data || "—"}</td>
+                    <td className="px-3 py-2 text-[12.5px] text-[#334155]">
+                      {linha.observacao || "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {linha.vigente ? (
+                        <span className="rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[11px] font-semibold text-[#047857]">
+                          Vigente
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                          Anterior
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </article>
+
+      <RevisaoAnteriorDialog
+        revisao={revisaoAberta}
+        atual={item}
+        leituras={leituras}
+        onFechar={() => setRevisaoAberta(null)}
+      />
     </div>
+  );
+}
+
+/* Comparação de uma revisão anterior com a vigente — só para quem pode ver revisões anteriores. */
+function RevisaoAnteriorDialog({
+  revisao,
+  atual,
+  leituras,
+  onFechar,
+}: {
+  revisao: RevisaoPolitica | null;
+  atual: PoliticaItem;
+  leituras: PoliticaLeitura[];
+  onFechar: () => void;
+}) {
+  if (!revisao) return null;
+
+  const conteudo = revisao.conteudo;
+  const textoCampo = (valor: string | string[] | null | undefined) =>
+    Array.isArray(valor) ? valor.join(", ") : (valor ?? "").trim();
+  const campos: { rotulo: string; anterior: string; vigente: string }[] = conteudo
+    ? [
+        { rotulo: "Código", anterior: textoCampo(conteudo.codigo), vigente: textoCampo(atual.codigo) },
+        { rotulo: "Título", anterior: textoCampo(conteudo.titulo), vigente: textoCampo(atual.titulo) },
+        { rotulo: "Objetivo", anterior: textoCampo(conteudo.objetivo), vigente: textoCampo(atual.objetivo) },
+        { rotulo: "Aplicabilidade", anterior: textoCampo(conteudo.aplicabilidade), vigente: textoCampo(atual.aplicabilidade) },
+        { rotulo: "Setores", anterior: textoCampo(conteudo.setores), vigente: textoCampo(atual.setores) },
+        { rotulo: "Links", anterior: textoCampo(conteudo.links), vigente: textoCampo(atual.links) },
+        { rotulo: "Status", anterior: textoCampo(conteudo.status), vigente: textoCampo(atual.status) },
+        { rotulo: "Validade", anterior: textoCampo(conteudo.dataVencimento), vigente: textoCampo(atual.dataVencimento) },
+        {
+          rotulo: "Documento",
+          anterior: revisao.anexo?.nome ?? "—",
+          vigente: atual.anexo?.nome ?? "—",
+        },
+      ]
+    : [];
+
+  // Quem leu e concordou: snapshot arquivado; sem ele, quem ainda tem esta revisão como última leitura.
+  const leitoresArquivados = revisao.leitores;
+  const leitoresAtuais = leituras.filter(
+    (l) => (l.revisaoLida || 0) === revisao.numero && l.decisao !== "discordo",
+  );
+
+  return (
+    <Dialog open={true} onOpenChange={(aberto) => !aberto && onFechar()}>
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {rotuloRevisao(revisao.numero)} — o que mudou em relação à {rotuloRevisao(atual.revisao)} (vigente)
+          </DialogTitle>
+          <DialogDescription>Visível apenas para quem gerencia a Qualidade.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">Observação da revisão</p>
+            <p className="mt-1 whitespace-pre-wrap text-[13px] text-[#475569]">
+              {revisao.observacao || "—"}
+            </p>
+          </section>
+
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">O que mudou</p>
+            {conteudo ? (
+              <div className="mt-2 overflow-hidden rounded-xl border border-[#E9EEF5]">
+                <table className="w-full border-collapse text-left text-[12.5px]">
+                  <thead className="bg-[#F8FAFC] text-[11px] uppercase tracking-wide text-[#64748B]">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Campo</th>
+                      <th className="px-3 py-2 font-semibold">{rotuloRevisao(revisao.numero)}</th>
+                      <th className="px-3 py-2 font-semibold">{rotuloRevisao(atual.revisao)} (vigente)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {campos.map((campo) => {
+                      const mudou = campo.anterior !== campo.vigente;
+                      return (
+                        <tr key={campo.rotulo} className="border-t border-[#E9EEF5] align-top">
+                          <td className="px-3 py-2 font-semibold text-[#1F2937]">
+                            {campo.rotulo}
+                            {mudou ? (
+                              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                Alterado
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2 text-[#475569]">{campo.anterior || "—"}</td>
+                          <td className="px-3 py-2 text-[#334155]">{campo.vigente || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-1 text-[13px] text-[#64748B]">
+                O conteúdo desta revisão não foi arquivado (publicada antes desta atualização).
+              </p>
+            )}
+          </section>
+
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">Documento desta revisão</p>
+            <div className="mt-2">
+              {revisao.anexo?.path ? (
+                <PoliticaAnexoVisualizador anexo={revisao.anexo} />
+              ) : (
+                <p className="rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] p-3 text-[13px] text-[#64748B]">
+                  O documento desta revisão não foi arquivado (publicada antes desta atualização).
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <p className="text-[13px] font-semibold text-[#1F2937]">Quem leu e concordou</p>
+            {leitoresArquivados ? (
+              leitoresArquivados.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {leitoresArquivados.map((l) => (
+                    <span
+                      key={l.email}
+                      className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]"
+                    >
+                      <Check className="h-3 w-3" /> {l.nome} · {l.decisao === "concordo" ? "Li e concordo" : "Lido"}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-[13px] text-[#64748B]">Ninguém registrou leitura desta revisão.</p>
+              )
+            ) : (
+              <>
+                <p className="mt-1 text-[12px] text-[#64748B]">
+                  Esta revisão é anterior ao arquivamento de leituras. Abaixo, quem ainda tem esta revisão como última leitura.
+                </p>
+                {leitoresAtuais.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {leitoresAtuais.map((l) => (
+                      <span
+                        key={l.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-medium text-[#047857]"
+                      >
+                        <Check className="h-3 w-3" /> {l.usuarioNome || l.usuarioEmail}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[13px] text-[#64748B]">Nenhuma leitura registrada.</p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 /* Visualizador do anexo da política — somente leitura (PDF embutido; Word como texto extraído). */
 function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
   const [urlPdf, setUrlPdf] = useState<string | null>(null);
+  const [arquivoWord, setArquivoWord] = useState<Blob | null>(null);
   const [texto, setTexto] = useState<string | null>(null);
   const [estado, setEstado] = useState<"carregando" | "pronto" | "erro">("carregando");
 
   useEffect(() => {
     if (!anexo?.path) {
       setUrlPdf(null);
+      setArquivoWord(null);
       setTexto(null);
       setEstado("carregando");
       return;
@@ -1428,13 +1899,16 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
     let ativo = true;
     setEstado("carregando");
     const ehPdf = anexo.tipo === "application/pdf";
+    const ehWord = ehDocxAnexo(anexo.tipo, anexo.nome);
     Promise.all([
       urlAssinadaDoAnexo(anexo.path),
-      ehPdf ? Promise.resolve(null) : textoDoAnexoOffice(anexo.path),
+      ehPdf || ehWord ? Promise.resolve(null) : textoDoAnexoOffice(anexo.path),
+      ehWord ? arquivoDoAnexo(anexo.path) : Promise.resolve(null),
     ])
-      .then(([link, textoExtraido]) => {
+      .then(([link, textoExtraido, blob]) => {
         if (!ativo) return;
         setUrlPdf(ehPdf ? link : null);
+        setArquivoWord(blob);
         setTexto(textoExtraido);
         setEstado("pronto");
       })
@@ -1457,7 +1931,6 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
         <Badge variant="outline" className="bg-[#EEF2F7] text-[10px] text-[#1E3A8A]">
           {badgeTipo}
         </Badge>
-        <span className="text-xs font-medium text-[#64748B]">{anexo.nome}</span>
         <Badge
           variant="outline"
           className="ml-auto border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700"
@@ -1481,6 +1954,8 @@ function PoliticaAnexoVisualizador({ anexo }: { anexo: PoliticaAnexo | null }) {
         </p>
       ) : anexo.tipo === "application/pdf" && urlPdf ? (
         <PdfProtegido url={urlPdf} titulo={anexo.nome} altura="640px" />
+      ) : arquivoWord ? (
+        <DocxProtegido arquivo={arquivoWord} altura="640px" />
       ) : (
         <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-[#D9E0EA] bg-white p-4 font-sans text-[13px] leading-relaxed text-[#334155]">
           {texto ?? ""}

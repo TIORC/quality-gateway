@@ -37,6 +37,30 @@ export interface RevisaoPolitica {
   numero: number;
   data: string;
   observacao: string;
+  /** Documento que estava vigente quando esta revisão foi substituída. */
+  anexo?: PoliticaAnexo | null;
+  /** Conteúdo da política na época em que a revisão foi substituída. */
+  conteudo?: ConteudoRevisaoPolitica;
+  /** Quem leu e concordou com esta revisão. Ausente em revisões anteriores ao arquivamento. */
+  leitores?: LeitorRevisaoPolitica[];
+}
+
+/** Campos da política que entram na comparação entre revisões. */
+export interface ConteudoRevisaoPolitica {
+  codigo: string;
+  titulo: string;
+  objetivo: string;
+  aplicabilidade: string;
+  setores: string[];
+  links: string[];
+  status: string;
+  dataVencimento: string;
+}
+
+export interface LeitorRevisaoPolitica {
+  nome: string;
+  email: string;
+  decisao: "lido" | "concordo";
 }
 
 export interface ParecerPolitica {
@@ -448,6 +472,43 @@ export async function listarLeiturasPolitica(politicaId: string): Promise<Politi
 }
 
 /**
+ * Foto da revisão vigente no momento em que ela é substituída por uma nova: conteúdo,
+ * documento e quem leu e concordou. Chamada antes de gravar a nova revisão.
+ */
+export async function arquivarRevisaoPolitica(
+  politica: PoliticaItem,
+): Promise<Pick<RevisaoPolitica, "anexo" | "conteudo" | "leitores">> {
+  let leitores: LeitorRevisaoPolitica[] | undefined;
+  try {
+    const leituras = await listarLeiturasPolitica(politica.id);
+    leitores = leituras
+      .filter((l) => l.revisaoLida === politica.revisao && l.decisao !== "discordo")
+      .map((l) => ({
+        nome: l.usuarioNome || l.usuarioEmail,
+        email: l.usuarioEmail,
+        decisao: l.decisao === "concordo" ? "concordo" : "lido",
+      }));
+  } catch {
+    // Sem leituras arquivadas: a tela cai na lista atual de leitores da revisão.
+    leitores = undefined;
+  }
+  return {
+    anexo: politica.anexo,
+    conteudo: {
+      codigo: politica.codigo,
+      titulo: politica.titulo,
+      objetivo: politica.objetivo,
+      aplicabilidade: politica.aplicabilidade,
+      setores: politica.setores,
+      links: politica.links,
+      status: politica.status,
+      dataVencimento: politica.dataVencimento,
+    },
+    leitores,
+  };
+}
+
+/**
  * Registra (ou atualiza) a ciência do usuário sobre a política — botão "Lido".
  * Grava a revisão vigente em `revisao_lida`: nova revisão exige releitura.
  */
@@ -520,6 +581,7 @@ export function contarLeiturasPolitica(leituras: PoliticaLeitura[]): number {
 /* -------------------------------------------------------------------------- */
 
 function sugestaoPoliticaDoRow(row: PoliticaSugestaoRow): PoliticaSugestao {
+  const r = row as PoliticaSugestaoRow & { revisao?: unknown };
   return {
     id: row.id,
     politicaId: row.politica_id,
@@ -528,6 +590,7 @@ function sugestaoPoliticaDoRow(row: PoliticaSugestaoRow): PoliticaSugestao {
     sugestao: row.sugestao,
     status: row.status,
     createdAt: row.created_at,
+    revisao: typeof r.revisao === "number" ? r.revisao : 1,
   };
 }
 
@@ -554,21 +617,34 @@ export async function enviarSugestaoPolitica(
   politicaId: string,
   usuario: UsuarioFavorito,
   sugestao: string,
+  revisao?: number,
 ): Promise<void> {
   const texto = sugestao.trim();
   if (!texto) throw new Error("Escreva a sugestão antes de enviar.");
   const email = usuario.email.trim().toLowerCase();
   if (!email) throw new Error("Entre no portal para sugerir uma melhoria.");
 
-  const registro: PoliticaSugestaoInsert = {
+  const registro: Record<string, unknown> = {
     politica_id: politicaId,
     usuario_email: email,
     usuario_nome: usuario.nome,
     sugestao: texto,
+    revisao: revisao ?? 1,
   };
   const client = exigirCloud();
-  const { error } = await client.from("politica_sugestoes").insert(registro);
-  if (error) throw traduzErro(error);
+  const { error } = await client.from("politica_sugestoes").insert(registro as never);
+  if (error) {
+    // Banco sem a coluna `revisao` (migration ainda não aplicada): grava sem ela.
+    if (String((error as { message?: unknown }).message ?? "").includes("revisao")) {
+      delete registro.revisao;
+      const { error: erro2 } = await client
+        .from("politica_sugestoes")
+        .insert(registro as never);
+      if (erro2) throw traduzErro(erro2);
+      return;
+    }
+    throw traduzErro(error);
+  }
 }
 
 export async function marcarSugestaoConcluidaPolitica(
@@ -642,4 +718,6 @@ export interface PoliticaSugestao {
   sugestao: string;
   status: string;
   createdAt: string;
+  /** Revisão da política à qual a sugestão se refere. */
+  revisao: number;
 }

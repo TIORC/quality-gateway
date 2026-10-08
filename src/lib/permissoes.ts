@@ -182,6 +182,33 @@ export function ehAdministrador(session: UserSession | null | undefined): boolea
 }
 
 /**
+ * Revisões anteriores de uma política (documento obsoleto, o que mudou e quem leu
+ * e concordou): Desenvolvedor do Sistema, Administrador, Líder de setor e Gestor da
+ * Qualidade. Os demais perfis veem apenas o histórico das versões.
+ */
+export function podeVerRevisoesAnteriores(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return (
+    ehAdministrador(session) ||
+    ehLiderancaDaQualidade(session) ||
+    session.nivelAcesso === "Líder de setor"
+  );
+}
+
+/**
+ * Gestão das políticas (aba "Pendente aprovação", "Pendente revisão" e pendências de
+ * leitura por setor): Gestor da Qualidade, Administrador, Desenvolvedor do Sistema e Líder de setor.
+ */
+export function podeGerenciarPoliticas(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return (
+    ehAdministrador(session) ||
+    ehLiderancaDaQualidade(session) ||
+    session.nivelAcesso === "Líder de setor"
+  );
+}
+
+/**
  * Regra geral do portal: quem não é do setor da Qualidade não pode criar,
  * editar ou excluir conteúdo (com as exceções de abrir ocorrência e sugerir
  * melhorias). Fica apenas em leitura, salvo o que o gestor da Qualidade

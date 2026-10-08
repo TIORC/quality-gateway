@@ -11,6 +11,7 @@ import { getSession, type UserSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
 import {
   ehAdministrador,
+  podeVerRevisoesAnteriores,
   podeAdicionarDocumentos,
   podeGerenciarCadastros,
   podeExcluirDocumentos,
@@ -184,6 +185,10 @@ export interface ConteudoRevisaoPop {
   etapas?: PopEtapa[];
   setoresResponsaveis?: string[];
   visualizadores?: string[];
+  /** Documento que estava vigente quando a revisão foi substituída. */
+  anexo?: PopAnexo | null;
+  /** Quem leu e concordou com esta revisão (foto no momento da substituição). */
+  leitores?: { nome: string; email: string; decisao: DecisaoLeitura }[];
   [chave: string]: unknown;
 }
 
@@ -892,6 +897,7 @@ function hojeIso(): string {
 /** Snapshot do documento guardado no histórico de modificações. */
 function conteudoParaHistorico(pop: Pop): ConteudoRevisaoPop {
   return {
+    anexo: pop.anexo ?? null,
     titulo: pop.titulo,
     objetivo: pop.objetivo ?? "",
     materiais: pop.materiaisSistemas ?? "",
@@ -914,6 +920,16 @@ function conteudoParaHistorico(pop: Pop): ConteudoRevisaoPop {
  */
 async function arquivarRevisao(pop: Pop, autor: { id: string; nome: string }): Promise<void> {
   const client = exigirCloud();
+  // Quem leu e concordou com a revisão que está sendo substituída (foto no momento da troca).
+  let leitores: { nome: string; email: string; decisao: DecisaoLeitura }[] | undefined;
+  try {
+    const todas = await listarLeiturasPop(pop.id);
+    leitores = todas
+      .filter((l) => l.revisaoLida === pop.revisao && l.decisao !== "discordo")
+      .map((l) => ({ nome: l.usuarioNome || l.usuarioEmail, email: l.usuarioEmail, decisao: l.decisao }));
+  } catch {
+    leitores = undefined;
+  }
   const { error } = await client.from("pop_revisoes").upsert(
     {
       pop_id: pop.id,
@@ -921,7 +937,7 @@ async function arquivarRevisao(pop: Pop, autor: { id: string; nome: string }): P
       revisao: pop.revisao,
       data_revisao: pop.dataRevisao ?? hojeIso(),
       observacao: pop.observacaoRevisao || "Versão inicial do procedimento.",
-      conteudo: conteudoParaHistorico(pop) as unknown as Json,
+      conteudo: { ...conteudoParaHistorico(pop), leitores } as unknown as Json,
       criado_por: autor.id,
       criado_por_nome: autor.nome,
     },
@@ -1116,11 +1132,26 @@ export async function aprovarPopLiderQualidade(id: string): Promise<Pop> {
   return popDoRow(data);
 }
 
+/**
+ * Quem elaborou o POP já leu a revisão que escreveu: registra a leitura automática
+ * quando a pessoa logada é o "Elaborado por" (comparação pelo nome gravado no POP).
+ */
+async function marcarElaboradorComoLido(pop: Pop): Promise<void> {
+  const sessao = getSession();
+  if (!sessao?.email || !pop.criadoPorNome) return;
+  if (sessao.nome.trim().toLowerCase() !== pop.criadoPorNome.trim().toLowerCase()) return;
+  await registrarLeitura(pop.id, { email: sessao.email, nome: sessao.nome }, "lido", "", pop.revisao).catch(
+    () => undefined,
+  );
+}
+
 export async function criarPop(entrada: EntradaPop): Promise<Pop> {
   if (!podeAdicionarDocumentos(getSession())) {
     throw new Error("Você não tem permissão para adicionar documentos.");
   }
-  return criarPopCloud(entrada);
+  const criado = await criarPopCloud(entrada);
+  await marcarElaboradorComoLido(criado);
+  return criado;
 }
 
 /**
@@ -1138,7 +1169,9 @@ export async function atualizarPop(
   if (!podeModificarDocumentos(getSession())) {
     throw new Error("Você não tem permissão para modificar documentos.");
   }
-  return atualizarPopCloud(id, entrada, observacaoRevisao);
+  const salvo = await atualizarPopCloud(id, entrada, observacaoRevisao);
+  await marcarElaboradorComoLido(salvo);
+  return salvo;
 }
 
 export async function excluirPop(id: string): Promise<void> {
@@ -1191,9 +1224,7 @@ export async function duplicarPop(origem: Pop): Promise<Pop> {
  * "Gestor da Qualidade". Os demais vêem somente a revisão vigente.
  */
 export function podeVerVersoesAnteriores(sessao: UserSession | null | undefined): boolean {
-  if (!sessao) return false;
-  if (ehAdministrador(sessao) || sessao.role === "gestor") return true;
-  return sessao.nivelAcesso === "Gestor da Qualidade";
+  return podeVerRevisoesAnteriores(sessao);
 }
 
 function revisaoDoRow(row: Tables<"pop_revisoes">): PopRevisao {
@@ -1707,6 +1738,22 @@ export async function enviarAnexoPop(popId: string, arquivo: File): Promise<void
     await client.storage.from(BUCKET_ANEXOS).remove([caminho]);
     throw traduzErro(erroUpdate);
   }
+}
+
+/** `true` para anexos Word moderno (.docx), que podem ser desenhados no navegador. */
+export function ehDocxAnexo(tipo: string | null | undefined, nome: string): boolean {
+  return (
+    tipo === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    nome.toLowerCase().endsWith(".docx")
+  );
+}
+
+/** Baixa o arquivo do anexo (bucket privado) para exibição embutida, sem link público. */
+export async function arquivoDoAnexo(caminho: string): Promise<Blob> {
+  const client = exigirCloud();
+  const { data, error } = await client.storage.from(BUCKET_ANEXOS).download(caminho);
+  if (error || !data) throw new Error("Não foi possível abrir o anexo.");
+  return data;
 }
 
 /** Busca uma URL assinada, efêmera, para exibir o anexo dentro do sistema. */
