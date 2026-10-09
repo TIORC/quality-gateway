@@ -104,11 +104,12 @@ export const ACOES_ETAPA_LABELS: Record<AcaoEtapa, string> = {
 export const TIPOS_CAMPO = [
   "texto",
   "textarea",
-  "numero",
-  "data",
   "select",
   "multi",
+  "lista",
   "arquivo",
+  "data",
+  "numero",
   "assinatura",
   "responsavel",
   "checkbox",
@@ -117,17 +118,21 @@ export const TIPOS_CAMPO = [
 export type TipoCampo = (typeof TIPOS_CAMPO)[number];
 
 export const TIPO_CAMPO_LABELS: Record<TipoCampo, string> = {
-  texto: "Texto curto",
-  textarea: "Texto longo",
+  texto: "Resposta curta",
+  textarea: "Parágrafo",
   numero: "Número",
   data: "Data",
-  select: "Seletor único",
-  multi: "Seletor múltiplo",
-  arquivo: "Upload de arquivo/foto",
+  select: "Múltipla escolha",
+  multi: "Caixas de seleção",
+  lista: "Lista suspensa",
+  arquivo: "Upload de arquivo",
   assinatura: "Assinatura",
-  responsavel: "Setor/Responsável (Funcionários)",
-  checkbox: "Checkbox",
+  responsavel: "Setor/Responsável",
+  checkbox: "Confirmação (sim/não)",
 };
+
+/** Máximo de telas no formulário de abertura. */
+export const MAX_TELAS = 5;
 
 export interface CampoFormulario {
   id: string;
@@ -141,6 +146,8 @@ export interface CampoFormulario {
   max?: number | null;
   /** "inteira" (1 coluna) ou "metade" (2 colunas). */
   largura?: "inteira" | "metade";
+  /** Tela do formulário de abertura (índice a partir de 0). Ausente = tela 1. */
+  tela?: number;
   /** Mostrar somente quando o campo `campoId` responder `valor`. */
   condicao?: { campoId: string; valor: string } | null;
 }
@@ -297,6 +304,8 @@ export interface FormularioVersao {
   tipoId: string;
   versao: number;
   campos: CampoFormulario[];
+  /** Títulos das telas (vazio = uma tela só). */
+  telas: string[];
   publicada: boolean;
   criadoPorNome: string;
   criadoPorEmail: string;

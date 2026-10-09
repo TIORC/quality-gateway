@@ -314,7 +314,12 @@
 /* Cards e superfícies claras ---------------------------------------- */
 
 .dark .bg-white {
-  background-color: var(--card);
+  background-color: color-mix(in oklab, var(--card) 60%, transparent);
+}
+
+/* Modo claro: cards brancos semitransparentes, para a marca d'água aparecer atrás. */
+:root:not(.dark) .bg-white {
+  background-color: rgb(255 255 255 / 0.6);
 }
 
 .dark .bg-\[\#F8FAFC\] {
@@ -355,6 +360,12 @@
 
 .dark .hover\:bg-\[\#FEF2F2\]:hover {
   background-color: oklch(0.704 0.191 22.216 / 15%);
+}
+
+/* Destaque azul ao passar o mouse (ex.: escolha do tipo de ocorrência). */
+.dark .hover\:bg-\[\#F0F4FF\]:hover,
+.dark .bg-\[\#F0F4FF\] {
+  background-color: oklch(0.55 0.18 260 / 22%);
 }
 
 /* Badges coloridos (fundo pastel + texto colorido) ------------------- */

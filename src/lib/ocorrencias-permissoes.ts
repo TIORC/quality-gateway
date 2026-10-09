@@ -79,3 +79,15 @@ export function veTodasAsOcorrencias(sessao: UserSession | null | undefined): bo
 export function podeExcluir(sessao: UserSession | null | undefined): boolean {
   return ehUsuarioDaQualidade(sessao) || ehAdministrador(sessao);
 }
+
+/**
+ * Configurar tipos de ocorrência, fluxos e formulários: somente o Gestor da
+ * Qualidade e o Desenvolvedor do Sistema.
+ */
+export function podeConfigurarOcorrencias(sessao: UserSession | null | undefined): boolean {
+  if (!sessao) return false;
+  return (
+    sessao.nivelAcesso === "Gestor da Qualidade" ||
+    sessao.nivelAcesso === "Desenvolvedor do Sistema"
+  );
+}

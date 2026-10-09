@@ -119,6 +119,10 @@ function Indicadores() {
     null,
   );
 
+  // Primitivos: a sessão é recriada a cada render e não pode entrar nas dependências.
+  const soDoColaborador = sessao?.nivelAcesso === "Colaborador" && !podeGerenciar;
+  const colaboradorId = sessao?.colaboradorId ?? "";
+
   const recarregar = useCallback(async () => {
     setCarregando(true);
     setErro("");
@@ -128,15 +132,23 @@ function Indicadores() {
         listarApuracoes(),
         listarPlanos().catch(() => [] as PlanoAcao[]),
       ]);
-      setIndicadores(listaIndicadores);
-      setApuracoes(listaApuracoes);
+      // Colaborador vê somente os indicadores em que é o responsável.
+      const meusIds = new Set(
+        listaIndicadores.filter((i) => i.responsavelId === colaboradorId).map((i) => i.id),
+      );
+      setIndicadores(
+        soDoColaborador ? listaIndicadores.filter((i) => meusIds.has(i.id)) : listaIndicadores,
+      );
+      setApuracoes(
+        soDoColaborador ? listaApuracoes.filter((a) => meusIds.has(a.indicadorId)) : listaApuracoes,
+      );
       setPlanos(listaPlanos);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar os indicadores.");
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [soDoColaborador, colaboradorId]);
 
   useEffect(() => {
     void recarregar();
@@ -447,7 +459,7 @@ function Indicadores() {
 
             {/* Filtro de período: recorta resumo, cards, gráficos e histórico. */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#94A3B8]">
+              <span className="rounded-md bg-card px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground shadow-sm">
                 Período
               </span>
               <Select value={periodo.modo} onValueChange={mudarModoPeriodo}>

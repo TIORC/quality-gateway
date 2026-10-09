@@ -8,9 +8,18 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json, Tables, TablesInsert } from "@/integrations/supabase/types";
 import { getSession, type UserSession } from "@/lib/auth";
-import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
+import {
+  NIVEIS_FILTRAM_POR_SETOR,
+  NIVEL_AUXILIAR_QUALIDADE,
+  NIVEL_LIDER_SETOR,
+  normalizarSetor,
+} from "@/lib/niveis-acesso";
 import {
   ehAdministrador,
+  ehUsuarioDaQualidade,
+  ehLiderancaDaQualidade,
+  liderDoSetor,
+  podeAprovarDocumentos,
   podeVerRevisoesAnteriores,
   podeAdicionarDocumentos,
   podeGerenciarCadastros,
@@ -226,9 +235,17 @@ export interface PopAnotacao {
   popId: string;
   autorNome: string;
   autorEmail: string;
+  /** Usuário a quem a anotação foi dirigida (vazio = só à Qualidade). */
+  destinatarioEmail: string;
   mensagem: string;
   createdAt: string;
 }
+
+/** Dados para registrar uma anotação (o destinatário é opcional: vazio = só Qualidade). */
+export type DadosNovaAnotacao = Omit<
+  PopAnotacao,
+  "id" | "popId" | "createdAt" | "destinatarioEmail"
+> & { destinatarioEmail?: string };
 
 /** Contadores reais de um POP: favoritos únicos + comentários registrados. */
 export interface ContadoresPop {
@@ -529,6 +546,7 @@ function anotacaoDoRow(row: PopAnotacaoRow): PopAnotacao {
     popId: row.pop_id,
     autorNome: row.autor_nome,
     autorEmail: row.autor_email,
+    destinatarioEmail: row.destinatario_email ?? "",
     mensagem: row.mensagem,
     createdAt: row.created_at,
   };
@@ -538,12 +556,14 @@ function anotacaoParaInsercao(dados: {
   popId: string;
   autorNome: string;
   autorEmail: string;
+  destinatarioEmail?: string;
   mensagem: string;
 }): PopAnotacaoInsert {
   return {
     pop_id: dados.popId,
     autor_nome: dados.autorNome,
     autor_email: dados.autorEmail,
+    destinatario_email: dados.destinatarioEmail ?? "",
     mensagem: dados.mensagem,
   };
 }
@@ -819,34 +839,28 @@ export function podeElaborarPops(sessao: UserSession | null | undefined): boolea
 }
 
 /**
- * Liderança da Qualidade: aprova a 2ª etapa. O Auxiliar da Qualidade
- * elabora/apura, mas não libera (não passa por aqui).
+ * Liderança da Qualidade: aprova a 2ª etapa. O Auxiliar da Qualidade tem acesso
+ * total, mas não aprova documentos (ver `podeAprovarDocumentos`).
  */
 export function podeAprovarLiderQualidade(sessao: UserSession | null | undefined): boolean {
-  if (!sessao) return false;
-  if (sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
-  return (
-    ehAdministrador(sessao) ||
-    sessao.role === "gestor" ||
-    sessao.nivelAcesso === "Gestor da Qualidade"
-  );
+  return podeAprovarDocumentos(sessao);
 }
 
 /**
- * Líder do processo/setor: aprova a 1ª etapa. Em POP setorial, precisa ser
- * "Líder de setor" do mesmo setor do POP. Em POP geral, qualquer líder de
- * setor (ou a liderança da Qualidade) pode aprovar.
+ * Líder do processo/setor: aprova a 1ª etapa. Em POP setorial, precisa liderar o
+ * setor do POP (`setoresLiderados`). Em POP geral, qualquer líder de setor (ou a
+ * liderança da Qualidade) pode aprovar. O Auxiliar da Qualidade não aprova.
  */
 export function podeAprovarLiderProcesso(
   sessao: UserSession | null | undefined,
   pop: Pick<Pop, "setorId">,
   nomeSetorDoPop: string | null | undefined,
 ): boolean {
-  if (!sessao || sessao.nivelAcesso === "Auxiliar da Qualidade") return false;
+  if (!sessao || sessao.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
   if (ehAdministrador(sessao)) return true;
-  const ehLiderDeSetor = sessao.nivelAcesso === "Líder de setor";
+  const ehLiderDeSetor = sessao.nivelAcesso === NIVEL_LIDER_SETOR;
   if (pop.setorId === "geral") return ehLiderDeSetor || podeAprovarLiderQualidade(sessao);
-  return ehLiderDeSetor && normalizarSetor(sessao.setor) === normalizarSetor(nomeSetorDoPop);
+  return ehLiderDeSetor && liderDoSetor(sessao, nomeSetorDoPop);
 }
 
 /** Sessão usada como autor na criação e nas aprovações. */
@@ -1449,7 +1463,8 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
     const vePendentes =
       setorQualidade ||
       session.nivelAcesso === "Líder de setor" ||
-      podeAprovarLiderQualidade(session);
+      podeAprovarLiderQualidade(session) ||
+      ehLiderancaDaQualidade(session);
 
     let pops = base.pops.filter((pop) => vePendentes || pop.status === STATUS_POP.VIGENTE);
 
@@ -1462,8 +1477,14 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
     // Colaboradores, líderes e desenvolvedores veem apenas o próprio setor (e gerais);
     // o setor da Qualidade vê todos os setores.
     if (!setorQualidade && NIVEIS_FILTRAM_POR_SETOR.has(session.nivelAcesso)) {
-      const setorUsuario = session.setor ?? "";
-      pops = pops.filter((pop) => popDoSetorDoUsuario(pop, setorUsuario, base.setores));
+      // Líder de setor enxerga os POPs de todos os setores que lidera.
+      const setoresDoUsuario =
+        session.nivelAcesso === NIVEL_LIDER_SETOR
+          ? [session.setor, ...(session.setoresLiderados ?? [])]
+          : [session.setor ?? ""];
+      pops = pops.filter((pop) =>
+        setoresDoUsuario.some((setor) => popDoSetorDoUsuario(pop, setor, base.setores)),
+      );
     }
 
     // "Quem pode visualizar" (ACESSO): quando o POP define setores/unidades
@@ -1504,7 +1525,7 @@ async function listarAnotacoesCloud(popId: string): Promise<PopAnotacao[]> {
 
 async function criarAnotacaoCloud(
   popId: string,
-  dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
+  dados: DadosNovaAnotacao,
 ): Promise<PopAnotacao> {
   const client = exigirCloud();
   const { data, error } = await client
@@ -1527,14 +1548,34 @@ async function excluirAnotacaoCloud(anotacaoId: string): Promise<void> {
 }
 
 /** Lista as anotações (comentários) de um POP. */
+/**
+ * Discussão privada: a anotação é vista pelo autor, pelo destinatário e por quem
+ * é da Qualidade. Os demais usuários não recebem a conversa.
+ */
+export function anotacaoVisivel(
+  anotacao: Pick<PopAnotacao, "autorEmail" | "destinatarioEmail">,
+  sessao: UserSession | null | undefined,
+): boolean {
+  if (ehUsuarioDaQualidade(sessao)) return true;
+  const email = (sessao?.email ?? "").trim().toLowerCase();
+  if (!email) return false;
+  return (
+    anotacao.autorEmail.trim().toLowerCase() === email ||
+    (anotacao.destinatarioEmail ?? "").trim().toLowerCase() === email
+  );
+}
+
+/** Lista as anotações de um POP que a sessão pode ver (ver `anotacaoVisivel`). */
 export async function listarAnotacoes(popId: string): Promise<PopAnotacao[]> {
-  return listarAnotacoesCloud(popId);
+  const sessao = getSession();
+  const todas = await listarAnotacoesCloud(popId);
+  return todas.filter((anotacao) => anotacaoVisivel(anotacao, sessao));
 }
 
 /** Registra uma anotação no POP e atualiza o contador. */
 export async function criarAnotacao(
   popId: string,
-  dados: Omit<PopAnotacao, "id" | "popId" | "createdAt">,
+  dados: DadosNovaAnotacao,
 ): Promise<PopAnotacao> {
   return criarAnotacaoCloud(popId, dados);
 }

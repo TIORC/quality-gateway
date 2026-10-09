@@ -231,6 +231,28 @@ export function CampoFormularioRender(props: CampoRenderProps) {
       )}
 
       {campo.tipo === "select" && (
+        <div className="space-y-2">
+          {(campo.opcoes ?? []).map((op) => (
+            <label
+              key={op}
+              className={`flex items-center gap-2.5 text-[13px] text-[#1F2937] ${
+                desabilitado ? "pointer-events-none opacity-60" : "cursor-pointer"
+              }`}
+            >
+              <input
+                type="radio"
+                name={`campo-${campo.id}`}
+                checked={valor === op}
+                onChange={() => set(op)}
+                className="h-4 w-4 accent-[#1E3A8A]"
+              />
+              {op}
+            </label>
+          ))}
+        </div>
+      )}
+
+      {campo.tipo === "lista" && (
         <Select
           value={typeof valor === "string" ? valor : ""}
           onValueChange={(v) => set(v)}
@@ -248,18 +270,16 @@ export function CampoFormularioRender(props: CampoRenderProps) {
       )}
 
       {campo.tipo === "multi" && (
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
           {(campo.opcoes ?? []).map((op) => {
             const selecionados = Array.isArray(valor) ? (valor as string[]) : [];
             const marcado = selecionados.includes(op);
             return (
               <label
                 key={op}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition ${
-                  marcado
-                    ? "border-[#1E3A8A] bg-[#EEF2FF] font-medium text-[#1E3A8A]"
-                    : "border-[#D9E0EA] bg-white text-[#475569]"
-                } ${desabilitado ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
+                className={`flex items-center gap-2.5 text-[13px] text-[#1F2937] ${
+                  desabilitado ? "pointer-events-none opacity-60" : "cursor-pointer"
+                }`}
               >
                 <input
                   type="checkbox"
@@ -269,7 +289,7 @@ export function CampoFormularioRender(props: CampoRenderProps) {
                       ? selecionados.filter((s) => s !== op)
                       : [...selecionados, op])
                   }
-                  className="h-3.5 w-3.5 accent-[#1E3A8A]"
+                  className="h-4 w-4 accent-[#1E3A8A]"
                 />
                 {op}
               </label>
@@ -363,7 +383,7 @@ export function CampoFormularioRender(props: CampoRenderProps) {
 
 /** Formulário dinâmico completo (grade de campos visíveis). */
 export function FormularioDinamico({
-  campos, respostas, onChange, colaboradores, onArquivos, desabilitado,
+  campos, respostas, onChange, colaboradores, onArquivos, desabilitado, telaAtual,
 }: {
   campos: CampoFormulario[];
   respostas: Respostas;
@@ -371,8 +391,12 @@ export function FormularioDinamico({
   colaboradores?: { id: string; nome: string; email: string }[];
   onArquivos?: (campoId: string, arquivos: FileList | null) => void;
   desabilitado?: boolean;
+  /** Mostra só os campos desta tela (índice). Sem valor, mostra todos. */
+  telaAtual?: number;
 }) {
-  const visiveis = campos.filter((c) => campoVisivel(c, respostas));
+  const visiveis = campos.filter(
+    (c) => campoVisivel(c, respostas) && (telaAtual === undefined || (c.tela ?? 0) === telaAtual),
+  );
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {visiveis.map((campo) => (

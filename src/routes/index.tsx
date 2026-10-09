@@ -1,11 +1,9 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
-import { isAuthenticated, login, redefinirSenha } from "@/lib/auth";
+import { isAuthenticated, login } from "@/lib/auth";
 import { AppFooter } from "@/components/app-footer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -43,12 +41,6 @@ function Login() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [recuperarAberto, setRecuperarAberto] = useState(false);
-  const [emailRecuperar, setEmailRecuperar] = useState("");
-  const [senhaNova, setSenhaNova] = useState("");
-  const [confirmarSenha, setConfirmarSenha] = useState("");
-  const [recuperarErro, setRecuperarErro] = useState("");
-  const [recuperarSucesso, setRecuperarSucesso] = useState(false);
-  const [recuperarCarregando, setRecuperarCarregando] = useState(false);
 
   // Se já houver sessão ativa, passa pela tela de loading e vai ao painel.
   useEffect(() => {
@@ -170,14 +162,7 @@ function Login() {
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => {
-                  setRecuperarErro("");
-                  setRecuperarSucesso(false);
-                  setEmailRecuperar("");
-                  setSenhaNova("");
-                  setConfirmarSenha("");
-                  setRecuperarAberto(true);
-                }}
+                onClick={() => setRecuperarAberto(true)}
                 className="text-sm text-brand-muted transition hover:text-brand-foreground"
               >
                 Esqueci minha senha
@@ -192,108 +177,21 @@ function Login() {
       <Dialog open={recuperarAberto} onOpenChange={(abre) => !abre && setRecuperarAberto(false)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Redefinir minha senha</DialogTitle>
+            <DialogTitle>Esqueci minha senha</DialogTitle>
             <DialogDescription>
-              Informe seu e-mail corporativo e a nova senha de acesso.
+              Peça ao administrador do sistema um novo link de primeiro acesso. Ele chega pelo
+              administrador e permite criar uma nova senha.
             </DialogDescription>
           </DialogHeader>
-
-          {recuperarSucesso ? (
-            <div className="space-y-4">
-              <p className="rounded-xl border border-[#D9E0EA] bg-[#F8FAFC] px-4 py-3 text-sm text-[#059669]">
-                Senha redefinida. Faça login com a nova senha.
-              </p>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  className="w-full bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                  onClick={() => setRecuperarAberto(false)}
-                >
-                  Voltar ao login
-                </Button>
-              </DialogFooter>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="email-recuperar">E-mail corporativo</Label>
-                  <Input
-                    id="email-recuperar"
-                    type="email"
-                    value={emailRecuperar}
-                    onChange={(evento) => setEmailRecuperar(evento.target.value)}
-                    placeholder="nome@empresa.com.br"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="nova-senha">Nova senha</Label>
-                  <Input
-                    id="nova-senha"
-                    type="password"
-                    value={senhaNova}
-                    onChange={(evento) => setSenhaNova(evento.target.value)}
-                    placeholder="Nova senha"
-                    autoComplete="new-password"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirmar-senha">Confirmar nova senha</Label>
-                  <Input
-                    id="confirmar-senha"
-                    type="password"
-                    value={confirmarSenha}
-                    onChange={(evento) => setConfirmarSenha(evento.target.value)}
-                    placeholder="Repita a nova senha"
-                    autoComplete="new-password"
-                  />
-                </div>
-              </div>
-
-              {recuperarErro ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {recuperarErro}
-                </p>
-              ) : null}
-
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setRecuperarAberto(false)}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  disabled={recuperarCarregando}
-                  className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                  onClick={async () => {
-                    if (!emailRecuperar.includes("@")) {
-                      setRecuperarErro("Informe um e-mail corporativo válido.");
-                      return;
-                    }
-                    if (senhaNova.trim().length < 4) {
-                      setRecuperarErro("A nova senha deve ter pelo menos 4 caracteres.");
-                      return;
-                    }
-                    if (senhaNova !== confirmarSenha) {
-                      setRecuperarErro("As senhas não conferem.");
-                      return;
-                    }
-                    setRecuperarErro("");
-                    setRecuperarCarregando(true);
-                    const resultado = await redefinirSenha(emailRecuperar, senhaNova);
-                    setRecuperarCarregando(false);
-                    if (resultado.ok) {
-                      setEmail(emailRecuperar);
-                      setRecuperarSucesso(true);
-                    } else {
-                      setRecuperarErro(resultado.error);
-                    }
-                  }}
-                >
-                  {recuperarCarregando ? "Redefinindo…" : "Redefinir senha"}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              className="w-full bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+              onClick={() => setRecuperarAberto(false)}
+            >
+              Entendi
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </main>

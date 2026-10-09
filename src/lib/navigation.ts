@@ -37,7 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Indicadores", path: "/indicadores" },
       { label: "Políticas", path: "/politicas" },
       { label: "POPs", path: "/pops" },
-      { label: "Funcionários", path: "/funcionarios" },
+      { label: "Colaboradores", path: "/funcionarios" },
     ],
   },
   {

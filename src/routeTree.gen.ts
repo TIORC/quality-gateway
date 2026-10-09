@@ -21,6 +21,7 @@ import { Route as PainelRouteImport } from './routes/painel'
 import { Route as PlanosDeAcaoRouteImport } from './routes/planos-de-acao'
 import { Route as PoliticasRouteImport } from './routes/politicas'
 import { Route as PopsRouteImport } from './routes/pops'
+import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ProjetosEEstrategiasRouteImport } from './routes/projetos-e-estrategias'
 import { Route as FuncionariosIndexRouteImport } from './routes/funcionarios/index'
 import { Route as FuncionariosIdRouteImport } from './routes/funcionarios/$id'
@@ -85,6 +86,11 @@ const PopsRoute = PopsRouteImport.update({
   path: '/pops',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrimeiroAcessoRoute = PrimeiroAcessoRouteImport.update({
+  id: '/primeiro-acesso',
+  path: '/primeiro-acesso',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjetosEEstrategiasRoute = ProjetosEEstrategiasRouteImport.update({
   id: '/projetos-e-estrategias',
   path: '/projetos-e-estrategias',
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/planos-de-acao': typeof PlanosDeAcaoRoute
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
   '/funcionarios/$id': typeof FuncionariosIdRoute
   '/funcionarios/': typeof FuncionariosIndexRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/planos-de-acao': typeof PlanosDeAcaoRoute
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
   '/funcionarios/$id': typeof FuncionariosIdRoute
   '/funcionarios': typeof FuncionariosIndexRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/planos-de-acao': typeof PlanosDeAcaoRoute
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
+  '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
   '/funcionarios/$id': typeof FuncionariosIdRoute
   '/funcionarios/': typeof FuncionariosIndexRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/planos-de-acao'
     | '/politicas'
     | '/pops'
+    | '/primeiro-acesso'
     | '/projetos-e-estrategias'
     | '/funcionarios/$id'
     | '/funcionarios/'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/planos-de-acao'
     | '/politicas'
     | '/pops'
+    | '/primeiro-acesso'
     | '/projetos-e-estrategias'
     | '/funcionarios/$id'
     | '/funcionarios'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/planos-de-acao'
     | '/politicas'
     | '/pops'
+    | '/primeiro-acesso'
     | '/projetos-e-estrategias'
     | '/funcionarios/$id'
     | '/funcionarios/'
@@ -220,6 +232,7 @@ export interface RootRouteChildren {
   PlanosDeAcaoRoute: typeof PlanosDeAcaoRoute
   PoliticasRoute: typeof PoliticasRoute
   PopsRoute: typeof PopsRoute
+  PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ProjetosEEstrategiasRoute: typeof ProjetosEEstrategiasRoute
   FuncionariosIdRoute: typeof FuncionariosIdRoute
   FuncionariosIndexRoute: typeof FuncionariosIndexRoute
@@ -311,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PopsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/primeiro-acesso': {
+      id: '/primeiro-acesso'
+      path: '/primeiro-acesso'
+      fullPath: '/primeiro-acesso'
+      preLoaderRoute: typeof PrimeiroAcessoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projetos-e-estrategias': {
       id: '/projetos-e-estrategias'
       path: '/projetos-e-estrategias'
@@ -348,6 +368,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanosDeAcaoRoute: PlanosDeAcaoRoute,
   PoliticasRoute: PoliticasRoute,
   PopsRoute: PopsRoute,
+  PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ProjetosEEstrategiasRoute: ProjetosEEstrategiasRoute,
   FuncionariosIdRoute: FuncionariosIdRoute,
   FuncionariosIndexRoute: FuncionariosIndexRoute,

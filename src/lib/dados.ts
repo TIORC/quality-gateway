@@ -49,6 +49,8 @@ export interface Colaborador {
   permModificarDocumentos?: boolean;
   permExcluirDocumentos?: boolean;
   permExcluirPlanos?: boolean;
+  /** Setores extras liderados (só para o nível Líder de setor). */
+  setoresLiderados?: string[];
 }
 
 export type StatusFuncionario = "Ativo" | "Inativo";

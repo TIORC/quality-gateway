@@ -71,7 +71,7 @@ import {
 import { getSession } from "@/lib/auth";
 import { normalizarSetor } from "@/lib/niveis-acesso";
 import { ehUsuarioDaQualidade } from "@/lib/permissoes";
-import { veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
+import { podeConfigurarOcorrencias, veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
 
 export const Route = createFileRoute("/ocorrencias")({
@@ -109,7 +109,7 @@ function Ocorrencias() {
     setRefreshToken((v) => v + 1);
   };
 
-  const podeConfigurar = ehUsuarioDaQualidade(session);
+  const podeConfigurar = podeConfigurarOcorrencias(session);
   const vêTudo = veTodasAsOcorrencias(session);
   const carregando = ocorrencias.loading;
   const lista = listaAoVivo ?? ocorrencias.data ?? [];
@@ -139,6 +139,9 @@ function Ocorrencias() {
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ocorrencias.loading, refreshToken]);
+
+  // "Do setor Qualidade" é uma visão da Qualidade: fora do setor, a aba fica oculta.
+  const abasVisiveis = ABAS.filter((aba) => aba.valor !== "setor" || ehUsuarioDaQualidade(session));
 
   const filtrar = (aba: (typeof ABAS)[number]["valor"], o: Ocorrencia): boolean => {
     const email = (session?.email ?? "").trim().toLowerCase();
@@ -227,7 +230,7 @@ function Ocorrencias() {
         {modo === "lista" ? (
           <Tabs defaultValue="andamento">
             <TabsList className="flex-wrap">
-              {ABAS.map((aba) => {
+              {abasVisiveis.map((aba) => {
                 const total = porAba(aba.valor).length;
                 return (
                   <TabsTrigger key={aba.valor} value={aba.valor} className="gap-1.5">
@@ -240,7 +243,7 @@ function Ocorrencias() {
               })}
             </TabsList>
 
-            {ABAS.map((aba) => (
+            {abasVisiveis.map((aba) => (
               <TabsContent key={aba.valor} value={aba.valor}>
                 <ListaOcorrencias
                   ocorrencias={porAba(aba.valor)}
@@ -455,6 +458,9 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
   const [nc, setNc] = useState<EstadoNaoConformidade>(ESTADO_NC_VAZIO);
   const [ncErros, setNcErros] = useState<Record<string, string>>({});
   const [versoes, setVersoes] = useState<VersoesPublicadas | null>(null);
+  const [telaAtual, setTelaAtual] = useState(0);
+  const titulosTelas = versoes?.telas?.length ? versoes.telas : ["Tela 1"];
+  const totalTelas = titulosTelas.length;
   const [carregandoForm, setCarregandoForm] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
@@ -470,7 +476,22 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
   }, [aberto]);
 
   const tipo = tipos.find((t) => t.id === tipoId);
-  const naoConformidade = ehTipoNaoConformidade(tipo);
+  // Tipo Não Conformidade: usa o formulário publicado no construtor; sem formulário, cai na abertura fixa.
+  const usaAberturaFixa = ehTipoNaoConformidade(tipo) && !(versoes?.campos?.length);
+
+  /** Valida só os campos da tela atual e avança para a próxima. */
+  function avancarTela() {
+    if (!versoes) return;
+    const { __erros, ...limpas } = respostas;
+    const doTela = versoes.campos.filter((c) => (c.tela ?? 0) === telaAtual);
+    const erros = validarCampos(doTela, limpas);
+    if (Object.keys(erros).length > 0) {
+      setRespostas((r) => ({ ...r, __erros: erros }));
+      toast.error("Preencha os campos obrigatórios desta tela.");
+      return;
+    }
+    setTelaAtual((t) => Math.min(t + 1, totalTelas - 1));
+  }
 
   async function escolherTipo(id: string) {
     setTipoId(id);
@@ -478,6 +499,7 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
     setCarregandoForm(true);
     setVersoes(null);
     setRespostas({});
+    setTelaAtual(0);
     setNc(ESTADO_NC_VAZIO);
     setNcErros({});
     try {
@@ -549,7 +571,7 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
 
   async function confirmar() {
     if (!tipo || !versoes) return;
-    if (naoConformidade) {
+    if (usaAberturaFixa) {
       await confirmarNc();
       return;
     }
@@ -671,7 +693,7 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
                 <div className="flex items-center justify-center py-10 text-sm text-[#64748B]">
                   Carregando formulário…
                 </div>
-              ) : naoConformidade ? (
+              ) : usaAberturaFixa ? (
                 <FormularioNaoConformidade
                   setores={catalogo.setores}
                   valor={nc}
@@ -683,8 +705,26 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
                   desabilitado={salvando}
                 />
               ) : (
+                <div className="space-y-4">
+                {totalTelas > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2">
+                    <span className="text-[12px] font-semibold text-[#1F2937]">
+                      Tela {telaAtual + 1} de {totalTelas} — {titulosTelas[telaAtual]}
+                    </span>
+                    <span className="flex gap-1.5">
+                      {titulosTelas.map((titulo, i) => (
+                        <span
+                          key={`${titulo}-${i}`}
+                          title={titulo}
+                          className={`h-2 w-6 rounded-full ${i <= telaAtual ? "bg-[#1E3A8A]" : "bg-[#D9E0EA]"}`}
+                        />
+                      ))}
+                    </span>
+                  </div>
+                )}
                 <FormularioDinamico
                   campos={versoes?.campos ?? ([] as CampoFormulario[])}
+                  telaAtual={telaAtual}
                   respostas={respostas}
                   onChange={(id, valor) => setRespostas((r) => ({ ...r, [id]: valor }))}
                   colaboradores={catalogo.colaboradores.map((c) => ({
@@ -705,6 +745,7 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
                     }))
                   }
                 />
+                </div>
               )}
             </div>
           )}
@@ -714,7 +755,21 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
           <Button type="button" variant="outline" onClick={onFechar}>
             Cancelar
           </Button>
-          {etapa === "formulario" && (
+          {etapa === "formulario" && !usaAberturaFixa && totalTelas > 1 && telaAtual > 0 && (
+            <Button type="button" variant="outline" onClick={() => setTelaAtual((t) => t - 1)}>
+              Anterior
+            </Button>
+          )}
+          {etapa === "formulario" && !usaAberturaFixa && telaAtual < totalTelas - 1 ? (
+            <Button
+              type="button"
+              disabled={carregandoForm}
+              onClick={avancarTela}
+              className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+            >
+              Próximo
+            </Button>
+          ) : etapa === "formulario" ? (
             <Button
               type="button"
               disabled={salvando || carregandoForm}
@@ -723,7 +778,7 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
             >
               {salvando ? "Abrindo…" : "Criar Ocorrência"}
             </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -878,6 +933,7 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
   const session = usePanelSession();
   const [tipoId, setTipoId] = useState("");
   const [campos, setCampos] = useState<CampoFormulario[]>([]);
+  const [telas, setTelas] = useState<string[]>([]);
   const [versao, setVersao] = useState(1);
   const [publicando, setPublicando] = useState(false);
 
@@ -893,6 +949,7 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
       .then((v) => {
         if (ativo) {
           setCampos(v.campos);
+          setTelas(v.telas);
           setVersao(v.formularioVersao);
         }
       })
@@ -906,13 +963,19 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
     if (!tipo) return;
     setPublicando(true);
     try {
-      await publicarFormulario(tipo.id, campos, {
-        nome: session?.nome ?? "",
-        email: session?.email ?? "",
-      });
+      await publicarFormulario(
+        tipo.id,
+        campos,
+        {
+          nome: session?.nome ?? "",
+          email: session?.email ?? "",
+        },
+        telas,
+      );
       toast.success("Formulário publicado em nova versão.");
       const v = await carregarUltimasVersoes(tipo.id);
       setCampos(v.campos);
+      setTelas(v.telas);
       setVersao(v.formularioVersao);
     } catch (e) {
       toast.error(traduzErro(e).message);
@@ -952,6 +1015,8 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
         <FormBuilder
           campos={campos}
           onChangeCampos={setCampos}
+          telas={telas}
+          onChangeTelas={setTelas}
           onPublicar={publicar}
           publicando={publicando}
         />

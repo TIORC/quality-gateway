@@ -12,7 +12,10 @@ import type { UserSession } from "@/lib/auth";
 import type { Ata, TipoReuniao } from "@/lib/atas";
 import {
   NIVEIS_ACESSO_TOTAL_POPS,
+  NIVEL_AUXILIAR_QUALIDADE,
   NIVEL_DESENVOLVEDOR_SISTEMA,
+  NIVEL_GESTOR_QUALIDADE,
+  NIVEL_LIDER_SETOR,
   NIVEL_SOMENTE_LIBERADOS,
   normalizarSetor,
 } from "@/lib/niveis-acesso";
@@ -36,33 +39,40 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
  * Páginas abertas a todos os usuários logados: Ocorrências, POPs e Políticas
  * (e o Meu Perfil, que é pessoal). Todo o resto é restrito à Qualidade.
  */
-const ROTAS_PUBLICAS: AppRoutePath[] = ["/ocorrencias", "/pops", "/politicas", "/meu-perfil"];
+const ROTAS_PUBLICAS: AppRoutePath[] = [
+  "/ocorrencias",
+  "/pops",
+  "/politicas",
+  "/funcionarios",
+  "/meu-perfil",
+];
 
 /** Setor da Qualidade: tudo, exceto Configurações (restrita à Administração/Gestão). */
 const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
 
-/**
- * Rotas abertas (compatibilidade com o remoto): tudo exceto Configurações.
- * Mantido como alias para não quebrar `ROTAS_POR_NIVEL` vindo do origin/main.
- */
-const ROTAS_ABERTAS: AppRoutePath[] = ROTAS_QUALIDADE;
+/** Colaborador: públicas + os próprios indicadores. */
+const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
 
+/**
+ * Rotas permitidas por nível (referência para o menu). A regra efetiva está em
+ * `rotasPermitidas`, que também considera o setor da Qualidade e a liderança.
+ */
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
   "Desenvolvedor do Sistema": TODAS_AS_ROTAS,
-  Administrador: TODAS_AS_ROTAS,
   "Gestor da Qualidade": TODAS_AS_ROTAS,
-  "Auxiliar da Qualidade": ROTAS_ABERTAS,
-  Diretoria: ROTAS_ABERTAS,
-  "Líder de setor": ROTAS_ABERTAS,
-  Desenvolvedor: ROTAS_ABERTAS,
-  Colaborador: ROTAS_ABERTAS,
-  "Colaborador de outra unidade": ROTAS_ABERTAS,
+  "Auxiliar da Qualidade": TODAS_AS_ROTAS,
+  Diretoria: ROTAS_PUBLICAS,
+  "Líder de setor": ROTAS_PUBLICAS,
+  Desenvolvedor: ROTAS_PUBLICAS,
+  Colaborador: ROTAS_COLABORADOR,
+  "Colaborador de outra unidade": ROTAS_PUBLICAS,
 };
 
 /**
  * Rotas que a sessão atual pode acessar:
- *  - Administrador, Gestor da Qualidade e Desenvolvedor do Sistema: todas;
+ *  - Gestor da Qualidade, Auxiliar da Qualidade e Desenvolvedor do Sistema: todas;
  *  - Setor da Qualidade: todas menos Configurações;
+ *  - Colaborador: públicas + Indicadores (somente os próprios);
  *  - demais: Ocorrências, POPs, Políticas e Meu Perfil.
  */
 export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> {
@@ -71,6 +81,7 @@ export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> 
     return new Set(TODAS_AS_ROTAS);
   }
   if (ehUsuarioDaQualidade(session)) return new Set(ROTAS_QUALIDADE);
+  if (session.nivelAcesso === "Colaborador") return new Set(ROTAS_COLABORADOR);
   return new Set(ROTAS_PUBLICAS);
 }
 
@@ -104,30 +115,63 @@ export function veSomenteLiberados(session: UserSession | null): boolean {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Liderança da Qualidade: perfil "gestor", nível "Gestor da Qualidade" ou o
- * cargo "Coordenador da Qualidade". Sempre gerencia documentos, sem depender
- * das permissões individuais de colaborador. O "Desenvolvedor do Sistema"
- * herda este acesso (faz absolutamente tudo).
+ * Gestão total da Qualidade: Gestor da Qualidade, Auxiliar da Qualidade (acesso
+ * total ao sistema), perfil "gestor"/"admin", nível Desenvolvedor do Sistema e
+ * o cargo "Coordenador da Qualidade". Gerencia documentos sem depender das
+ * permissões individuais de colaborador.
+ *
+ * Isto NÃO inclui aprovar documentos: para isso use `podeAprovarDocumentos`.
  */
 export function ehLiderancaDaQualidade(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (session.role === "admin" || session.role === "gestor") return true;
   if (session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA) return true;
+  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return true;
   return (
-    session.nivelAcesso === "Gestor da Qualidade" || session.cargo === "Coordenador da Qualidade"
+    session.nivelAcesso === NIVEL_GESTOR_QUALIDADE || session.cargo === "Coordenador da Qualidade"
   );
 }
 
 /**
+ * Aprovação de documentos (POPs em dupla aprovação e políticas): toda a gestão
+ * da Qualidade, exceto o Auxiliar da Qualidade, que elabora mas não aprova.
+ */
+export function podeAprovarDocumentos(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
+  return ehLiderancaDaQualidade(session);
+}
+
+/**
+ * Setores que a sessão lidera, normalizados. O setor próprio do líder entra na
+ * lista, além dos extras em `setoresLiderados`. Vazio fora do nível Líder de setor.
+ */
+export function setoresLiderados(session: UserSession | null | undefined): string[] {
+  if (!session || session.nivelAcesso !== NIVEL_LIDER_SETOR) return [];
+  const nomes = [session.setor, ...(session.setoresLiderados ?? [])];
+  return [...new Set(nomes.map(normalizarSetor).filter(Boolean))];
+}
+
+/** Líder de setor que lidera o setor informado (nome do setor, sem diferenciar acentos). */
+export function liderDoSetor(
+  session: UserSession | null | undefined,
+  nomeSetor: string | null | undefined,
+): boolean {
+  const alvo = normalizarSetor(nomeSetor);
+  return !!alvo && setoresLiderados(session).includes(alvo);
+}
+
+/**
  * Cadastros auxiliares (setores de POP, grupos de acesso, tipos de reunião e
- * origens de ação): Administrador, Desenvolvedor do Sistema e Gestor da Qualidade.
+ * origens de ação): Desenvolvedor do Sistema, Gestor e Auxiliar da Qualidade.
  */
 export function podeGerenciarCadastros(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   return (
     ehAdministrador(session) ||
     session.role === "gestor" ||
-    session.nivelAcesso === "Gestor da Qualidade"
+    session.nivelAcesso === NIVEL_GESTOR_QUALIDADE ||
+    session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE
   );
 }
 
@@ -139,6 +183,8 @@ function permConcedida(session: UserSession, permissao: boolean | undefined): bo
 /** Indica se a sessão pode adicionar/criar documentos (POPs e políticas). */
 export function podeAdicionarDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
+  // Auxiliar da Qualidade apenas visualiza os documentos.
+  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permAdicionarDocumentos);
 }
@@ -146,6 +192,8 @@ export function podeAdicionarDocumentos(session: UserSession | null | undefined)
 /** Indica se a sessão pode modificar/editar documentos (POPs e políticas). */
 export function podeModificarDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
+  // Auxiliar da Qualidade apenas visualiza os documentos.
+  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permModificarDocumentos);
 }
@@ -153,6 +201,8 @@ export function podeModificarDocumentos(session: UserSession | null | undefined)
 /** Indica se a sessão pode excluir documentos (POPs e políticas). */
 export function podeExcluirDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
+  // Auxiliar da Qualidade apenas visualiza os documentos.
+  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permExcluirDocumentos);
 }
@@ -168,43 +218,40 @@ export function ehUsuarioDaQualidade(session: UserSession | null | undefined): b
 }
 
 /**
- * Administrador do sistema (role `admin`, nível "Administrador" ou nível
- * "Desenvolvedor do Sistema"). Enxerga o andamento de tudo em leitura, sem as
- * permissões de gestão da Qualidade.
+ * Nível de sistema: role `admin` (Desenvolvedor do Sistema e Desenvolvedor) ou
+ * nível "Desenvolvedor do Sistema". O antigo nível "Administrador" foi
+ * eliminado; a gestão do portal fica com o Gestor da Qualidade.
  */
 export function ehAdministrador(session: UserSession | null | undefined): boolean {
   if (!session) return false;
-  return (
-    session.role === "admin" ||
-    session.nivelAcesso === "Administrador" ||
-    session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA
-  );
+  return session.role === "admin" || session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA;
 }
 
 /**
  * Revisões anteriores de uma política (documento obsoleto, o que mudou e quem leu
- * e concordou): Desenvolvedor do Sistema, Administrador, Líder de setor e Gestor da
- * Qualidade. Os demais perfis veem apenas o histórico das versões.
+ * e concordou): Desenvolvedor do Sistema, Gestor/Auxiliar da Qualidade e Líder de setor.
+ * Os demais perfis veem apenas o histórico das versões.
  */
 export function podeVerRevisoesAnteriores(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   return (
     ehAdministrador(session) ||
     ehLiderancaDaQualidade(session) ||
-    session.nivelAcesso === "Líder de setor"
+    session.nivelAcesso === NIVEL_LIDER_SETOR
   );
 }
 
 /**
  * Gestão das políticas (aba "Pendente aprovação", "Pendente revisão" e pendências de
- * leitura por setor): Gestor da Qualidade, Administrador, Desenvolvedor do Sistema e Líder de setor.
+ * leitura por setor): Gestor/Auxiliar da Qualidade, Desenvolvedor do Sistema e Líder de setor.
+ * A aprovação em si é restrita por `podeAprovarDocumentos`.
  */
 export function podeGerenciarPoliticas(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   return (
     ehAdministrador(session) ||
     ehLiderancaDaQualidade(session) ||
-    session.nivelAcesso === "Líder de setor"
+    session.nivelAcesso === NIVEL_LIDER_SETOR
   );
 }
 
@@ -392,4 +439,31 @@ export function podeEditarAta(
   if (ata.criadoPor === usuarioId) return true;
   if (!tipo) return false;
   return [...tipo.participantes, ...tipo.signatarios].some((p) => p.id === usuarioId);
+}
+
+/**
+ * Leituras de processos (visualizados e lidos) dos colaboradores: só o
+ * Desenvolvedor do Sistema, o Gestor da Qualidade, a Diretoria e o Líder de setor.
+ */
+export function podeVerLeituras(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return [
+    NIVEL_DESENVOLVEDOR_SISTEMA,
+    NIVEL_GESTOR_QUALIDADE,
+    "Diretoria",
+    NIVEL_LIDER_SETOR,
+  ].includes(session.nivelAcesso);
+}
+
+/** Níveis que não enxergam colaboradores inativos (a lista e o perfil). */
+const NIVEIS_SEM_INATIVOS = new Set<string>(["Colaborador", "Colaborador de outra unidade"]);
+
+/**
+ * Colaboradores inativos: visíveis para todos, exceto os níveis Colaborador e
+ * Colaborador de outra unidade. A gestão de inativos fica com os líderes de setor,
+ * o Desenvolvedor do Sistema, a Diretoria e o Gestor da Qualidade.
+ */
+export function podeVerInativos(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return !NIVEIS_SEM_INATIVOS.has(session.nivelAcesso);
 }

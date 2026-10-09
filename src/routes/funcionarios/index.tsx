@@ -2,7 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { CheckCircle2, Eye, FileCheck2, Search, UserX, Users } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { PanelShell } from "@/components/panel-shell";
+import { PanelShell, usePanelSession } from "@/components/panel-shell";
+import { getSession } from "@/lib/auth";
+import { SemPermissao } from "@/components/sem-permissao";
+import { podeVerInativos, podeVerLeituras } from "@/lib/permissoes";
 import { Paginacao, usePaginacao } from "@/components/paginacao";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,7 +21,7 @@ import { formatarDataHoraBrasilia } from "@/lib/utils";
 
 export const Route = createFileRoute("/funcionarios/")({
   head: () => ({
-    meta: [{ title: "Funcionários | Gestão da Qualidade" }],
+    meta: [{ title: "Colaboradores | Gestão da Qualidade" }],
   }),
   component: Funcionarios,
 });
@@ -35,7 +38,7 @@ function iniciais(nome: string): string {
 
 interface ResumoCardProps {
   label: string;
-  value: string;
+  value: ReactNode;
   valueClass: string;
   accent: string;
   footer: string;
@@ -90,6 +93,10 @@ function StatusBadge({ status }: { status: StatusFuncionario }) {
 }
 
 function Funcionarios() {
+  const sessaoCtx = usePanelSession();
+  const sessaoAtual = getSession() ?? sessaoCtx;
+  const veLeituras = podeVerLeituras(sessaoAtual);
+  const veInativos = podeVerInativos(sessaoAtual);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -105,7 +112,7 @@ function Funcionarios() {
     org
       .carregarFuncionarios()
       .then((lista) => {
-        if (ativo) setFuncionarios(lista);
+        if (ativo) setFuncionarios(veInativos ? lista : lista.filter((f) => f.status === "Ativo"));
       })
       .catch(() => {
         if (ativo) toast.error("Não foi possível carregar os funcionários.");
@@ -150,7 +157,7 @@ function Funcionarios() {
           Organização
         </p>
         <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-[#1F2937] sm:text-[26px]">
-          Funcionários
+          Colaboradores
         </h1>
         <p className="mt-1.5 text-sm text-[#64748B]">
           Todos os funcionários cadastrados na plataforma, com situação de acesso e leitura dos
@@ -160,7 +167,7 @@ function Funcionarios() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ResumoCard
-          label="Funcionários"
+          label="Colaboradores"
           value={String(funcionarios.length)}
           valueClass="text-[#1F2937]"
           accent="#312E81"
@@ -185,8 +192,8 @@ function Funcionarios() {
         />
         <ResumoCard
           label="Processos lidos"
-          value={String(totalLidos)}
-          valueClass="text-[#1E3A8A]"
+          value={veLeituras ? String(totalLidos) : <SemPermissao />}
+          valueClass={veLeituras ? "text-[#1E3A8A]" : "text-[#E11D48]"}
           accent="#1E3A8A"
           footer="Leituras confirmadas no total"
           icone={FileCheck2}
@@ -305,14 +312,19 @@ function Funcionarios() {
                         )}
                       </td>
                       <td className="px-4 py-3 align-middle">
-                        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]">
-                          <Eye className="h-3.5 w-3.5 text-[#94A3B8]" />
-                          {funcionario.processosVisualizados >= 1000
-                            ? "1000+"
-                            : funcionario.processosVisualizados}
-                        </span>
+                        {veLeituras ? (
+                          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]">
+                            <Eye className="h-3.5 w-3.5 text-[#94A3B8]" />
+                            {funcionario.processosVisualizados >= 1000
+                              ? "1000+"
+                              : funcionario.processosVisualizados}
+                          </span>
+                        ) : (
+                          <SemPermissao compacto />
+                        )}
                       </td>
                       <td className="px-4 py-3 align-middle">
+                        {veLeituras ? (
                         <div className="flex items-center gap-3">
                           <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]">
                             <FileCheck2 className="h-3.5 w-3.5 text-[#94A3B8]" />
@@ -330,6 +342,9 @@ function Funcionarios() {
                             </span>
                           </div>
                         </div>
+                        ) : (
+                          <SemPermissao compacto />
+                        )}
                       </td>
                       <td className="px-4 py-3 align-middle">
                         <Link

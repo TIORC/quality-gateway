@@ -8,8 +8,8 @@
  */
 
 import type { UserSession } from "@/lib/auth";
-import { normalizarSetor } from "@/lib/niveis-acesso";
-import { ehUsuarioDaQualidade } from "@/lib/permissoes";
+import { normalizarSetor, NIVEL_LIDER_SETOR } from "@/lib/niveis-acesso";
+import { ehUsuarioDaQualidade, liderDoSetor } from "@/lib/permissoes";
 
 /* -------------------------------------------------------------------------- */
 /* Constantes                                                                  */
@@ -429,9 +429,8 @@ export function podeLancarApuracao(
 ): boolean {
   if (!session) return false;
   if (ehUsuarioDaQualidade(session)) return true;
-  const setorSessao = normalizarSetor(session.setor);
-  if (session.nivelAcesso !== "Líder de setor" || !setorSessao) return false;
-  return setorSessao === normalizarSetor(indicador.setor);
+  if (session.nivelAcesso !== NIVEL_LIDER_SETOR) return false;
+  return liderDoSetor(session, indicador.setor);
 }
 
 /** Fechamento do mês é ato da Qualidade/Admin. */

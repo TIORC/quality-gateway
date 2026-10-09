@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { GruposAcessoTab, OrigensAcaoTab, TiposReuniaoTab } from "@/components/config-cadastros";
 import { ImportarColaboradoresDialog } from "@/components/importar-colaboradores-dialog";
+import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Paginacao, usePaginacao } from "@/components/paginacao";
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
 import { criarAcessoColaborador, listarEmailsComLogin } from "@/lib/auth";
+import { criarConviteAcesso } from "@/lib/convites";
 import {
   NIVEL_DESENVOLVEDOR_SISTEMA,
   NIVEIS_ACESSO,
   NIVEIS_RESERVADOS_GESTAO,
+  NIVEL_LIDER_SETOR,
   NIVEL_SOMENTE_LIBERADOS,
   normalizarSetor,
 } from "@/lib/niveis-acesso";
@@ -91,7 +94,7 @@ function corAcesso(nivel: string): string {
   switch (nivel) {
     case NIVEL_DESENVOLVEDOR_SISTEMA:
       return "bg-[#F5F3FF] text-[#6D28D9]";
-    case "Administrador":
+    case "Auxiliar da Qualidade":
       return "bg-[#FEF3C7] text-[#B45309]";
     case "Gestor da Qualidade":
       return "bg-[#EEF2FF] text-[#4F46E5]";
@@ -769,7 +772,7 @@ function ColaboradoresTab({
   const usuarioAtual = lista.find((colaborador) => colaborador.email === session?.email);
   const podeDarAdministracao =
     session?.role === "admin" ||
-    usuarioAtual?.nivelAcesso === "Administrador" ||
+    usuarioAtual?.nivelAcesso === "Gestor da Qualidade" ||
     usuarioAtual?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA ||
     usuarioAtual?.nivelAcesso === "Desenvolvedor";
 
@@ -816,6 +819,18 @@ function ColaboradoresTab({
         toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o colaborador."),
       );
     setNovoAberto(false);
+  }
+
+  function excluirColaborador(colaborador: Colaborador) {
+    org
+      .excluirColaborador(colaborador.id)
+      .then(() => {
+        setLista((atual) => atual.filter((item) => item.id !== colaborador.id));
+        toast.success(`Colaborador ${colaborador.nome} excluído`);
+      })
+      .catch((erro: unknown) =>
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível excluir o colaborador."),
+      );
   }
 
   function salvar(
@@ -1077,7 +1092,7 @@ function ColaboradoresTab({
         <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-2">
           {NIVEIS_ACESSO.map((nivel) => (
             <div key={nivel.rotulo} className="flex flex-col gap-0.5">
-              <p className="text-[13px] font-semibold text-[#1F2937]">{nivel.rotulo}</p>
+              <p className={`text-[13px] font-semibold ${nivel.cor}`}>{nivel.rotulo}</p>
               <p className="text-[13px] leading-relaxed text-[#64748B]">{nivel.descricao}</p>
             </div>
           ))}
@@ -1120,6 +1135,8 @@ function ColaboradoresTab({
       />
       {gerindo ? (
         <GerirColaboradorDialog
+          podeExcluir={session?.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA}
+          onExcluir={excluirColaborador}
           colaborador={gerindo}
           setores={setores}
           unidades={nomesUnidades}
@@ -1368,6 +1385,54 @@ function NovoColaboradorDialog({
   );
 }
 
+/** Gera o link de primeiro acesso: a pessoa cria a própria senha. */
+function ConvitePrimeiroAcesso({ colaboradorId }: { colaboradorId: string }) {
+  const [link, setLink] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
+
+  async function gerar() {
+    setGerando(true);
+    const resultado = await criarConviteAcesso(colaboradorId);
+    setGerando(false);
+    if (resultado.ok) {
+      setLink(resultado.link);
+      toast.success("Link gerado. Ele vale por 24 horas.");
+    } else {
+      toast.error(resultado.error);
+    }
+  }
+
+  async function copiar() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Link copiado.");
+    } catch {
+      toast.error("Não foi possível copiar. Selecione o link e copie manualmente.");
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button type="button" variant="outline" onClick={gerar} disabled={gerando}>
+        {gerando ? "Gerando…" : link ? "Gerar novo link" : "Gerar link de primeiro acesso"}
+      </Button>
+      {link ? (
+        <div className="flex gap-2">
+          <Input readOnly value={link} onFocus={(evento) => evento.target.select()} />
+          <Button type="button" variant="outline" onClick={copiar}>
+            Copiar
+          </Button>
+        </div>
+      ) : null}
+      <p className="text-xs text-[#94A3B8]">
+        Envie este link ao colaborador. Ao abri-lo, ele cria a própria senha. Gerar um novo link
+        invalida o anterior.
+      </p>
+    </div>
+  );
+}
+
 interface GerirColaboradorDialogProps {
   colaborador: Colaborador | null;
   setores: SetorConfig[];
@@ -1381,6 +1446,8 @@ interface GerirColaboradorDialogProps {
     acesso?: AcessoLogin,
   ) => void;
   podeDarAdministracao: boolean;
+  podeExcluir: boolean;
+  onExcluir: (colaborador: Colaborador) => void;
   gruposDisponiveis: string[];
 }
 
@@ -1394,10 +1461,16 @@ function GerirColaboradorDialog({
   onSalvar,
   podeDarAdministracao,
   gruposDisponiveis,
+  podeExcluir,
+  onExcluir,
 }: GerirColaboradorDialogProps) {
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const [setor, setSetor] = useState(colaborador?.setor ?? "Qualidade");
   const [unidade, setUnidade] = useState(colaborador?.unidade ?? "Matriz");
   const [nivelAcesso, setNivelAcesso] = useState(colaborador?.nivelAcesso ?? "Colaborador");
+  const [setoresLiderados, setSetoresLiderados] = useState<string[]>(
+    colaborador?.setoresLiderados ?? [],
+  );
   const [exclusao, setExclusao] = useState(colaborador?.exclusao ?? "Sem acesso");
   const [nome, setNome] = useState(colaborador?.nome ?? "");
   const [email, setEmail] = useState(colaborador?.email ?? "");
@@ -1510,6 +1583,8 @@ function GerirColaboradorDialog({
       permModificarDocumentos: permModificar,
       permExcluirDocumentos: permExcluir,
       permExcluirPlanos: permExcluirPlanos,
+      setoresLiderados:
+        nivelAcesso === NIVEL_LIDER_SETOR ? setoresLiderados.filter((nome) => nome !== setor) : [],
     };
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
@@ -1625,6 +1700,61 @@ function GerirColaboradorDialog({
               </p>
             ) : null}
           </Campo>
+
+          {nivelAcesso === NIVEL_LIDER_SETOR ? (
+            <Campo rotulo="Setores que lidera (além do próprio setor)">
+              {(() => {
+                const outrosSetores = setores.filter((item) => item.nome !== setor);
+                const todosMarcados =
+                  outrosSetores.length > 0 &&
+                  outrosSetores.every((item) => setoresLiderados.includes(item.nome));
+                return (
+                  <label
+                    htmlFor="gerir-setor-lidera-todos"
+                    className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-[#E2E8F0] px-3 py-2 text-sm font-semibold"
+                  >
+                    <Checkbox
+                      id="gerir-setor-lidera-todos"
+                      checked={todosMarcados}
+                      disabled={outrosSetores.length === 0}
+                      onCheckedChange={(marcado) =>
+                        setSetoresLiderados(marcado === true ? outrosSetores.map((item) => item.nome) : [])
+                      }
+                    />
+                    Todos
+                  </label>
+                );
+              })()}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {setores
+                  .filter((item) => item.nome !== setor)
+                  .map((item) => (
+                    <label
+                      key={item.id}
+                      htmlFor={`gerir-setor-lidera-${item.id}`}
+                      className="flex cursor-pointer items-center gap-2 rounded-md border border-[#E2E8F0] px-3 py-2 text-sm"
+                    >
+                      <Checkbox
+                        id={`gerir-setor-lidera-${item.id}`}
+                        checked={setoresLiderados.includes(item.nome)}
+                        onCheckedChange={(marcado) =>
+                          setSetoresLiderados((atual) =>
+                            marcado === true
+                              ? [...atual.filter((nome) => nome !== item.nome), item.nome]
+                              : atual.filter((nome) => nome !== item.nome),
+                          )
+                        }
+                      />
+                      {item.nome}
+                    </label>
+                  ))}
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
+                Um líder pode liderar vários setores. Outros líderes do mesmo setor continuam com
+                o próprio alcance.
+              </p>
+            </Campo>
+          ) : null}
 
           <Campo rotulo="Grupos personalizados">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1755,6 +1885,12 @@ function GerirColaboradorDialog({
             </div>
           </Campo>
 
+          {podeCriarLogin && colaborador.email ? (
+            <Campo rotulo="Primeiro acesso">
+              <ConvitePrimeiroAcesso colaboradorId={colaborador.id} />
+            </Campo>
+          ) : null}
+
           <Campo rotulo="Exclusão">
             <Select value={exclusao} onValueChange={setExclusao}>
               <SelectTrigger>
@@ -1836,19 +1972,47 @@ function GerirColaboradorDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onFechar}>
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            onClick={enviar}
-            className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-          >
-            Salvar alterações
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {podeExcluir && !ehDevSistema ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmandoExclusao(true)}
+              className="border-rose-300 text-rose-600 hover:bg-rose-50"
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              Excluir colaborador
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onFechar}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={enviar}
+              className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+            >
+              Salvar alterações
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
+      <ConfirmarDialog
+        open={confirmandoExclusao}
+        onOpenChange={setConfirmandoExclusao}
+        tom="danger"
+        titulo={`Excluir ${atual.nome}?`}
+        descricao="O cadastro e o acesso ao portal serão removidos. Esta ação não pode ser desfeita."
+        textoConfirmar="Excluir"
+        onConfirmar={() => {
+          setConfirmandoExclusao(false);
+          onExcluir(atual);
+          onFechar();
+        }}
+      />
     </Dialog>
   );
 }

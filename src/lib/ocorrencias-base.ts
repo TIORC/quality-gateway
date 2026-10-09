@@ -131,6 +131,7 @@ function camposDeJson(v: unknown): CampoFormulario[] {
         regex: str(o["regex"]),
         min: typeof o["min"] === "number" ? (o["min"] as number) : null,
         max: typeof o["max"] === "number" ? (o["max"] as number) : null,
+        tela: typeof o["tela"] === "number" ? (o["tela"] as number) : 0,
         largura:
           str(o["largura"], "inteira") === "metade" ? ("metade" as const) : ("inteira" as const),
         condicao:
@@ -148,6 +149,7 @@ export function formularioDoRow(row: Linha): FormularioVersao {
     tipoId: str(row["tipo_id"]),
     versao: num(row["versao"], 1),
     campos: camposDeJson(row["campos"]),
+    telas: Array.isArray(row["telas"]) ? (row["telas"] as unknown[]).map(String) : [],
     publicada: Boolean(row["publicada"]),
     criadoPorNome: str(row["criado_por_nome"]),
     criadoPorEmail: str(row["criado_por_email"]),
@@ -235,6 +237,7 @@ export async function publicarFormulario(
   tipoId: string,
   campos: CampoFormulario[],
   sessao: { nome: string; email: string },
+  telas: string[] = [],
 ): Promise<FormularioVersao> {
   const existentes = await listarFormularios(tipoId);
   const versao = existentes.reduce((m, f) => Math.max(m, f.versao), 0) + 1;
@@ -244,6 +247,7 @@ export async function publicarFormulario(
       tipo_id: tipoId,
       versao,
       campos,
+      telas,
       publicada: true,
       criado_por_nome: sessao.nome,
       criado_por_email: sessao.email,

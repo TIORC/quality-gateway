@@ -8,9 +8,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LogOut,
-  Menu,
   Settings,
-  ShieldCheck,
   Target,
   Users,
   X,
@@ -37,7 +35,7 @@ import { rotaInicial, rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AppFooter } from "@/components/app-footer";
-import { SinoNotificacoes } from "@/components/sino-notificacoes";
+import { BarraSuperior } from "@/components/barra-superior";
 
 const ICONS: Record<string, LucideIcon> = {
   Painel: LayoutDashboard,
@@ -49,7 +47,7 @@ const ICONS: Record<string, LucideIcon> = {
   Indicadores: BarChart3,
   Políticas: BookOpen,
   POPs: FileCheck,
-  Funcionários: Users,
+  Colaboradores: Users,
   Configurações: Settings,
 };
 
@@ -138,13 +136,12 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
 
   const sidebarContent = (
     <>
-      <div className="flex items-center gap-3 px-5 pb-5 pt-6">
-        <img src="/favicon.png" alt="Logomarca da empresa" className="h-9 w-9 object-contain" />
+      <div className="flex flex-col items-center gap-2 px-5 pb-5 pt-6 text-center">
+        <img src="/logo-orcoma-branca.png" alt="Logo ORCOMA com Selo ISO" className="h-auto w-44 object-contain" />
         <div>
           <h1 className="text-sm font-semibold leading-tight text-brand-foreground">
             Gestão da Qualidade
           </h1>
-          <p className="text-[11px] text-brand-muted">Portal de Gestão</p>
         </div>
       </div>
 
@@ -190,7 +187,6 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
             <LogOut className="h-4 w-4 shrink-0" />
             Sair
           </button>
-          <SinoNotificacoes />
         </div>
       </div>
     </>
@@ -229,27 +225,23 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
           {sidebarContent}
         </aside>
 
-        {/* Barra superior mobile */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background px-4 py-3 lg:hidden">
-          <button
-            onClick={() => setMenuAberto(true)}
-            className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground"
-            aria-label="Abrir menu"
-          >
-            <Menu className="h-4 w-4" />
-            <span className="font-semibold">Gestão da Qualidade</span>
-          </button>
-          <span className="inline-flex items-center gap-2">
-            <SinoNotificacoes />
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-          </span>
-        </header>
-
         {/* Conteúdo */}
-        <div className="lg:pl-64">
-          <div className={cn("mx-auto w-full px-4 py-6 sm:px-6 lg:px-8", !wide && "max-w-6xl")}>
+        <div className="relative isolate flex min-h-screen flex-col lg:pl-64">
+          {/* Marca d'água: símbolo ocupando a área do conteúdo, atrás de tudo (10%). */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10 bg-center bg-no-repeat opacity-10"
+            style={{
+              backgroundImage: "url(/logo-orcoma.png)",
+              backgroundSize: "100% auto",
+            }}
+          />
+          <BarraSuperior
+            session={session}
+            onAbrirMenu={() => setMenuAberto(true)}
+            onSair={handleLogout}
+          />
+          <div className={cn("mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8", !wide && "max-w-6xl")}>
             {children}
           </div>
           <AppFooter />

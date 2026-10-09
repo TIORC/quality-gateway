@@ -22,6 +22,9 @@ import type { PerfilColaborador } from "@/lib/organizacao";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 import { PermissoesColaborador } from "@/components/permissoes-colaborador";
 import { NIVEIS_GESTAO } from "@/lib/niveis-acesso";
+import { getSession } from "@/lib/auth";
+import { SemPermissao } from "@/components/sem-permissao";
+import { podeVerInativos, podeVerLeituras } from "@/lib/permissoes";
 
 export const Route = createFileRoute("/funcionarios/$id")({
   head: () => ({
@@ -84,6 +87,9 @@ function DadoPerfil({ icon: Icone, rotulo, valor }: DadoPerfilProps) {
 function PerfilFuncionario() {
   const { id } = Route.useParams();
   const session = usePanelSession();
+  const sessaoAtual = getSession() ?? session;
+  const veLeituras = podeVerLeituras(sessaoAtual);
+  const [bloqueadoInativo, setBloqueadoInativo] = useState(false);
   const [perfil, setPerfil] = useState<PerfilColaborador | null>(null);
   const [carregando, setCarregando] = useState(true);
 
@@ -96,7 +102,12 @@ function PerfilFuncionario() {
     org
       .carregarPerfilColaborador(id)
       .then((dados) => {
-        if (ativo) setPerfil(dados);
+        if (!ativo) return;
+        if (dados?.status === "Inativo" && !podeVerInativos(getSession())) {
+          setBloqueadoInativo(true);
+          return;
+        }
+        setPerfil(dados);
       })
       .catch(() => {
         if (ativo) toast.error("Não foi possível carregar o perfil do colaborador.");
@@ -115,6 +126,17 @@ function PerfilFuncionario() {
     perfil && perfil.processosVisualizados > 0
       ? Math.min(100, Math.round((perfil.processosLidos / perfil.processosVisualizados) * 100))
       : 0;
+
+  if (bloqueadoInativo) {
+    return (
+      <PanelShell wide>
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <SemPermissao />
+          <p className="text-sm text-[#64748B]">Este colaborador está inativo.</p>
+        </div>
+      </PanelShell>
+    );
+  }
 
   return (
     <PanelShell wide>
@@ -244,6 +266,7 @@ function PerfilFuncionario() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
                 Leitura de processos
               </p>
+              {veLeituras ? (
               <div className="mt-4 space-y-4">
                 <div className="flex items-center gap-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EEF2F7] text-[#1E3A8A]">
@@ -285,6 +308,9 @@ function PerfilFuncionario() {
                   </div>
                 </div>
               </div>
+              ) : (
+                <p className="mt-4"><SemPermissao /></p>
+              )}
             </div>
 
             <div className="flex items-center gap-2 rounded-2xl border border-[#E9EEF5] bg-[#F8FAFC] px-4 py-3 text-[12px] text-[#64748B]">

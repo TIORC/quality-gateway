@@ -1,42 +1,43 @@
 export const NIVEIS_ACESSO = [
   {
     rotulo: "Desenvolvedor do Sistema",
+    cor: "text-red-600",
     descricao:
       "Acesso total e irrestrito, exclusivo da TI Maracas. Registro imutável e não excluível.",
   },
   {
-    rotulo: "Administrador",
-    descricao:
-      "Acesso total e irrestrito. Gerencia usuários e concede permissões de administração a qualquer pessoa.",
-  },
-  {
     rotulo: "Gestor da Qualidade",
-    descricao: "Acesso total. Cria e publica documentos, atas, projetos e indicadores.",
+    cor: "text-purple-600",
+    descricao:
+      "Acesso total. Cria, aprova e publica documentos, atas, projetos e indicadores. Gerencia usuários.",
   },
   {
     rotulo: "Auxiliar da Qualidade",
-    descricao: "Elabora e apura, mas não libera divulgação de POP.",
+    cor: "text-pink-500",
+    descricao:
+      "Tem acesso total ao sistema, auxiliando na elaboração, mas não libera e nem aprova documentos, sejam eles POPs ou políticas.",
   },
   {
     rotulo: "Diretoria",
+    cor: "text-orange-500",
     descricao: "Enxerga tudo em leitura. Assina atas e aprova políticas.",
   },
   {
     rotulo: "Líder de setor",
-    descricao: "Seu setor: ações, documentos, ocorrências e projetos.",
-  },
-  {
-    rotulo: "Desenvolvedor",
+    cor: "text-blue-600",
     descricao:
-      "Acesso como colaborador: suas ações, o que segue e o que foi divulgado ao seu setor.",
+      "Lidera o seu ou vários setores, aprovando ações, documentos, ocorrências e atas de setores.",
   },
   {
     rotulo: "Colaborador",
-    descricao: "Suas ações, o que segue e o que foi divulgado a ele.",
+    cor: "text-green-600",
+    descricao:
+      "Pode realizar a leitura, comentários e aceitação/concordância de documentos, POPs e políticas destinadas ao setor dele. Pode abrir ocorrências e verificar seus próprios indicadores.",
   },
   {
     rotulo: "Colaborador de outra unidade",
-    descricao: "Somente POPs expressamente liberados.",
+    cor: "text-teal-500",
+    descricao: "Apenas lê as políticas e os POPs liberados para ele.",
   },
 ] as const;
 
@@ -49,37 +50,46 @@ export const ROTULOS_NIVEIS_ACESSO = NIVEIS_ACESSO.map((nivel) => nivel.rotulo);
  */
 export const NIVEL_DESENVOLVEDOR_SISTEMA = "Desenvolvedor do Sistema";
 
+/** Nível Gestor da Qualidade (antigo "Administrador", que foi eliminado). */
+export const NIVEL_GESTOR_QUALIDADE = "Gestor da Qualidade";
+
+/** Nível Auxiliar da Qualidade: acesso total, sem aprovação de documentos. */
+export const NIVEL_AUXILIAR_QUALIDADE = "Auxiliar da Qualidade";
+
+/** Nível Líder de setor: lidera um ou mais setores (`setores_liderados`). */
+export const NIVEL_LIDER_SETOR = "Líder de setor";
+
 /** Níveis que só podem ser atribuídos por quem já tem acesso de gestão. */
 export const NIVEIS_RESERVADOS_GESTAO = new Set<string>([
-  "Administrador",
+  NIVEL_GESTOR_QUALIDADE,
   NIVEL_DESENVOLVEDOR_SISTEMA,
 ]);
 
 /** Níveis que enxergam todos os POPs, sem liberação nem filtro de setor. */
 export const NIVEIS_ACESSO_TOTAL_POPS = new Set<string>([
   NIVEL_DESENVOLVEDOR_SISTEMA,
-  "Administrador",
-  "Gestor da Qualidade",
+  NIVEL_GESTOR_QUALIDADE,
+  NIVEL_AUXILIAR_QUALIDADE,
 ]);
 
 /** Níveis que filtram POPs e políticas pelo setor do colaborador. */
 export const NIVEIS_FILTRAM_POR_SETOR = new Set<string>([
   "Colaborador",
-  "Líder de setor",
+  "Desenvolvedor",
+  NIVEL_LIDER_SETOR,
 ]);
 
 /** Níveis com acesso total (inclusive Configurações). */
 export const NIVEIS_GESTAO = new Set<string>([
-  "Desenvolvedor do Sistema",
-  "Gestor da Qualidade",
-  "Administrador",
+  NIVEL_DESENVOLVEDOR_SISTEMA,
+  NIVEL_GESTOR_QUALIDADE,
+  NIVEL_AUXILIAR_QUALIDADE,
 ]);
 
 /** Papel interno derivado do nível de acesso (o nível sempre prevalece). */
 export function roleDoNivel(nivel: string): "admin" | "gestor" | "usuario" {
-  if (nivel === "Gestor da Qualidade") return "gestor";
-  if (nivel === "Administrador" || nivel === "Desenvolvedor do Sistema" || nivel === "Desenvolvedor")
-    return "admin";
+  if (nivel === NIVEL_GESTOR_QUALIDADE) return "gestor";
+  if (nivel === NIVEL_DESENVOLVEDOR_SISTEMA) return "admin";
   return "usuario";
 }
 

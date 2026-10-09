@@ -1,26 +1,36 @@
 import { useState } from "react";
 import {
+  AlignLeft,
+  CalendarDays,
+  Check,
+  CheckSquare,
   ChevronDown,
   ChevronUp,
+  Circle,
+  CircleDot,
   Copy,
   Eye,
   EyeOff,
-  GripVertical,
+  Hash,
+  PenLine,
   Plus,
+  Square,
   Trash2,
+  Type,
+  Upload,
+  UserRound,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
+  MAX_TELAS,
   TIPOS_CAMPO,
   TIPO_CAMPO_LABELS,
   idCurto,
@@ -28,6 +38,24 @@ import {
   type Respostas,
   type TipoCampo,
 } from "@/lib/ocorrencias";
+
+/** Ícone de cada tipo de pergunta no menu "Adicionar pergunta". */
+const ICONE_TIPO_PERGUNTA: Record<TipoCampo, typeof Plus> = {
+  texto: Type,
+  textarea: AlignLeft,
+  numero: Hash,
+  data: CalendarDays,
+  select: CircleDot,
+  multi: CheckSquare,
+  lista: ChevronDown,
+  arquivo: Upload,
+  assinatura: PenLine,
+  responsavel: UserRound,
+  checkbox: Check,
+};
+
+/** Tipos que têm lista de opções. */
+const TIPOS_COM_OPCOES: TipoCampo[] = ["select", "multi", "lista"];
 
 export interface FormBuilderProps {
   campos: CampoFormulario[];
@@ -38,153 +66,23 @@ export interface FormBuilderProps {
   salvarLabel?: string;
   /** Texto de apoio sob o botão principal. */
   salvarDica?: string;
+  /** Títulos das telas do formulário (ativa as telas quando informado). */
+  telas?: string[];
+  onChangeTelas?: (telas: string[]) => void;
 }
 
-function campoBase(tipo: TipoCampo): CampoFormulario {
+function campoBase(tipo: TipoCampo, tela: number): CampoFormulario {
   return {
     id: idCurto(),
     tipo,
     label: TIPO_CAMPO_LABELS[tipo],
     placeholder: "",
     obrigatorio: false,
-    opcoes: tipo === "select" || tipo === "multi" ? ["Opção A", "Opção B"] : [],
+    opcoes: TIPOS_COM_OPCOES.includes(tipo) ? ["Opção 1"] : [],
     largura: "inteira",
     condicao: null,
+    tela,
   };
-}
-
-interface PropriedadesCampoProps {
-  campo: CampoFormulario;
-  campos: CampoFormulario[];
-  atualizar: (patch: Partial<CampoFormulario>) => void;
-}
-
-function PropriedadesCampo({ campo, campos, atualizar }: PropriedadesCampoProps) {
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
-        <Label className="text-[12px]">Rótulo</Label>
-        <Input value={campo.label} onChange={(e) => atualizar({ label: e.target.value })} />
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-[12px]">Placeholder / texto auxiliar</Label>
-        <Input
-          value={campo.placeholder ?? ""}
-          onChange={(e) => atualizar({ placeholder: e.target.value })}
-        />
-      </div>
-
-      {(campo.tipo === "select" || campo.tipo === "multi") && (
-        <div className="space-y-1.5">
-          <Label className="text-[12px]">Opções (uma por linha)</Label>
-          <textarea
-            className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-[13px]"
-            value={(campo.opcoes ?? []).join("\n")}
-            onChange={(e) =>
-              atualizar({ opcoes: e.target.value.split("\n").filter((l) => l.trim()) })
-            }
-          />
-        </div>
-      )}
-
-      <label className="flex items-center gap-2 text-[13px] text-[#334155]">
-        <input
-          type="checkbox"
-          checked={campo.obrigatorio}
-          onChange={(e) => atualizar({ obrigatorio: e.target.checked })}
-          className="h-3.5 w-3.5 accent-[#1E3A8A]"
-        />
-        Obrigatório
-      </label>
-
-      <div className="space-y-1.5">
-        <Label className="text-[12px]">Largura</Label>
-        <Select
-          value={campo.largura ?? "inteira"}
-          onValueChange={(v) => atualizar({ largura: v as "inteira" | "metade" })}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="inteira">Largura inteira</SelectItem>
-            <SelectItem value="metade">Meia largura</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {(campo.tipo === "texto" || campo.tipo === "numero") && (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1.5">
-            <Label className="text-[12px]">Mín</Label>
-            <Input
-              type="number"
-              value={campo.min ?? ""}
-              onChange={(e) =>
-                atualizar({ min: e.target.value === "" ? null : Number(e.target.value) })
-              }
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-[12px]">Máx</Label>
-            <Input
-              type="number"
-              value={campo.max ?? ""}
-              onChange={(e) =>
-                atualizar({ max: e.target.value === "" ? null : Number(e.target.value) })
-              }
-            />
-          </div>
-          <div className="col-span-2 space-y-1.5">
-            <Label className="text-[12px]">Validação (regex)</Label>
-            <Input
-              value={campo.regex ?? ""}
-              placeholder="Ex.: ^[0-9]{4,6}$"
-              onChange={(e) => atualizar({ regex: e.target.value })}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Campo condicional */}
-      <div className="space-y-1.5 rounded-lg border border-[#E9EEF5] p-2.5">
-        <Label className="text-[12px]">Mostrar somente se…</Label>
-        <Select
-          value={campo.condicao?.campoId ?? ""}
-          onValueChange={(v) =>
-            atualizar({
-              condicao: v ? { campoId: v, valor: campo.condicao?.valor ?? "" } : null,
-            })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Sempre visível" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={""}>Sempre visível</SelectItem>
-            {campos
-              .filter((c) => c.id !== campo.id && (c.tipo === "select" || c.tipo === "checkbox"))
-              .map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.label}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-        {campo.condicao?.campoId && (
-          <Input
-            placeholder="Valor que exibe o campo"
-            value={campo.condicao.valor}
-            onChange={(e) =>
-              atualizar({
-                condicao: { campoId: campo.condicao!.campoId, valor: e.target.value },
-              })
-            }
-          />
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function FormBuilder({
@@ -194,208 +92,435 @@ export function FormBuilder({
   publicando,
   salvarLabel,
   salvarDica,
+  telas,
+  onChangeTelas,
 }: FormBuilderProps) {
-  const [selecionadoId, setSelected] = useState<string | null>(campos[0]?.id ?? null);
+  const usaTelas = Boolean(telas && onChangeTelas);
+  const [telaEdicao, setTelaEdicao] = useState(0);
+  const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const [respostasPreview, setRespostasPreview] = useState<Respostas>({});
-  const [dragId, setDragId] = useState<string | null>(null);
-  const selecionado = campos.find((c) => c.id === selecionadoId) ?? null;
 
-  function atualizar(patch: Partial<CampoFormulario>) {
-    if (!selecionado) return;
-    onChangeCampos(campos.map((c) => (c.id === selecionado.id ? { ...c, ...patch } : c)));
+  const listaVisivel = usaTelas ? campos.filter((c) => (c.tela ?? 0) === telaEdicao) : campos;
+
+  function atualizar(id: string, patch: Partial<CampoFormulario>) {
+    onChangeCampos(campos.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
 
   function adicionar(tipo: TipoCampo) {
-    const novo = campoBase(tipo);
+    const novo = campoBase(tipo, usaTelas ? telaEdicao : 0);
     onChangeCampos([...campos, novo]);
-    setSelected(novo.id);
+    setSelecionadoId(novo.id);
   }
 
   function duplicar(id: string) {
     const origem = campos.find((c) => c.id === id);
     if (!origem) return;
-    const novo = { ...origem, id: idCurto(), label: `${origem.label} (cópia)` };
+    const novo = { ...origem, id: idCurto() };
     const idx = campos.findIndex((c) => c.id === id);
     const lista = [...campos];
     lista.splice(idx + 1, 0, novo);
     onChangeCampos(lista);
-    setSelected(novo.id);
+    setSelecionadoId(novo.id);
   }
 
   function remover(id: string) {
     onChangeCampos(campos.filter((c) => c.id !== id));
-    if (selecionadoId === id) setSelected(null);
+    if (selecionadoId === id) setSelecionadoId(null);
   }
 
+  /** Troca a pergunta de posição com a vizinha da mesma tela. */
   function mover(id: string, delta: -1 | 1) {
-    const idx = campos.findIndex((c) => c.id === id);
-    const alvo = idx + delta;
-    if (idx < 0 || alvo < 0 || alvo >= campos.length) return;
+    const idx = listaVisivel.findIndex((c) => c.id === id);
+    const alvo = listaVisivel[idx + delta];
+    if (idx < 0 || !alvo) return;
+    const a = campos.findIndex((c) => c.id === id);
+    const b = campos.findIndex((c) => c.id === alvo.id);
     const lista = [...campos];
-    const [item] = lista.splice(idx, 1);
-    if (item) lista.splice(alvo, 0, item);
+    [lista[a], lista[b]] = [lista[b]!, lista[a]!];
     onChangeCampos(lista);
   }
 
-  function soltar(sobreId: string) {
-    if (!dragId || dragId === sobreId) return;
-    const de = campos.findIndex((c) => c.id === dragId);
-    const para = campos.findIndex((c) => c.id === sobreId);
-    if (de < 0 || para < 0) return;
-    const lista = [...campos];
-    const [item] = lista.splice(de, 1);
-    if (item) lista.splice(para, 0, item);
-    onChangeCampos(lista);
-    setDragId(null);
+  /* Opções de múltipla escolha, caixas e lista suspensa. */
+  function atualizarOpcao(campo: CampoFormulario, indice: number, texto: string) {
+    const opcoes = [...(campo.opcoes ?? [])];
+    opcoes[indice] = texto;
+    atualizar(campo.id, { opcoes });
+  }
+
+  function removerOpcao(campo: CampoFormulario, indice: number) {
+    atualizar(campo.id, { opcoes: (campo.opcoes ?? []).filter((_, i) => i !== indice) });
+  }
+
+  function adicionarOpcao(campo: CampoFormulario) {
+    const n = (campo.opcoes ?? []).length + 1;
+    atualizar(campo.id, { opcoes: [...(campo.opcoes ?? []), `Opção ${n}`] });
+  }
+
+  /* Telas do formulário (até MAX_TELAS). */
+  function adicionarTela() {
+    if (!telas || !onChangeTelas || telas.length >= MAX_TELAS) return;
+    onChangeTelas([...telas, `Tela ${telas.length + 1}`]);
+    setTelaEdicao(telas.length);
+  }
+
+  function renomearTela(indice: number, titulo: string) {
+    if (!telas || !onChangeTelas) return;
+    onChangeTelas(telas.map((t, i) => (i === indice ? titulo : t)));
+  }
+
+  /** Remove a tela: as perguntas dela passam para a tela anterior. */
+  function removerTela(indice: number) {
+    if (!telas || !onChangeTelas || telas.length <= 1) return;
+    onChangeTelas(telas.filter((_, i) => i !== indice));
+    onChangeCampos(
+      campos.map((c) => {
+        const tela = c.tela ?? 0;
+        if (tela === indice) return { ...c, tela: Math.max(0, indice - 1) };
+        if (tela > indice) return { ...c, tela: tela - 1 };
+        return c;
+      }),
+    );
+    setTelaEdicao(Math.max(0, Math.min(indice, telas.length - 2)));
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[260px_1fr_300px]">
-      {/* Paleta */}
-      <div className="rounded-xl border border-[#D9E0EA] bg-white p-3">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-          Adicionar campo
-        </p>
-        <div className="space-y-1.5">
-          {TIPOS_CAMPO.map((tipo) => (
-            <Button
-              key={tipo}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => adicionar(tipo)}
+    <div className="mx-auto max-w-3xl space-y-4">
+      {/* Barra de telas */}
+      {usaTelas && telas ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {telas.map((titulo, i) => (
+            <div
+              key={i}
+              className={`flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] ${
+                i === telaEdicao
+                  ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+                  : "border-[#D9E0EA] bg-white text-[#475569]"
+              }`}
             >
-              <Plus className="h-3.5 w-3.5" />
-              {TIPO_CAMPO_LABELS[tipo]}
-            </Button>
+              <button type="button" onClick={() => setTelaEdicao(i)} className="flex items-center gap-1">
+                <input
+                  value={titulo}
+                  onChange={(e) => renomearTela(i, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  maxLength={40}
+                  className="w-24 bg-transparent font-semibold outline-none"
+                  aria-label={`Nome da tela ${i + 1}`}
+                />
+              </button>
+              {telas.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removerTela(i)}
+                  className="opacity-70 hover:opacity-100"
+                  aria-label={`Remover tela ${i + 1}`}
+                  title="Remover tela (as perguntas vão para a tela anterior)"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           ))}
-        </div>
-      </div>
-
-      {/* Lista ordenável / preview */}
-      <div className="rounded-xl border border-[#D9E0EA] bg-white p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-            {preview ? "Preview do formulário" : "Campos (arraste para ordenar)"}
-          </p>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setPreview((p) => !p)}>
-            {preview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            {preview ? "Voltar a editar" : "Preview"}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={adicionarTela}
+            disabled={telas.length >= MAX_TELAS}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Tela{telas.length >= MAX_TELAS ? ` (máx. ${MAX_TELAS})` : ""}
           </Button>
         </div>
+      ) : null}
 
-        {preview ? (
-          <FormularioDinamico
-            campos={campos}
-            respostas={{
-              ...respostasPreview,
-              __erros: validarCampos(campos, respostasPreview),
-            }}
-            onChange={(id, valor) => setRespostasPreview((r) => ({ ...r, [id]: valor }))}
-          />
-        ) : campos.length === 0 ? (
-          <p className="px-2 py-8 text-center text-[13px] text-[#94A3B8]">
-            Nenhum campo. Escolha um tipo na paleta para começar.
-          </p>
-        ) : (
-          <ul className="space-y-1.5">
-            {campos.map((c, i) => (
-              <li
-                key={c.id}
-                draggable
-                onDragStart={() => setDragId(c.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => soltar(c.id)}
-                onClick={() => setSelected(c.id)}
-                className={`flex cursor-grab items-center gap-2 rounded-lg border px-2.5 py-2 text-[13px] transition ${
-                  selecionadoId === c.id
-                    ? "border-[#1E3A8A] bg-[#EEF2FF]"
-                    : "border-[#E9EEF5] bg-white hover:bg-[#F8FAFC]"
-                }`}
-              >
-                <GripVertical className="h-4 w-4 shrink-0 text-[#CBD5E1]" />
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-medium text-[#1F2937]">{c.label}</span>
-                  <span className="ml-2 text-[11px] text-[#94A3B8]">
-                    {TIPO_CAMPO_LABELS[c.tipo]}
-                    {c.obrigatorio ? " · obrigatório" : ""}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  aria-label="Subir"
-                  className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    mover(c.id, -1);
-                  }}
-                >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Descer"
-                  className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    mover(c.id, 1);
-                  }}
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Duplicar"
-                  className="text-[#94A3B8] hover:text-[#1E3A8A]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    duplicar(c.id);
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Excluir"
-                  className="text-[#94A3B8] hover:text-[#E11D48]"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    remover(c.id);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-                <span className="text-[10px] text-[#CBD5E1]">{i + 1}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="flex items-center justify-end">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setPreview((p) => !p)}>
+          {preview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          {preview ? "Voltar a editar" : "Visualizar"}
+        </Button>
       </div>
 
-      {/* Propriedades */}
-      <div className="rounded-xl border border-[#D9E0EA] bg-white p-3">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-          Propriedades
-        </p>
-        {!selecionado ? (
-          <p className="py-6 text-center text-[12px] text-[#94A3B8]">
-            Selecione um campo na lista.
-          </p>
-        ) : (
-          <PropriedadesCampo campo={selecionado} campos={campos} atualizar={atualizar} />
-        )}
+      {preview ? (
+        <div className="rounded-xl border border-[#D9E0EA] bg-white p-5">
+          <FormularioDinamico
+            campos={campos}
+            telaAtual={usaTelas ? telaEdicao : undefined}
+            respostas={{ ...respostasPreview, __erros: validarCampos(campos, respostasPreview) }}
+            onChange={(id, valor) => setRespostasPreview((r) => ({ ...r, [id]: valor }))}
+          />
+        </div>
+      ) : (
+        <div className="space-y-3 rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm">
+          {listaVisivel.length === 0 && (
+            <p className="rounded-xl border border-dashed border-[#D9E0EA] bg-white px-4 py-10 text-center text-[13px] text-[#94A3B8]">
+              Esta tela ainda não tem perguntas. Clique em “Adicionar pergunta” abaixo.
+            </p>
+          )}
 
+          {listaVisivel.map((campo, indice) => {
+            const aberto = selecionadoId === campo.id;
+            const anteriores = campos.filter(
+              (c) =>
+                c.id !== campo.id &&
+                (c.tipo === "select" || c.tipo === "lista" || c.tipo === "multi" || c.tipo === "checkbox"),
+            );
+            return (
+              <div
+                key={campo.id}
+                onClick={() => setSelecionadoId(campo.id)}
+                className={`rounded-xl border bg-white p-4 transition ${
+                  aberto
+                    ? "border-[#1E3A8A] ring-1 ring-[#1E3A8A]/30"
+                    : "border-[#D9E0EA] hover:border-[#94A3B8]"
+                }`}
+              >
+                {!aberto ? (
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] font-medium text-[#1F2937]">
+                      {indice + 1}. {campo.label || "Pergunta sem título"}
+                    </p>
+                    <p className="text-[12px] text-[#94A3B8]">
+                      {TIPO_CAMPO_LABELS[campo.tipo]}
+                      {campo.obrigatorio ? " · obrigatória" : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        value={campo.label}
+                        onChange={(e) => atualizar(campo.id, { label: e.target.value })}
+                        placeholder="Pergunta"
+                        className="flex-1 rounded-md border border-[#D9E0EA] px-3 py-2 text-[14px] outline-none focus:border-[#1E3A8A]"
+                      />
+                      <select
+                        value={campo.tipo}
+                        onChange={(e) => {
+                          const tipo = e.target.value as TipoCampo;
+                          atualizar(campo.id, {
+                            tipo,
+                            opcoes: TIPOS_COM_OPCOES.includes(tipo)
+                              ? campo.opcoes?.length
+                                ? campo.opcoes
+                                : ["Opção 1"]
+                              : [],
+                          });
+                        }}
+                        className="rounded-md border border-[#D9E0EA] bg-white px-3 py-2 text-[13px] outline-none focus:border-[#1E3A8A] sm:w-64"
+                      >
+                        {TIPOS_CAMPO.map((tipo) => (
+                          <option key={tipo} value={tipo}>
+                            {TIPO_CAMPO_LABELS[tipo]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {TIPOS_COM_OPCOES.includes(campo.tipo) ? (
+                      <div className="space-y-2">
+                        {(campo.opcoes ?? []).map((op, i) => {
+                          const Icone = campo.tipo === "multi" ? Square : Circle;
+                          return (
+                            <div key={i} className="flex items-center gap-2">
+                              <Icone className="h-4 w-4 shrink-0 text-[#94A3B8]" />
+                              <input
+                                value={op}
+                                onChange={(e) => atualizarOpcao(campo, i, e.target.value)}
+                                className="flex-1 border-b border-[#E2E8F0] px-1 py-1 text-[13px] outline-none focus:border-[#1E3A8A]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removerOpcao(campo, i)}
+                                className="text-[#94A3B8] hover:text-[#E11D48]"
+                                aria-label="Remover opção"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => adicionarOpcao(campo)}
+                          className="text-[13px] font-medium text-[#1E3A8A] hover:underline"
+                        >
+                          + Adicionar opção
+                        </button>
+                      </div>
+                    ) : (
+                      <input
+                        value={campo.placeholder ?? ""}
+                        onChange={(e) => atualizar(campo.id, { placeholder: e.target.value })}
+                        placeholder="Texto de ajuda (opcional)"
+                        className="w-full border-b border-[#E2E8F0] px-1 py-1 text-[13px] text-[#64748B] outline-none focus:border-[#1E3A8A]"
+                      />
+                    )}
+
+                    {campo.tipo === "numero" && (
+                      <div className="grid grid-cols-2 gap-3 sm:max-w-sm">
+                        <label className="text-[12px] text-[#64748B]">
+                          Mínimo
+                          <input
+                            type="number"
+                            value={campo.min ?? ""}
+                            onChange={(e) =>
+                              atualizar(campo.id, {
+                                min: e.target.value === "" ? null : Number(e.target.value),
+                              })
+                            }
+                            className="mt-1 w-full rounded-md border border-[#D9E0EA] px-2 py-1.5 text-[13px]"
+                          />
+                        </label>
+                        <label className="text-[12px] text-[#64748B]">
+                          Máximo
+                          <input
+                            type="number"
+                            value={campo.max ?? ""}
+                            onChange={(e) =>
+                              atualizar(campo.id, {
+                                max: e.target.value === "" ? null : Number(e.target.value),
+                              })
+                            }
+                            className="mt-1 w-full rounded-md border border-[#D9E0EA] px-2 py-1.5 text-[13px]"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {anteriores.length > 0 && (
+                      <div className="grid gap-2 sm:max-w-md sm:grid-cols-2">
+                        <label className="text-[12px] text-[#64748B]">
+                          Mostrar só se a pergunta
+                          <select
+                            value={campo.condicao?.campoId ?? ""}
+                            onChange={(e) =>
+                              atualizar(campo.id, {
+                                condicao: e.target.value
+                                  ? { campoId: e.target.value, valor: campo.condicao?.valor ?? "" }
+                                  : null,
+                              })
+                            }
+                            className="mt-1 w-full rounded-md border border-[#D9E0EA] bg-white px-2 py-1.5 text-[13px]"
+                          >
+                            <option value="">Sempre visível</option>
+                            {anteriores.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.label || "Pergunta sem título"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {campo.condicao?.campoId ? (
+                          <label className="text-[12px] text-[#64748B]">
+                            for respondida como
+                            <input
+                              value={campo.condicao.valor}
+                              onChange={(e) =>
+                                atualizar(campo.id, {
+                                  condicao: {
+                                    campoId: campo.condicao!.campoId,
+                                    valor: e.target.value,
+                                  },
+                                })
+                              }
+                              className="mt-1 w-full rounded-md border border-[#D9E0EA] px-2 py-1.5 text-[13px]"
+                            />
+                          </label>
+                        ) : null}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E9EEF5] pt-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => mover(campo.id, -1)}
+                          disabled={indice === 0}
+                          className="rounded p-1.5 text-[#64748B] hover:bg-[#F1F5F9] disabled:opacity-30"
+                          aria-label="Subir pergunta"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => mover(campo.id, 1)}
+                          disabled={indice === listaVisivel.length - 1}
+                          className="rounded p-1.5 text-[#64748B] hover:bg-[#F1F5F9] disabled:opacity-30"
+                          aria-label="Descer pergunta"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => duplicar(campo.id)}
+                          className="rounded p-1.5 text-[#64748B] hover:bg-[#F1F5F9]"
+                          aria-label="Duplicar pergunta"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remover(campo.id)}
+                          className="rounded p-1.5 text-[#64748B] hover:bg-[#FDECEE] hover:text-[#E11D48]"
+                          aria-label="Excluir pergunta"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2 text-[13px] text-[#334155]">
+                        <input
+                          type="checkbox"
+                          checked={campo.obrigatorio}
+                          onChange={(e) => atualizar(campo.id, { obrigatorio: e.target.checked })}
+                          className="h-4 w-4 accent-[#1E3A8A]"
+                        />
+                        Obrigatória
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Adicionar pergunta */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-dashed border-[#1E3A8A] text-[#1E3A8A]"
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar pergunta
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-64">
+              {TIPOS_CAMPO.map((tipo) => {
+                const Icone = ICONE_TIPO_PERGUNTA[tipo];
+                return (
+                  <DropdownMenuItem key={tipo} onSelect={() => adicionar(tipo)}>
+                    <Icone className="mr-2 h-4 w-4 text-[#64748B]" />
+                    {TIPO_CAMPO_LABELS[tipo]}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
+      <div className="flex flex-col items-end gap-1.5 pt-2">
         <Button
           type="button"
-          className="mt-4 w-full bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-          disabled={publicando}
           onClick={() => void onPublicar()}
+          disabled={publicando}
+          className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
         >
-          {publicando ? "Salvando…" : (salvarLabel ?? "Publicar nova versão")}
+          {salvarLabel ?? "Publicar nova versão"}
         </Button>
-        <p className="mt-2 text-[11px] text-[#94A3B8]">
+        <p className="text-right text-xs text-[#94A3B8]">
           {salvarDica ??
             "Publicar cria uma nova versão — ocorrências já abertas continuam no formulário original."}
         </p>

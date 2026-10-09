@@ -4,12 +4,12 @@ export function AppFooter({ variant = "panel" }: { variant?: "panel" | "brand" }
       className={
         variant === "brand"
           ? "relative pb-5 text-center"
-          : "mt-10 border-t border-border py-6 text-center"
+          : "mt-auto border-t border-border py-6 text-center"
       }
     >
       <p
         className={
-          variant === "brand" ? "text-xs text-brand-muted" : "text-xs text-muted-foreground"
+          variant === "brand" ? "text-xs text-brand-muted" : "text-xs font-semibold text-foreground"
         }
       >
         Criado com 💙 pelos desenvolvedores da{" "}

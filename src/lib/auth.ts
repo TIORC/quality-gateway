@@ -1,4 +1,4 @@
-import { roleDoNivel } from "@/lib/niveis-acesso";
+import { NIVEL_DESENVOLVEDOR_SISTEMA, roleDoNivel } from "@/lib/niveis-acesso";
 /**
  * Autenticação do painel administrativo.
  *
@@ -44,6 +44,11 @@ export interface UserSession {
   nivelAcesso: string;
     /** Unidade do colaborador (vazio quando não há vínculo). */
   unidade: string;
+  /**
+   * Setores extras que um Líder de setor lidera (além do próprio `setor`).
+   * Vazio para os demais níveis.
+   */
+  setoresLiderados: string[];
   /** Grupos personalizados do colaborador (texto, ex.: "CIPA;Comitê de riscos"). */
   grupos: string;
   /** Permite adicionar/criar documentos (POPs e políticas). */
@@ -58,15 +63,15 @@ export interface UserSession {
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Administrador",
+  admin: "Desenvolvedor do Sistema",
   gestor: "Gestor da Qualidade",
   usuario: "Usuário",
 };
 
 /** Rótulos exibidos na página Meu Perfil. */
 export const ROLE_PERFIL_LABELS: Record<UserRole, string> = {
-  admin: "Administrador do Sistema",
-  gestor: "Líder",
+  admin: "Desenvolvedor do Sistema",
+  gestor: "Gestor da Qualidade",
   usuario: "Colaborador",
 };
 
@@ -93,7 +98,8 @@ function readSession(): UserSession | null {
       setor: parsed.setor ?? "",
       colaboradorId: parsed.colaboradorId ?? "",
       nivelAcesso: parsed.nivelAcesso ?? "",
-            unidade: parsed.unidade ?? "",
+      unidade: parsed.unidade ?? "",
+      setoresLiderados: Array.isArray(parsed.setoresLiderados) ? parsed.setoresLiderados : [],
       grupos: parsed.grupos ?? "",
       permAdicionarDocumentos: parsed.permAdicionarDocumentos ?? false,
       permModificarDocumentos: parsed.permModificarDocumentos ?? false,
@@ -150,6 +156,7 @@ export async function atualizarSessao(): Promise<UserSession | null> {
       unidade: colaborador.unidade || atual.unidade,
       nivelAcesso: colaborador.nivel_acesso || atual.nivelAcesso,
       role: colaborador.nivel_acesso ? roleDoNivel(colaborador.nivel_acesso) : atual.role,
+      setoresLiderados: colaborador.setores_liderados ?? [],
       permAdicionarDocumentos: colaborador.perm_adicionar_documentos,
       permModificarDocumentos: colaborador.perm_modificar_documentos,
       permExcluirDocumentos: colaborador.perm_excluir_documentos,
@@ -162,7 +169,7 @@ export async function atualizarSessao(): Promise<UserSession | null> {
   }
 }
 
-async function hashSenha(senha: string, salt: string): Promise<string> {
+export async function hashSenha(senha: string, salt: string): Promise<string> {
   if (typeof crypto === "undefined" || !crypto?.subtle) {
     throw new Error("A autenticação exige um navegador com suporte a Web Crypto (HTTPS).");
   }
@@ -196,7 +203,8 @@ function buildSession(
     setor: user.setor,
     colaboradorId: user.colaboradorId,
     nivelAcesso: user.nivelAcesso,
-        unidade: user.unidade,
+    unidade: user.unidade,
+    setoresLiderados: [],
     grupos: "",
     permAdicionarDocumentos: false,
     permModificarDocumentos: false,
@@ -230,7 +238,7 @@ function usuarioDoRow(
 
 /** Nível mínimo dado ao role quando o colaborador não informa nível. */
 function nivelPorRole(role: UserRole): string {
-  if (role === "admin") return "Administrador";
+  if (role === "admin") return NIVEL_DESENVOLVEDOR_SISTEMA;
   if (role === "gestor") return "Gestor da Qualidade";
   return "Colaborador";
 }
@@ -258,12 +266,13 @@ async function buscarColaboradorVinculado(
   | "perm_modificar_documentos"
   | "perm_excluir_documentos"
     | "perm_excluir_planos"
+  | "setores_liderados"
 > | null> {
   if (usuario.colaboradorId) {
     const { data } = await client
       .from("colaboradores")
       .select(
-        "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos",
+        "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados",
       )
       .eq("id", usuario.colaboradorId)
       .maybeSingle();
@@ -274,7 +283,7 @@ async function buscarColaboradorVinculado(
   const { data } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados",
     )
     .eq("email", email)
     .maybeSingle();
@@ -361,6 +370,7 @@ export async function login(
         sessionBase.permModificarDocumentos = colaborador.perm_modificar_documentos;
         sessionBase.permExcluirDocumentos = colaborador.perm_excluir_documentos;
         sessionBase.permExcluirPlanos = colaborador.perm_excluir_planos;
+        sessionBase.setoresLiderados = colaborador.setores_liderados ?? [];
         // Registra o acesso real: alimenta a coluna "Último acesso" de /funcionários.
         try {
           await client
@@ -486,56 +496,3 @@ export async function listarEmailsComLogin(): Promise<string[]> {
   }
 }
 
-/**
- * Redefine a senha de acesso de um usuário existente (autosserviço).
- * Gera um novo salt e regrava o hash SHA-256 da nova senha.
- */
-export async function redefinirSenha(
-  email: string,
-  novaSenha: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!lovableCloudConfigurado) {
-    return {
-      ok: false,
-      error:
-        "Lovable Cloud não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no ambiente.",
-    };
-  }
-
-  const emailNormalizado = email.trim().toLowerCase();
-  if (!emailNormalizado || !emailNormalizado.includes("@")) {
-    return { ok: false, error: "Informe o e-mail corporativo cadastrado." };
-  }
-  if (!novaSenha || novaSenha.trim().length < 4) {
-    return { ok: false, error: "A nova senha deve ter pelo menos 4 caracteres." };
-  }
-
-  try {
-    const client = exigirCloud();
-    const { data, error } = await client
-      .from("usuarios")
-      .select("id,email")
-      .eq("email", emailNormalizado)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) {
-      return { ok: false, error: "E-mail não cadastrado no portal." };
-    }
-
-    const salt = gerarSalt();
-    const hash = await hashSenha(novaSenha, salt);
-
-    const { error: erroUpdate } = await client
-      .from("usuarios")
-      .update({ senha_salt: salt, senha_hash: hash })
-      .eq("id", data.id);
-    if (erroUpdate) throw erroUpdate;
-
-    return { ok: true };
-  } catch {
-    return {
-      ok: false,
-      error: "Não foi possível redefinir a senha. Verifique a conexão e tente novamente.",
-    };
-  }
-}

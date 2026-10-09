@@ -424,6 +424,7 @@ export type Database = {
           grupos: string
           id: string
           nivel_acesso: string
+          setores_liderados: string[]
           nome: string
           perm_adicionar_documentos: boolean
           perm_excluir_documentos: boolean
@@ -447,6 +448,7 @@ export type Database = {
           grupos?: string
           id: string
           nivel_acesso?: string
+          setores_liderados?: string[]
           nome: string
           perm_adicionar_documentos?: boolean
           perm_excluir_documentos?: boolean
@@ -470,6 +472,7 @@ export type Database = {
           grupos?: string
           id?: string
           nivel_acesso?: string
+          setores_liderados?: string[]
           nome?: string
           perm_adicionar_documentos?: boolean
           perm_excluir_documentos?: boolean
@@ -784,6 +787,7 @@ export type Database = {
       ocorrencia_formularios: {
         Row: {
           campos: Json
+          telas: Json
           created_at: string
           criado_por_email: string
           criado_por_nome: string
@@ -794,6 +798,7 @@ export type Database = {
         }
         Insert: {
           campos?: Json
+          telas?: Json
           created_at?: string
           criado_por_email?: string
           criado_por_nome?: string
@@ -804,6 +809,7 @@ export type Database = {
         }
         Update: {
           campos?: Json
+          telas?: Json
           created_at?: string
           criado_por_email?: string
           criado_por_nome?: string
@@ -1364,6 +1370,7 @@ export type Database = {
         Row: {
           autor_email: string
           autor_nome: string
+          destinatario_email: string
           created_at: string
           id: string
           mensagem: string
@@ -1372,6 +1379,7 @@ export type Database = {
         Insert: {
           autor_email?: string
           autor_nome?: string
+          destinatario_email?: string
           created_at?: string
           id?: string
           mensagem?: string
@@ -1380,6 +1388,7 @@ export type Database = {
         Update: {
           autor_email?: string
           autor_nome?: string
+          destinatario_email?: string
           created_at?: string
           id?: string
           mensagem?: string
@@ -1925,6 +1934,7 @@ export type Database = {
           participantes: Json
           periodicidade: string
           signatarios: Json
+          setor: string
           updated_at: string
         }
         Insert: {
@@ -1936,6 +1946,7 @@ export type Database = {
           participantes?: Json
           periodicidade?: string
           signatarios?: Json
+          setor?: string
           updated_at?: string
         }
         Update: {
@@ -1947,6 +1958,7 @@ export type Database = {
           participantes?: Json
           periodicidade?: string
           signatarios?: Json
+          setor?: string
           updated_at?: string
         }
         Relationships: []

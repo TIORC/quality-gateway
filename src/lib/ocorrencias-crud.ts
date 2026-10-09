@@ -124,6 +124,8 @@ export interface VersoesPublicadas {
   formularioVersao: number;
   fluxoVersao: number;
   campos: CampoFormulario[];
+  /** Títulos das telas do formulário de abertura (vazio = uma tela). */
+  telas: string[];
   etapas: MacroFluxo[];
 }
 
@@ -139,6 +141,7 @@ export async function carregarUltimasVersoes(tipoId: string): Promise<VersoesPub
     formularioVersao: formulario?.versao ?? 1,
     fluxoVersao: fluxo?.versao ?? 1,
     campos: formulario?.campos ?? [],
+    telas: formulario?.telas ?? [],
     etapas: fluxo?.etapas ?? MACRO_ETAPAS.map((macro) => ({ macro, subetapas: [] })),
   };
 }

@@ -44,6 +44,7 @@ import { normalizarSetor, politicaDoSetor } from "@/lib/niveis-acesso";
 import {
   ehLiderancaDaQualidade,
   ehUsuarioDaQualidade,
+  podeAprovarDocumentos,
   podeGerenciarPoliticas,
   podeVerRevisoesAnteriores,
   podeAdicionarDocumentos,
@@ -1179,7 +1180,10 @@ function PoliticaDialog({
                   <SelectValue placeholder="Selecione o status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_POLITICA.map((s) => (
+                  {/* Aprovar/divulgar é ato de aprovador: o Auxiliar da Qualidade só mantém "Em aprovação". */}
+                  {STATUS_POLITICA.filter(
+                    (s) => s === "Em aprovação" || podeAprovarDocumentos(getSession()),
+                  ).map((s) => (
                     <SelectItem key={s} value={s}>
                       {s}
                     </SelectItem>
@@ -1490,7 +1494,7 @@ function PoliticaDetalhe({
           <ArrowLeft className="h-4 w-4" /> Voltar para as Políticas
         </Button>
         <span className="max-w-[60%] truncate rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
-          {item.titulo}
+          {item.codigo} - {item.titulo}
         </span>
       </div>
 

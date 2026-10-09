@@ -78,6 +78,7 @@ import {
   podeExcluirDocumentos,
   podeModificarDocumentos,
   ehAdministrador,
+  ehUsuarioDaQualidade,
   ehLiderancaDaQualidade,
   temAcessoTotalPops,
 } from "@/lib/permissoes";
@@ -1642,8 +1643,8 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
         <Button variant="ghost" size="sm" onClick={onFechar} className="text-[#64748B]">
           <ArrowLeft className="h-4 w-4" /> Voltar para os POPs
         </Button>
-        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
-          {pop.codigo}
+        <span className="max-w-[60%] truncate rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#1E3A8A]">
+          {pop.codigo} - {pop.titulo}
         </span>
       </div>
 
@@ -2197,9 +2198,17 @@ function PopDiscussaoDialog({ aberto, pop, onFechar, onAtualizado }: PopDiscussa
     }
     const autorNome = sessao?.nome ?? "Usuário";
     const autorEmail = sessao?.email ?? "";
+    // A Qualidade responde ao último usuário que escreveu no tópico; quem não é da
+    // Qualidade escreve para a Qualidade (destinatário vazio).
+    const destinatarioEmail = ehUsuarioDaQualidade(sessao)
+      ? ([...anotacoes]
+          .reverse()
+          .find((a) => a.autorEmail.trim().toLowerCase() !== autorEmail.trim().toLowerCase())
+          ?.autorEmail ?? "")
+      : "";
     setEnviando(true);
     try {
-      await criarAnotacao(pop!.id, { autorNome, autorEmail, mensagem: texto });
+      await criarAnotacao(pop!.id, { autorNome, autorEmail, mensagem: texto, destinatarioEmail });
       const novas = await listarAnotacoes(pop!.id);
       setAnotacoes(novas);
       setMensagem("");
