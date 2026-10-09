@@ -15,6 +15,13 @@ import {
   ResponsiveContainer,
   Label,
 } from "recharts";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { SinoNotificacoes } from "@/components/sino-notificacoes";
 import { PrazoBadge, StatusBadge } from "@/components/plano-badges";
@@ -187,7 +194,19 @@ function ChartCard({ title, className, children }: ChartCardProps) {
 // Gráficos
 // ---------------------------------------------------------------------------
 
-function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
+/** Grupo escolhido em um gráfico: ações que aparecem ao clicar em uma barra ou fatia. */
+interface FiltroGrafico {
+  titulo: string;
+  planos: PlanoAcao[];
+}
+
+function GraficoStatus({
+  planos,
+  onSelecionar,
+}: {
+  planos: PlanoAcao[];
+  onSelecionar: (filtro: FiltroGrafico) => void;
+}) {
   // Uma ação com prazo vencido (e não encerrada) conta como "Atrasada", igual ao
   // cartão "Em atraso" e ao filtro de atraso da lista de Planos de Ação.
   const mapaStatus: Record<string, number> = {};
@@ -196,14 +215,21 @@ function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
     mapaStatus[chave] = (mapaStatus[chave] || 0) + 1;
   }
   const dados = Object.entries(mapaStatus)
-    .map(([nome, total]) => ({ nome, total }))
+    .map(([chave, total]) => ({ chave, total }))
     .sort((a, b) => b.total - a.total)
-    .filter((d) => d.nome in STATUS_LABELS)
+    .filter((d) => d.chave in STATUS_LABELS)
     .map((d) => ({
       ...d,
-      nome: STATUS_LABELS[d.nome] ?? d.nome,
-      cor: STATUS_COLORS[d.nome] ?? "#64748B",
+      nome: STATUS_LABELS[d.chave] ?? d.chave,
+      cor: STATUS_COLORS[d.chave] ?? "#64748B",
     }));
+
+  function selecionarStatus(entrada: { payload?: { chave?: string; nome?: string } }) {
+    const chave = entrada.payload?.chave;
+    if (!chave) return;
+    const lista = planos.filter((p) => (planoAtrasado(p) ? "atrasada" : p.status) === chave);
+    onSelecionar({ titulo: `Status: ${entrada.payload?.nome ?? chave}`, planos: lista });
+  }
 
   if (dados.length === 0) {
     return (
@@ -214,7 +240,7 @@ function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={220} className="cursor-pointer">
       <PieChart>
         <Pie
           data={dados}
@@ -226,6 +252,7 @@ function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
           dataKey="total"
           nameKey="nome"
           stroke="none"
+          onClick={selecionarStatus}
         >
           {dados.map((d, i) => (
             <Cell key={i} fill={d.cor} />
@@ -266,7 +293,13 @@ function GraficoStatus({ planos }: { planos: PlanoAcao[] }) {
   );
 }
 
-function GraficoOrigem({ planos }: { planos: PlanoAcao[] }) {
+function GraficoOrigem({
+  planos,
+  onSelecionar,
+}: {
+  planos: PlanoAcao[];
+  onSelecionar: (filtro: FiltroGrafico) => void;
+}) {
   const dados = contarPorCampo(planos, "origem");
 
   if (dados.length === 0) {
@@ -279,7 +312,12 @@ function GraficoOrigem({ planos }: { planos: PlanoAcao[] }) {
 
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={dados} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+      <BarChart
+        data={dados}
+        layout="vertical"
+        margin={{ left: 10, right: 20, top: 5, bottom: 5 }}
+        className="cursor-pointer"
+      >
         <CartesianGrid strokeDasharray="3 3" stroke="#E9EEF5" horizontal={false} />
         <XAxis type="number" tick={{ fontSize: 11, fill: "#64748B" }} allowDecimals={false} />
         <YAxis
@@ -296,7 +334,19 @@ function GraficoOrigem({ planos }: { planos: PlanoAcao[] }) {
           }}
           formatter={(value: number) => [`${value} ação(ões)`]}
         />
-        <Bar dataKey="total" radius={[0, 4, 4, 0]} maxBarSize={28}>
+        <Bar
+          dataKey="total"
+          radius={[0, 4, 4, 0]}
+          maxBarSize={28}
+          onClick={(entrada: { payload?: { nome?: string } }) => {
+            const nome = entrada.payload?.nome;
+            if (!nome) return;
+            onSelecionar({
+              titulo: `Origem: ${nome}`,
+              planos: planos.filter((p) => p.origem === nome),
+            });
+          }}
+        >
           {dados.map((_, i) => (
             <Cell key={i} fill={ORIGEM_COLORS[i % ORIGEM_COLORS.length]} />
           ))}
@@ -306,7 +356,13 @@ function GraficoOrigem({ planos }: { planos: PlanoAcao[] }) {
   );
 }
 
-function GraficoSetor({ planos }: { planos: PlanoAcao[] }) {
+function GraficoSetor({
+  planos,
+  onSelecionar,
+}: {
+  planos: PlanoAcao[];
+  onSelecionar: (filtro: FiltroGrafico) => void;
+}) {
   const dados = contarPorCampo(planos, "setor");
 
   if (dados.length === 0) {
@@ -318,7 +374,7 @@ function GraficoSetor({ planos }: { planos: PlanoAcao[] }) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={360}>
       <BarChart data={dados} margin={{ left: -10, right: 10, top: 5, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#E9EEF5" vertical={false} />
         <XAxis
@@ -338,7 +394,19 @@ function GraficoSetor({ planos }: { planos: PlanoAcao[] }) {
           }}
           formatter={(value: number) => [`${value} ação(ões)`]}
         />
-        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={36}>
+        <Bar
+          dataKey="total"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={36}
+          onClick={(entrada: { payload?: { nome?: string } }) => {
+            const nome = entrada.payload?.nome;
+            if (!nome) return;
+            onSelecionar({
+              titulo: `Setor: ${nome}`,
+              planos: planos.filter((p) => p.setor === nome),
+            });
+          }}
+        >
           {dados.map((_, i) => (
             <Cell key={i} fill={SETOR_COLORS[i % SETOR_COLORS.length]} />
           ))}
@@ -352,12 +420,70 @@ function GraficoSetor({ planos }: { planos: PlanoAcao[] }) {
 // Página principal
 // ---------------------------------------------------------------------------
 
+/* Detalhe do que foi clicado num gráfico: lista das ações do grupo. */
+function DetalheGraficoDialog({
+  filtro,
+  onFechar,
+  onAbrirPlano,
+}: {
+  filtro: FiltroGrafico | null;
+  onFechar: () => void;
+  /** Vai até a ação em Planos de Ação, já aberta. */
+  onAbrirPlano: (id: string) => void;
+}) {
+  if (!filtro) return null;
+  const ordenados = [...filtro.planos].sort((a, b) => (a.prazo ?? "").localeCompare(b.prazo ?? ""));
+  return (
+    <Sheet open={true} onOpenChange={(aberto) => !aberto && onFechar()}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>{filtro.titulo}</SheetTitle>
+          <SheetDescription>
+            {ordenados.length === 1
+              ? "1 ação"
+              : `${ordenados.length} ações`}{" "}
+            neste grupo, por prazo.
+          </SheetDescription>
+        </SheetHeader>
+        {ordenados.length === 0 ? (
+          <p className="text-[13px] text-[#64748B]">Nenhuma ação.</p>
+        ) : (
+          <ul className="divide-y divide-[#E9EEF5]">
+            {ordenados.map((p) => {
+              const status = planoAtrasado(p) ? "atrasada" : p.status;
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => onAbrirPlano(p.id)}
+                    className="w-full rounded-md px-1 py-2.5 text-left transition hover:bg-[#F1F5F9]"
+                  >
+                    <p className="text-[13px] font-semibold text-[#1F2937]">
+                      <span className="font-mono text-[11px] text-[#94A3B8]">{p.codigo || "—"}</span>{" "}
+                      {p.titulo}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-[#64748B]">
+                      {p.responsavelNome || "Sem responsável"} · {p.setor || "—"} · {p.origem || "—"} ·{" "}
+                      {STATUS_LABELS[status] ?? status} · prazo {formatarPrazo(p.prazo)}
+                    </p>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function Painel() {
   const router = useRouter();
   const sessionFromCtx = usePanelSession();
   const [menuAberto, setMenuAberto] = useState(false);
   const [planos, setPlanos] = useState<PlanoAcao[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [filtroGrafico, setFiltroGrafico] = useState<FiltroGrafico | null>(null);
   // Documentos (POPs e políticas) vencidos ou vencendo nos próximos 30 dias.
   const [documentosVencendo, setDocumentosVencendo] = useState<DocumentoVencimento[]>([]);
   const [carregandoVencimentos, setCarregandoVencimentos] = useState(true);
@@ -661,7 +787,7 @@ function Painel() {
                 <p className="text-sm text-[#94A3B8]">Carregando…</p>
               </div>
             ) : (
-              <GraficoStatus planos={planos} />
+              <GraficoStatus planos={planos} onSelecionar={setFiltroGrafico} />
             )}
           </ChartCard>
 
@@ -671,10 +797,18 @@ function Painel() {
                 <p className="text-sm text-[#94A3B8]">Carregando…</p>
               </div>
             ) : (
-              <GraficoOrigem planos={planos} />
+              <GraficoOrigem planos={planos} onSelecionar={setFiltroGrafico} />
             )}
           </ChartCard>
         </section>
+        <DetalheGraficoDialog
+          filtro={filtroGrafico}
+          onFechar={() => setFiltroGrafico(null)}
+          onAbrirPlano={(id) => {
+            setFiltroGrafico(null);
+            void router.navigate({ to: "/planos-de-acao", search: { abrir: id } });
+          }}
+        />
         {/* Minhas ações: as que sou responsável. */}
         <section className="mt-5">
           <div className="flex flex-col rounded-xl border border-[#D9E0EA] bg-white">
@@ -824,7 +958,7 @@ function Painel() {
                 <p className="text-sm text-[#94A3B8]">Carregando…</p>
               </div>
             ) : (
-              <GraficoSetor planos={planos} />
+              <GraficoSetor planos={planos} onSelecionar={setFiltroGrafico} />
             )}
           </ChartCard>
         </section>

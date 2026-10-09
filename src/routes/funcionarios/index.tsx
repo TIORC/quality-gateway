@@ -245,7 +245,6 @@ function Funcionarios() {
                 <tr className="border-b border-[#E9EEF5]">
                   <Th>Nome</Th>
                   <Th>E-mail</Th>
-                  <Th>Cargo</Th>
                   <Th>Status</Th>
                   <Th>Último acesso</Th>
                   <Th>Processos visualizados</Th>
@@ -294,11 +293,6 @@ function Funcionarios() {
                         {funcionario.email || "—"}
                       </td>
                       <td className="px-4 py-3 align-middle">
-                        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
-                          {funcionario.cargo}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 align-middle">
                         <StatusBadge status={funcionario.status} />
                       </td>
                       <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
@@ -313,14 +307,16 @@ function Funcionarios() {
                       <td className="px-4 py-3 align-middle">
                         <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]">
                           <Eye className="h-3.5 w-3.5 text-[#94A3B8]" />
-                          {funcionario.processosVisualizados}
+                          {funcionario.processosVisualizados >= 1000
+                            ? "1000+"
+                            : funcionario.processosVisualizados}
                         </span>
                       </td>
                       <td className="px-4 py-3 align-middle">
                         <div className="flex items-center gap-3">
                           <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1F2937]">
                             <FileCheck2 className="h-3.5 w-3.5 text-[#94A3B8]" />
-                            {funcionario.processosLidos}
+                            {funcionario.processosLidos >= 1000 ? "1000+" : funcionario.processosLidos}
                           </span>
                           <div className="hidden items-center gap-2 sm:flex">
                             <div className="h-1.5 w-16 overflow-hidden rounded-full bg-[#E9EEF5]">

@@ -68,15 +68,25 @@ async function contarPopPorEmail(
   tabela: "pop_leituras" | "pop_visualizacoes",
 ): Promise<Map<string, number>> {
   const client = exigirCloud();
-  const { data, error } = await client.from(tabela).select("usuario_email");
-  if (error) {
-    if (tabelaAusente(error)) return new Map();
-    throw traduzErro(error);
-  }
+  // O Supabase devolve no máximo 1000 linhas por consulta: lemos em páginas para contar tudo.
+  const TAMANHO_PAGINA = 1000;
   const mapa = new Map<string, number>();
-  for (const linha of data ?? []) {
-    const email = linha.usuario_email.trim().toLowerCase();
-    mapa.set(email, (mapa.get(email) ?? 0) + 1);
+  for (let inicio = 0; ; inicio += TAMANHO_PAGINA) {
+    const { data, error } = await client
+      .from(tabela)
+      .select("pop_id,usuario_email")
+      .order("pop_id", { ascending: true })
+      .order("usuario_email", { ascending: true })
+      .range(inicio, inicio + TAMANHO_PAGINA - 1);
+    if (error) {
+      if (tabelaAusente(error)) return new Map();
+      throw traduzErro(error);
+    }
+    for (const linha of data ?? []) {
+      const email = linha.usuario_email.trim().toLowerCase();
+      mapa.set(email, (mapa.get(email) ?? 0) + 1);
+    }
+    if ((data ?? []).length < TAMANHO_PAGINA) break;
   }
   return mapa;
 }
