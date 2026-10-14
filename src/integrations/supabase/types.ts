@@ -670,6 +670,51 @@ export type Database = {
         }
         Relationships: []
       }
+      logs_atividade: {
+        Row: {
+          acao: string
+          ator_email: string
+          ator_id: string
+          ator_nome: string
+          codigo: string
+          created_at: string
+          detalhe: string
+          dados: Json
+          entidade: string
+          entidade_id: string
+          id: string
+          titulo: string
+        }
+        Insert: {
+          acao: string
+          ator_email?: string
+          ator_id?: string
+          ator_nome?: string
+          codigo?: string
+          created_at?: string
+          detalhe?: string
+          dados?: Json
+          entidade: string
+          entidade_id?: string
+          id?: string
+          titulo?: string
+        }
+        Update: {
+          acao?: string
+          ator_email?: string
+          ator_id?: string
+          ator_nome?: string
+          codigo?: string
+          created_at?: string
+          detalhe?: string
+          dados?: Json
+          entidade?: string
+          entidade_id?: string
+          id?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
       notificacoes: {
         Row: {
           autor_email: string

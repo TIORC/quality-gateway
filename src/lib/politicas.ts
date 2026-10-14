@@ -9,6 +9,7 @@
 import { exigirCloud } from "@/integrations/supabase/client";
 import type { PoliticaInsert, PoliticaLeituraRow, PoliticaLeituraInsert, PoliticaRow, PoliticaSugestaoRow, PoliticaSugestaoInsert } from "@/integrations/supabase/db-types";
 import { getSession, type UserSession } from "@/lib/auth";
+import { registrarLog } from "@/lib/logs-atividade";
 import { NIVEIS_FILTRAM_POR_SETOR } from "@/lib/niveis-acesso";
 import { organizacaoDisponivel, tabelaAusente, traduzErro } from "@/lib/organizacao";
 import {
@@ -218,7 +219,15 @@ export async function criarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível criar a política.");
-  return politicaDoRow(data);
+  const criada = politicaDoRow(data);
+  await registrarLog({
+    acao: "adicionado",
+    entidade: "politica",
+    entidadeId: criada.id,
+    codigo: criada.codigo,
+    titulo: criada.titulo,
+  });
+  return criada;
 }
 
 /** Atualiza uma política no banco e devolve o registro persistido. */
@@ -229,12 +238,14 @@ export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaIte
   const client = exigirCloud();
   const anterior = await client
     .from("politicas")
-    .select("revisao")
+    .select("revisao, status")
     .eq("id", item.id)
     .maybeSingle();
-  const revisaoAnterior = typeof (anterior.data as { revisao?: unknown } | null)?.revisao === "number"
-    ? ((anterior.data as { revisao: number }).revisao)
+  const dadosAnteriores = anterior.data as { revisao?: unknown; status?: unknown } | null;
+  const revisaoAnterior = typeof dadosAnteriores?.revisao === "number"
+    ? dadosAnteriores.revisao
     : item.revisao;
+  const statusAnterior = typeof dadosAnteriores?.status === "string" ? dadosAnteriores.status : "";
   const { data, error } = await client
     .from("politicas")
     .update(politicaParaInsercao(item))
@@ -247,6 +258,15 @@ export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaIte
   if (salva.revisao > revisaoAnterior) {
     void notificarNovaRevisaoPolitica(salva).catch(() => {});
   }
+  const mudouStatus = !!statusAnterior && statusAnterior !== salva.status;
+  await registrarLog({
+    acao: mudouStatus ? "movimentado" : "editado",
+    entidade: "politica",
+    entidadeId: salva.id,
+    codigo: salva.codigo,
+    titulo: salva.titulo,
+    detalhe: mudouStatus ? `Status: ${statusAnterior} → ${salva.status}` : `Revisão ${salva.revisao}`,
+  });
   return salva;
 }
 
@@ -309,8 +329,18 @@ export async function excluirPolitica(id: string): Promise<void> {
     throw new Error("Você não tem permissão para excluir documentos.");
   }
   const client = exigirCloud();
+  // Guarda o conteúdo antes de apagar, para o registro de exclusão.
+  const { data: antes } = await client.from("politicas").select("*").eq("id", id).maybeSingle();
   const { error } = await client.from("politicas").delete().eq("id", id);
   if (error) throw traduzErro(error);
+  await registrarLog({
+    acao: "excluido",
+    entidade: "politica",
+    entidadeId: id,
+    codigo: antes?.codigo ?? "",
+    titulo: antes?.titulo ?? "",
+    dados: antes ? { ...antes } : {},
+  });
 }
 
 /* -------------------------------------------------------------------------- */

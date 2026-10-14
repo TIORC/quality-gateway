@@ -8,6 +8,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Json, Tables, TablesInsert } from "@/integrations/supabase/types";
 import { getSession, type UserSession } from "@/lib/auth";
+import { registrarLog } from "@/lib/logs-atividade";
 import {
   NIVEIS_FILTRAM_POR_SETOR,
   NIVEL_AUXILIAR_QUALIDADE,
@@ -1125,7 +1126,16 @@ export async function aprovarPopLiderProcesso(id: string): Promise<Pop> {
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("POP não encontrado.");
-  return popDoRow(data);
+  const movido = popDoRow(data);
+  await registrarLog({
+    acao: "movimentado",
+    entidade: "pop",
+    entidadeId: movido.id,
+    codigo: movido.codigo,
+    titulo: movido.titulo,
+    detalhe: "Aprovação do líder do processo (1ª etapa)",
+  });
+  return movido;
 }
 
 /** Aprova a 2ª etapa (liderança da Qualidade) — o POP passa a VIGENTE. */
@@ -1152,7 +1162,16 @@ export async function aprovarPopLiderQualidade(id: string): Promise<Pop> {
     .single();
   if (error) throw traduzErro(error);
   if (!data) throw new Error("POP não encontrado.");
-  return popDoRow(data);
+  const movido = popDoRow(data);
+  await registrarLog({
+    acao: "movimentado",
+    entidade: "pop",
+    entidadeId: movido.id,
+    codigo: movido.codigo,
+    titulo: movido.titulo,
+    detalhe: "Aprovação da liderança da Qualidade (2ª etapa) — vigente",
+  });
+  return movido;
 }
 
 /**
@@ -1174,6 +1193,13 @@ export async function criarPop(entrada: EntradaPop): Promise<Pop> {
   }
   const criado = await criarPopCloud(entrada);
   await marcarElaboradorComoLido(criado);
+  await registrarLog({
+    acao: "adicionado",
+    entidade: "pop",
+    entidadeId: criado.id,
+    codigo: criado.codigo,
+    titulo: criado.titulo,
+  });
   return criado;
 }
 
@@ -1194,6 +1220,14 @@ export async function atualizarPop(
   }
   const salvo = await atualizarPopCloud(id, entrada, observacaoRevisao);
   await marcarElaboradorComoLido(salvo);
+  await registrarLog({
+    acao: "editado",
+    entidade: "pop",
+    entidadeId: salvo.id,
+    codigo: salvo.codigo,
+    titulo: salvo.titulo,
+    detalhe: observacaoRevisao || `Revisão ${salvo.revisao}`,
+  });
   return salvo;
 }
 
@@ -1202,8 +1236,18 @@ export async function excluirPop(id: string): Promise<void> {
     throw new Error("Você não tem permissão para excluir documentos.");
   }
   const client = exigirCloud();
+  // Guarda o conteúdo antes de apagar, para o registro de exclusão.
+  const { data: antes } = await client.from("pops").select("*").eq("id", id).maybeSingle();
   const { error } = await client.from("pops").delete().eq("id", id);
   if (error) throw traduzErro(error);
+  await registrarLog({
+    acao: "excluido",
+    entidade: "pop",
+    entidadeId: id,
+    codigo: antes?.codigo ?? "",
+    titulo: antes?.titulo ?? "",
+    dados: antes ? { ...antes } : {},
+  });
 }
 
 /** Duplica um POP: novo id, código com sufixo `-C` e título marcado como cópia. */

@@ -15,6 +15,7 @@ import { Route as AuditoriasRouteImport } from './routes/auditorias'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as IndicadoresRouteImport } from './routes/indicadores'
 import { Route as LoadingRouteImport } from './routes/loading'
+import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MeuPerfilRouteImport } from './routes/meu-perfil'
 import { Route as OcorrenciasRouteImport } from './routes/ocorrencias'
 import { Route as PainelRouteImport } from './routes/painel'
@@ -54,6 +55,11 @@ const IndicadoresRoute = IndicadoresRouteImport.update({
 const LoadingRoute = LoadingRouteImport.update({
   id: '/loading',
   path: '/loading',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogsRoute = LogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MeuPerfilRoute = MeuPerfilRouteImport.update({
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/configuracoes': typeof ConfiguracoesRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
+  '/logs': typeof LogsRoute
   '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/configuracoes': typeof ConfiguracoesRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
+  '/logs': typeof LogsRoute
   '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/configuracoes': typeof ConfiguracoesRoute
   '/indicadores': typeof IndicadoresRoute
   '/loading': typeof LoadingRoute
+  '/logs': typeof LogsRoute
   '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/indicadores'
     | '/loading'
+    | '/logs'
     | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/indicadores'
     | '/loading'
+    | '/logs'
     | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/configuracoes'
     | '/indicadores'
     | '/loading'
+    | '/logs'
     | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   IndicadoresRoute: typeof IndicadoresRoute
   LoadingRoute: typeof LoadingRoute
+  LogsRoute: typeof LogsRoute
   MeuPerfilRoute: typeof MeuPerfilRoute
   OcorrenciasRoute: typeof OcorrenciasRoute
   PainelRoute: typeof PainelRoute
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/loading'
       fullPath: '/loading'
       preLoaderRoute: typeof LoadingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/meu-perfil': {
@@ -362,6 +382,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfiguracoesRoute: ConfiguracoesRoute,
   IndicadoresRoute: IndicadoresRoute,
   LoadingRoute: LoadingRoute,
+  LogsRoute: LogsRoute,
   MeuPerfilRoute: MeuPerfilRoute,
   OcorrenciasRoute: OcorrenciasRoute,
   PainelRoute: PainelRoute,

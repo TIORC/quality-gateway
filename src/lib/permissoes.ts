@@ -32,8 +32,12 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
   "/pops",
   "/funcionarios",
   "/configuracoes",
+  "/logs",
   "/meu-perfil",
 ];
+
+/** Rota restrita a `podeVerLogs`: fica de fora dos conjuntos gerais abaixo. */
+const ROTA_LOGS: AppRoutePath = "/logs";
 
 /**
  * Páginas abertas a todos os usuários logados: Ocorrências, POPs e Políticas
@@ -47,8 +51,10 @@ const ROTAS_PUBLICAS: AppRoutePath[] = [
   "/meu-perfil",
 ];
 
-/** Setor da Qualidade: tudo, exceto Configurações (restrita à Administração/Gestão). */
-const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter((rota) => rota !== "/configuracoes");
+/** Setor da Qualidade: tudo, exceto Configurações e Logs (restritas à Gestão). */
+const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter(
+  (rota) => rota !== "/configuracoes" && rota !== ROTA_LOGS,
+);
 
 /** Colaborador: públicas + os próprios indicadores. */
 const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
@@ -58,9 +64,9 @@ const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
  * `rotasPermitidas`, que também considera o setor da Qualidade e a liderança.
  */
 export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
-  "Desenvolvedor do Sistema": TODAS_AS_ROTAS,
-  "Gestor da Qualidade": TODAS_AS_ROTAS,
-  "Auxiliar da Qualidade": TODAS_AS_ROTAS,
+  "Desenvolvedor do Sistema": [...TODAS_AS_ROTAS, ROTA_LOGS],
+  "Gestor da Qualidade": [...TODAS_AS_ROTAS, ROTA_LOGS],
+  "Auxiliar da Qualidade": TODAS_AS_ROTAS.filter((rota) => rota !== ROTA_LOGS),
   Diretoria: ROTAS_PUBLICAS,
   "Líder de setor": ROTAS_PUBLICAS,
   Desenvolvedor: ROTAS_PUBLICAS,
@@ -77,12 +83,30 @@ export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
  */
 export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> {
   if (!session) return new Set();
+  const permitidas = rotasGerais(session);
+  if (podeVerLogs(session)) permitidas.add(ROTA_LOGS);
+  return permitidas;
+}
+
+function rotasGerais(session: UserSession): Set<AppRoutePath> {
   if (ehLiderancaDaQualidade(session) || ehAdministrador(session)) {
-    return new Set(TODAS_AS_ROTAS);
+    return new Set(TODAS_AS_ROTAS.filter((rota) => rota !== ROTA_LOGS));
   }
   if (ehUsuarioDaQualidade(session)) return new Set(ROTAS_QUALIDADE);
   if (session.nivelAcesso === "Colaborador") return new Set(ROTAS_COLABORADOR);
   return new Set(ROTAS_PUBLICAS);
+}
+
+/**
+ * Logs de atividade (adições, edições, movimentações e exclusões): somente o
+ * Desenvolvedor do Sistema e o Gestor da Qualidade.
+ */
+export function podeVerLogs(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return (
+    session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA ||
+    session.nivelAcesso === NIVEL_GESTOR_QUALIDADE
+  );
 }
 
 /** Página inicial após o login: o Painel, ou os POPs para quem não tem acesso a ele. */
