@@ -18,7 +18,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "Quality Gateway"
+const SITE_NAME = "Gestão da Qualidade"
 const ROOT_DOMAIN = "gestaoqualidade.orcomacontabilidade.com.br"
 
 // Sample data for preview mode ONLY (not used in actual email sending).

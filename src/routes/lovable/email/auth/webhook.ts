@@ -9,7 +9,7 @@ import { EmailChangeEmail } from '@/lib/email-templates/email-change'
 import { ReauthenticationEmail } from '@/lib/email-templates/reauthentication'
 
 // Configuration
-const SITE_NAME = "Quality Gateway"
+const SITE_NAME = "Gestão da Qualidade"
 const SENDER_DOMAIN = "notify.gestaoqualidade.orcomacontabilidade.com.br"
 const ROOT_DOMAIN = "gestaoqualidade.orcomacontabilidade.com.br"
 const FROM_DOMAIN = "gestaoqualidade.orcomacontabilidade.com.br"
