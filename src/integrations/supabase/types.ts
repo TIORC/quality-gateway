@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -424,7 +424,6 @@ export type Database = {
           grupos: string
           id: string
           nivel_acesso: string
-          setores_liderados: string[]
           nome: string
           perm_adicionar_documentos: boolean
           perm_excluir_documentos: boolean
@@ -434,6 +433,7 @@ export type Database = {
           processos_lidos: number
           processos_visualizados: number
           setor: string
+          setores_liderados: string[]
           status: string
           ultimo_acesso: string | null
           unidade: string
@@ -448,7 +448,6 @@ export type Database = {
           grupos?: string
           id: string
           nivel_acesso?: string
-          setores_liderados?: string[]
           nome: string
           perm_adicionar_documentos?: boolean
           perm_excluir_documentos?: boolean
@@ -458,6 +457,7 @@ export type Database = {
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
+          setores_liderados?: string[]
           status?: string
           ultimo_acesso?: string | null
           unidade?: string
@@ -472,7 +472,6 @@ export type Database = {
           grupos?: string
           id?: string
           nivel_acesso?: string
-          setores_liderados?: string[]
           nome?: string
           perm_adicionar_documentos?: boolean
           perm_excluir_documentos?: boolean
@@ -482,12 +481,48 @@ export type Database = {
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
+          setores_liderados?: string[]
           status?: string
           ultimo_acesso?: string | null
           unidade?: string
           updated_at?: string
         }
         Relationships: []
+      }
+      convites_acesso: {
+        Row: {
+          colaborador_id: string
+          criado_em: string
+          expira_em: string
+          id: string
+          token_hash: string
+          usado_em: string | null
+        }
+        Insert: {
+          colaborador_id: string
+          criado_em?: string
+          expira_em: string
+          id?: string
+          token_hash: string
+          usado_em?: string | null
+        }
+        Update: {
+          colaborador_id?: string
+          criado_em?: string
+          expira_em?: string
+          id?: string
+          token_hash?: string
+          usado_em?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "convites_acesso_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       documentos_liberados: {
         Row: {
@@ -670,51 +705,6 @@ export type Database = {
         }
         Relationships: []
       }
-      logs_atividade: {
-        Row: {
-          acao: string
-          ator_email: string
-          ator_id: string
-          ator_nome: string
-          codigo: string
-          created_at: string
-          detalhe: string
-          dados: Json
-          entidade: string
-          entidade_id: string
-          id: string
-          titulo: string
-        }
-        Insert: {
-          acao: string
-          ator_email?: string
-          ator_id?: string
-          ator_nome?: string
-          codigo?: string
-          created_at?: string
-          detalhe?: string
-          dados?: Json
-          entidade: string
-          entidade_id?: string
-          id?: string
-          titulo?: string
-        }
-        Update: {
-          acao?: string
-          ator_email?: string
-          ator_id?: string
-          ator_nome?: string
-          codigo?: string
-          created_at?: string
-          detalhe?: string
-          dados?: Json
-          entidade?: string
-          entidade_id?: string
-          id?: string
-          titulo?: string
-        }
-        Relationships: []
-      }
       notificacoes: {
         Row: {
           autor_email: string
@@ -832,34 +822,34 @@ export type Database = {
       ocorrencia_formularios: {
         Row: {
           campos: Json
-          telas: Json
           created_at: string
           criado_por_email: string
           criado_por_nome: string
           id: string
           publicada: boolean
+          telas: Json
           tipo_id: string
           versao: number
         }
         Insert: {
           campos?: Json
-          telas?: Json
           created_at?: string
           criado_por_email?: string
           criado_por_nome?: string
           id?: string
           publicada?: boolean
+          telas?: Json
           tipo_id: string
           versao?: number
         }
         Update: {
           campos?: Json
-          telas?: Json
           created_at?: string
           criado_por_email?: string
           criado_por_nome?: string
           id?: string
           publicada?: boolean
+          telas?: Json
           tipo_id?: string
           versao?: number
         }
@@ -1341,12 +1331,10 @@ export type Database = {
       }
       politicas: {
         Row: {
-          aprovado_em: string | null
-          aprovado_por_nome: string
-          divulgado_em: string | null
-          divulgado_por_nome: string
           anexo: Json | null
           aplicabilidade: string
+          aprovado_em: string | null
+          aprovado_por_nome: string
           codigo: string
           created_at: string
           criado_por: string
@@ -1354,6 +1342,8 @@ export type Database = {
           data_postagem: string
           data_revisao: string
           data_vencimento: string
+          divulgado_em: string | null
+          divulgado_por_nome: string
           historico: Json
           id: string
           links: string[]
@@ -1368,12 +1358,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          aprovado_em?: string | null
-          aprovado_por_nome?: string
-          divulgado_em?: string | null
-          divulgado_por_nome?: string
           anexo?: Json | null
           aplicabilidade?: string
+          aprovado_em?: string | null
+          aprovado_por_nome?: string
           codigo: string
           created_at?: string
           criado_por?: string
@@ -1381,6 +1369,8 @@ export type Database = {
           data_postagem?: string
           data_revisao?: string
           data_vencimento?: string
+          divulgado_em?: string | null
+          divulgado_por_nome?: string
           historico?: Json
           id?: string
           links?: string[]
@@ -1395,12 +1385,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          aprovado_em?: string | null
-          aprovado_por_nome?: string
-          divulgado_em?: string | null
-          divulgado_por_nome?: string
           anexo?: Json | null
           aplicabilidade?: string
+          aprovado_em?: string | null
+          aprovado_por_nome?: string
           codigo?: string
           created_at?: string
           criado_por?: string
@@ -1408,6 +1396,8 @@ export type Database = {
           data_postagem?: string
           data_revisao?: string
           data_vencimento?: string
+          divulgado_em?: string | null
+          divulgado_por_nome?: string
           historico?: Json
           id?: string
           links?: string[]
@@ -1427,7 +1417,6 @@ export type Database = {
         Row: {
           autor_email: string
           autor_nome: string
-          destinatario_email: string
           created_at: string
           id: string
           mensagem: string
@@ -1436,7 +1425,6 @@ export type Database = {
         Insert: {
           autor_email?: string
           autor_nome?: string
-          destinatario_email?: string
           created_at?: string
           id?: string
           mensagem?: string
@@ -1445,7 +1433,6 @@ export type Database = {
         Update: {
           autor_email?: string
           autor_nome?: string
-          destinatario_email?: string
           created_at?: string
           id?: string
           mensagem?: string
@@ -1991,7 +1978,6 @@ export type Database = {
           participantes: Json
           periodicidade: string
           signatarios: Json
-          setor: string
           updated_at: string
         }
         Insert: {
@@ -2003,7 +1989,6 @@ export type Database = {
           participantes?: Json
           periodicidade?: string
           signatarios?: Json
-          setor?: string
           updated_at?: string
         }
         Update: {
@@ -2015,7 +2000,6 @@ export type Database = {
           participantes?: Json
           periodicidade?: string
           signatarios?: Json
-          setor?: string
           updated_at?: string
         }
         Relationships: []
@@ -2159,6 +2143,26 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      convite_criar: {
+        Args: {
+          p_colaborador_id: string
+          p_dias?: number
+          p_token_hash: string
+        }
+        Returns: string
+      }
+      convite_resgatar: {
+        Args: { p_hash: string; p_salt: string; p_token_hash: string }
+        Returns: boolean
+      }
+      convite_validar: {
+        Args: { p_token_hash: string }
+        Returns: {
+          email: string
+          expira_em: string
+          nome: string
+        }[]
       }
       criar_ata: {
         Args: {
