@@ -8,6 +8,13 @@
       "when": 1791383668534,
       "tag": "0000_colaboradores_permissoes_extras",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792005363595,
+      "tag": "0001_logs_e_anotacoes",
+      "breakpoints": true
     }
   ]
 }
