@@ -705,6 +705,51 @@ export type Database = {
         }
         Relationships: []
       }
+      logs_atividade: {
+        Row: {
+          acao: string
+          ator_email: string
+          ator_id: string
+          ator_nome: string
+          codigo: string
+          created_at: string
+          dados: Json
+          detalhe: string
+          entidade: string
+          entidade_id: string
+          id: string
+          titulo: string
+        }
+        Insert: {
+          acao: string
+          ator_email?: string
+          ator_id?: string
+          ator_nome?: string
+          codigo?: string
+          created_at?: string
+          dados?: Json
+          detalhe?: string
+          entidade: string
+          entidade_id?: string
+          id?: string
+          titulo?: string
+        }
+        Update: {
+          acao?: string
+          ator_email?: string
+          ator_id?: string
+          ator_nome?: string
+          codigo?: string
+          created_at?: string
+          dados?: Json
+          detalhe?: string
+          entidade?: string
+          entidade_id?: string
+          id?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
       notificacoes: {
         Row: {
           autor_email: string
@@ -1418,6 +1463,7 @@ export type Database = {
           autor_email: string
           autor_nome: string
           created_at: string
+          destinatario_email: string
           id: string
           mensagem: string
           pop_id: string
@@ -1426,6 +1472,7 @@ export type Database = {
           autor_email?: string
           autor_nome?: string
           created_at?: string
+          destinatario_email?: string
           id?: string
           mensagem?: string
           pop_id: string
@@ -1434,6 +1481,7 @@ export type Database = {
           autor_email?: string
           autor_nome?: string
           created_at?: string
+          destinatario_email?: string
           id?: string
           mensagem?: string
           pop_id?: string
