@@ -63,6 +63,7 @@ import {
 import { cn, mascaraDataBr } from "@/lib/utils";
 import { PdfProtegido } from "@/components/pdf-protegido";
 import { DocxProtegido } from "@/components/docx-protegido";
+import { HistoricoAprovacao, type EtapaHistorico } from "@/components/historico-aprovacao";
 import { useBloquearAtalhosDocumento } from "@/hooks/use-bloquear-documento";
 import {
   atualizarPolitica,
@@ -708,6 +709,28 @@ function ListaPoliticas({
           </button>
 
           <div className="flex shrink-0 items-center gap-2">
+            <HistoricoAprovacao
+              etapas={[
+                {
+                  rotulo: "Publicado por",
+                  nome: item.criadoPorNome,
+                  data: item.dataPostagem || null,
+                  concluida: !!item.criadoPorNome || !!item.dataPostagem,
+                },
+                {
+                  rotulo: "Aprovado por",
+                  nome: item.aprovadoPorNome,
+                  data: item.aprovadoEm ?? null,
+                  concluida: item.status === "Aprovado" || item.status === "Divulgado",
+                },
+                {
+                  rotulo: "Divulgado (vigente)",
+                  nome: item.divulgadoPorNome,
+                  data: item.divulgadoEm ?? null,
+                  concluida: item.status === "Divulgado",
+                },
+              ] satisfies EtapaHistorico[]}
+            />
             {item.anexo ? (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1E3A8A]">
                 <Paperclip className="h-3.5 w-3.5" />

@@ -41,6 +41,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PanelShell } from "@/components/panel-shell";
 import { GerenciarSetoresPopDialog } from "@/components/gerenciar-setores-pop-dialog";
+import { HistoricoAprovacao, type EtapaHistorico } from "@/components/historico-aprovacao";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -327,6 +328,31 @@ function PopCard({
   onFavoritar,
 }: PopCardProps) {
   const responsaveis = nomesDosSetores(pop.setoresResponsaveis ?? [], setores);
+  const etapasHistorico: EtapaHistorico[] = [
+    {
+      rotulo: "Publicado por",
+      nome: pop.criadoPorNome,
+      data: pop.criadoEm ?? null,
+      concluida: !!pop.criadoPorNome,
+    },
+    {
+      rotulo: "1ª aprovação — líder do processo",
+      nome: pop.aprovadoProcessoNome,
+      data: pop.aprovadoProcessoEm,
+      concluida: !!pop.aprovadoProcessoNome || !!pop.aprovadoProcessoEm,
+    },
+    {
+      rotulo: "2ª aprovação — liderança da Qualidade",
+      nome: pop.aprovadoQualidadeNome,
+      data: pop.aprovadoQualidadeEm,
+      concluida: !!pop.aprovadoQualidadeNome || !!pop.aprovadoQualidadeEm,
+    },
+    {
+      rotulo: "Vigente",
+      data: pop.aprovadoQualidadeEm,
+      concluida: pop.status === STATUS_POP.VIGENTE,
+    },
+  ];
   return (
     <li className="flex flex-col gap-4 rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm lg:flex-row lg:gap-6 lg:p-5">
       <div className="min-w-0 flex-1">
@@ -461,6 +487,7 @@ function PopCard({
             <MessageSquare className="h-3.5 w-3.5 text-[#64748B] group-hover:text-[#1E3A8A]" />{" "}
             {pop.anotacoes}
           </button>
+          <HistoricoAprovacao etapas={etapasHistorico} className="ml-auto" />
         </div>
       </aside>
     </li>

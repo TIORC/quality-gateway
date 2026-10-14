@@ -96,6 +96,14 @@ export interface PoliticaItem {
   sugestoes: SugestaoPolitica[];
   /** Data de validade da política (`dd/mm/aaaa`). Vazia quando não definida. */
   dataVencimento: string;
+  /** Quem aprovou (status "Aprovado") e quando. Vazios em registros anteriores ao histórico. */
+  /** Quem publicou a política (criou o registro). */
+  criadoPorNome?: string;
+  aprovadoPorNome?: string;
+  aprovadoEm?: string | null;
+  /** Quem divulgou (status "Divulgado", vigente) e quando. */
+  divulgadoPorNome?: string;
+  divulgadoEm?: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -136,7 +144,29 @@ function politicaDoRow(row: PoliticaRow): PoliticaItem {
       ? (row.sugestoes as unknown as SugestaoPolitica[])
       : [],
     dataVencimento: row.data_vencimento ?? "",
+    criadoPorNome: row.criado_por_nome ?? "",
+    aprovadoPorNome: row.aprovado_por_nome ?? "",
+    aprovadoEm: row.aprovado_em ?? null,
+    divulgadoPorNome: row.divulgado_por_nome ?? "",
+    divulgadoEm: row.divulgado_em ?? null,
   };
+}
+
+/**
+ * Quem e quando, ao mudar o status para "Aprovado" ou "Divulgado". Só entram
+ * no update os campos da etapa que acabou de acontecer.
+ */
+function marcosDeAprovacao(
+  statusAnterior: string,
+  statusNovo: string,
+): Partial<PoliticaInsert> {
+  if (statusAnterior === statusNovo) return {};
+  const sessao = getSession();
+  const nome = sessao?.nome ?? "";
+  const agora = new Date().toISOString();
+  if (statusNovo === "Aprovado") return { aprovado_por_nome: nome, aprovado_em: agora };
+  if (statusNovo === "Divulgado") return { divulgado_por_nome: nome, divulgado_em: agora };
+  return {};
 }
 
 function politicaParaInsercao(item: PoliticaItem): PoliticaInsert {
@@ -214,7 +244,7 @@ export async function criarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
   const client = exigirCloud();
   const { data, error } = await client
     .from("politicas")
-    .insert(politicaParaInsercao(item))
+    .insert({ ...politicaParaInsercao(item), ...marcosDeAprovacao("", item.status) })
     .select()
     .single();
   if (error) throw traduzErro(error);
@@ -248,7 +278,7 @@ export async function atualizarPolitica(item: PoliticaItem): Promise<PoliticaIte
   const statusAnterior = typeof dadosAnteriores?.status === "string" ? dadosAnteriores.status : "";
   const { data, error } = await client
     .from("politicas")
-    .update(politicaParaInsercao(item))
+    .update({ ...politicaParaInsercao(item), ...marcosDeAprovacao(statusAnterior, item.status) })
     .eq("id", item.id)
     .select()
     .single();

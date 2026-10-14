@@ -117,6 +117,8 @@ export interface Pop {
   criadoPor: string;
   /** Nome de quem criou/elaborou o POP. */
   criadoPorNome: string;
+  /** Quando o POP foi criado (publicado pela primeira vez). */
+  criadoEm?: string;
   /** Quem aprovou a 1ª etapa (líder do processo/setor). */
   aprovadoProcessoPor: string;
   aprovadoProcessoNome: string;
@@ -504,6 +506,7 @@ function popDoRow(row: PopRow): Pop {
     status: (row.status ?? STATUS_POP.VIGENTE) as StatusPop,
     criadoPor: row.criado_por,
     criadoPorNome: row.criado_por_nome,
+    criadoEm: row.created_at,
     aprovadoProcessoPor: row.aprovado_processo_por,
     aprovadoProcessoNome: row.aprovado_processo_nome,
     aprovadoProcessoEm: row.aprovado_processo_em,

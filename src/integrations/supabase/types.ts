@@ -1341,6 +1341,10 @@ export type Database = {
       }
       politicas: {
         Row: {
+          aprovado_em: string | null
+          aprovado_por_nome: string
+          divulgado_em: string | null
+          divulgado_por_nome: string
           anexo: Json | null
           aplicabilidade: string
           codigo: string
@@ -1364,6 +1368,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          aprovado_em?: string | null
+          aprovado_por_nome?: string
+          divulgado_em?: string | null
+          divulgado_por_nome?: string
           anexo?: Json | null
           aplicabilidade?: string
           codigo: string
@@ -1387,6 +1395,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          aprovado_em?: string | null
+          aprovado_por_nome?: string
+          divulgado_em?: string | null
+          divulgado_por_nome?: string
           anexo?: Json | null
           aplicabilidade?: string
           codigo?: string
