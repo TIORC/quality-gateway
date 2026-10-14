@@ -1,4 +1,5 @@
 import { NIVEL_DESENVOLVEDOR_SISTEMA, roleDoNivel } from "@/lib/niveis-acesso";
+import { acessoDosGrupos, nomesDosGrupos } from "@/lib/grupos-permissoes";
 /**
  * Autenticação do painel administrativo.
  *
@@ -59,6 +60,8 @@ export interface UserSession {
   permExcluirDocumentos: boolean;
   /** Permite excluir planos de ação (concedida pelo gestor em Configurações). */
   permExcluirPlanos: boolean;
+  /** Caminhos do menu liberados pelos grupos de acesso da pessoa. */
+  rotasDeGrupos: string[];
   loginAt: string;
 }
 
@@ -105,6 +108,7 @@ function readSession(): UserSession | null {
       permModificarDocumentos: parsed.permModificarDocumentos ?? false,
       permExcluirDocumentos: parsed.permExcluirDocumentos ?? false,
       permExcluirPlanos: parsed.permExcluirPlanos ?? false,
+      rotasDeGrupos: Array.isArray(parsed.rotasDeGrupos) ? parsed.rotasDeGrupos : [],
       loginAt: parsed.loginAt ?? new Date().toISOString(),
     };
   } catch {
@@ -162,8 +166,9 @@ export async function atualizarSessao(): Promise<UserSession | null> {
       permExcluirDocumentos: colaborador.perm_excluir_documentos,
       permExcluirPlanos: colaborador.perm_excluir_planos,
     };
-    persistirSession(renovada);
-    return renovada;
+    const comGrupos = await aplicarGruposNaSessao(client, renovada);
+    persistirSession(comGrupos);
+    return comGrupos;
   } catch {
     return atual;
   }
@@ -210,8 +215,40 @@ function buildSession(
     permModificarDocumentos: false,
     permExcluirDocumentos: false,
     permExcluirPlanos: false,
+    rotasDeGrupos: [],
     loginAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Soma às permissões da sessão o acesso dos grupos em que a pessoa está
+ * (`colaboradores.grupos`). Não bloqueia o login: se a consulta falhar, a sessão
+ * segue só com o acesso individual.
+ */
+async function aplicarGruposNaSessao(
+  client: SupabaseClient<Database>,
+  sessao: UserSession,
+): Promise<UserSession> {
+  const nomes = nomesDosGrupos(sessao.grupos).map((nome) => nome.toLowerCase());
+  if (nomes.length === 0) return { ...sessao, rotasDeGrupos: [] };
+  try {
+    const { data, error } = await client.from("grupos_acessos").select("nome,modulos_perm");
+    if (error) throw error;
+    const modulos = (data ?? [])
+      .filter((grupo) => nomes.includes(grupo.nome.trim().toLowerCase()))
+      .map((grupo) => grupo.modulos_perm);
+    const acesso = acessoDosGrupos(modulos);
+    return {
+      ...sessao,
+      permAdicionarDocumentos: sessao.permAdicionarDocumentos || acesso.permissoes.perm_adicionar_documentos,
+      permModificarDocumentos: sessao.permModificarDocumentos || acesso.permissoes.perm_modificar_documentos,
+      permExcluirDocumentos: sessao.permExcluirDocumentos || acesso.permissoes.perm_excluir_documentos,
+      permExcluirPlanos: sessao.permExcluirPlanos || acesso.permissoes.perm_excluir_planos,
+      rotasDeGrupos: acesso.rotas,
+    };
+  } catch {
+    return { ...sessao, rotasDeGrupos: [] };
+  }
 }
 
 function usuarioDoRow(
@@ -385,8 +422,9 @@ export async function login(
       // Sem vínculo: mantém a sessão com os dados do usuário (compatibilidade).
     }
 
-    persistirSession(sessionBase);
-    return { ok: true, session: sessionBase };
+    const sessaoFinal = await aplicarGruposNaSessao(client, sessionBase);
+    persistirSession(sessaoFinal);
+    return { ok: true, session: sessaoFinal };
   } catch {
     return {
       ok: false,
@@ -475,6 +513,8 @@ export async function criarAcessoColaborador(
     setor: colaborador.setor,
     ativo: true,
     colaborador_id: colaboradorId,
+    // Senha definida pelo administrador: a pessoa ainda não criou a própria.
+    senha_alterada_em: null,
   };
 
   const { error } = existente

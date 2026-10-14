@@ -2089,6 +2089,7 @@ export type Database = {
           id: string
           nome: string
           role: string
+          senha_alterada_em: string | null
           senha_hash: string
           senha_salt: string
           setor: string
@@ -2104,6 +2105,7 @@ export type Database = {
           nome: string
           role?: string
           senha_hash: string
+          senha_alterada_em?: string | null
           senha_salt: string
           setor?: string
           updated_at?: string
@@ -2117,6 +2119,7 @@ export type Database = {
           id?: string
           nome?: string
           role?: string
+          senha_alterada_em?: string | null
           senha_hash?: string
           senha_salt?: string
           setor?: string

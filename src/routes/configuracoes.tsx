@@ -29,7 +29,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Colaborador } from "@/lib/dados";
-import { criarAcessoColaborador, listarEmailsComLogin } from "@/lib/auth";
+import { criarAcessoColaborador, getSession, listarEmailsComLogin } from "@/lib/auth";
 import { criarConviteAcesso } from "@/lib/convites";
 import {
   NIVEL_DESENVOLVEDOR_SISTEMA,
@@ -41,7 +41,11 @@ import {
   normalizarSetor,
 } from "@/lib/niveis-acesso";
 import { listarGruposAcesso } from "@/lib/grupos";
-import { ehLiderancaDaQualidade, podeGerenciarCadastros } from "@/lib/permissoes";
+import {
+  ehLiderancaDaQualidade,
+  podeGerenciarCadastros,
+  podeGerenciarGrupos,
+} from "@/lib/permissoes";
 import type { GrupoAcesso } from "@/lib/projetos-crud";
 import { carregarPoliticas, type PoliticaItem } from "@/lib/politicas";
 import {
@@ -115,7 +119,9 @@ function Configuracoes() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [gruposCadastrados, setGruposCadastrados] = useState<GrupoAcesso[]>([]);
   const [gruposCarregando, setGruposCarregando] = useState(true);
-  const sessaoAtual = usePanelSession();
+  // A página monta o próprio PanelShell, então o contexto da sessão ainda não existe
+  // aqui: lê a sessão do cache, que o PanelShell atualiza ao abrir o painel.
+  const sessaoAtual = getSession();
   const podeGerenciar = podeGerenciarCadastros(sessaoAtual);
   const gruposDisponiveis = [
     ...new Set([...GRUPOS_PERSONALIZADOS, ...gruposCadastrados.map((grupo) => grupo.nome)]),
@@ -305,7 +311,7 @@ function Configuracoes() {
         </TabsContent>
         <TabsContent value="grupos">
           <GruposAcessoTab
-            podeGerenciar={podeGerenciar}
+            podeGerenciar={podeGerenciarGrupos(sessaoAtual)}
             grupos={gruposCadastrados}
             carregando={gruposCarregando}
             onChange={setGruposCadastrados}

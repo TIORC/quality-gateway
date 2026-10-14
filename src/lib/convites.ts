@@ -102,6 +102,35 @@ export async function buscarConviteAcesso(
   }
 }
 
+/**
+ * Primeiro acesso pelo e-mail corporativo: a Edge Function confere se a conta
+ * existe e ainda não teve a senha definida pela pessoa, e então envia o link.
+ */
+export async function solicitarPrimeiroAcesso(
+  email: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!lovableCloudConfigurado) {
+    return { ok: false, error: "Lovable Cloud não configurado." };
+  }
+  try {
+    const client = exigirCloud();
+    const { data, error } = await client.functions.invoke<{ ok: boolean; error?: string }>(
+      "enviar-primeiro-acesso",
+      { body: { email: email.trim().toLowerCase() } },
+    );
+    if (error) throw error;
+    if (!data?.ok) {
+      return { ok: false, error: data?.error ?? "Não foi possível iniciar o primeiro acesso." };
+    }
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      error: "Não foi possível enviar o e-mail agora. Tente novamente em instantes.",
+    };
+  }
+}
+
 /** Grava a senha escolhida pela pessoa e consome o convite. */
 export async function resgatarConviteAcesso(
   token: string,

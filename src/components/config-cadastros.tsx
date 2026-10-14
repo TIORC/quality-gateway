@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { TipoReuniaoDialog } from "@/components/tipo-reuniao-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,12 @@ import {
   excluirGrupoAcesso,
   listarGruposAcesso,
 } from "@/lib/grupos";
+import {
+  ROTAS_DE_GRUPO,
+  PERMISSOES_DE_GRUPO,
+  lerModulosPerm,
+  type ChavePermissaoGrupo,
+} from "@/lib/grupos-permissoes";
 import { traduzErro } from "@/lib/organizacao";
 import { criarOrigem, listarOrigens, mudarAtivaOrigem } from "@/lib/planos-base";
 import type { OrigemAcao } from "@/lib/planos";
@@ -100,22 +107,42 @@ function GrupoDialog({
 }) {
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [rotas, setRotas] = useState<string[]>([]);
+  const [permissoes, setPermissoes] = useState<Partial<Record<ChavePermissaoGrupo, boolean>>>({});
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     if (!aberto) return;
+    const modulos = lerModulosPerm(grupo?.modulosPerm);
     setNome(grupo?.nome ?? "");
     setDescricao(grupo?.descricao ?? "");
+    setRotas(modulos.rotas ?? []);
+    setPermissoes(modulos.permissoes ?? {});
     setSalvando(false);
   }, [aberto, grupo]);
+
+  function alternarRota(caminho: string) {
+    setRotas((atual) =>
+      atual.includes(caminho) ? atual.filter((item) => item !== caminho) : [...atual, caminho],
+    );
+  }
+
+  function alternarPermissao(chave: ChavePermissaoGrupo) {
+    setPermissoes((atual) => ({ ...atual, [chave]: !atual[chave] }));
+  }
 
   async function salvar() {
     if (!nome.trim() || salvando) return;
     setSalvando(true);
+    const modulosPerm = { rotas, permissoes };
     try {
       const salvo = grupo
-        ? await atualizarGrupoAcesso(grupo.id, { nome: nome.trim(), descricao: descricao.trim() })
-        : await criarGrupoAcesso(nome, descricao.trim(), {});
+        ? await atualizarGrupoAcesso(grupo.id, {
+            nome: nome.trim(),
+            descricao: descricao.trim(),
+            modulosPerm,
+          })
+        : await criarGrupoAcesso(nome, descricao.trim(), modulosPerm);
       toast.success(grupo ? "Grupo atualizado." : "Grupo cadastrado.");
       onSalvo(salvo);
     } catch (erro) {
@@ -127,7 +154,7 @@ function GrupoDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {grupo ? "Editar grupo de acesso" : "Cadastrar grupo de acesso"}
@@ -156,6 +183,43 @@ function GrupoDialog({
               rows={3}
             />
           </div>
+
+          <div className="space-y-2">
+            <Label>Acessos ao menu</Label>
+            <p className="text-[12px] text-[#64748B]">
+              Páginas que os integrantes do grupo podem abrir, além das que já têm pelo nível.
+            </p>
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-[#E9EEF5] p-3">
+              {ROTAS_DE_GRUPO.map((item) => (
+                <label key={item.path} className="flex items-center gap-2 text-[13px] text-[#1F2937]">
+                  <Checkbox
+                    checked={rotas.includes(item.path)}
+                    onCheckedChange={() => alternarRota(item.path)}
+                  />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Permissões</Label>
+            <div className="space-y-2 rounded-lg border border-[#E9EEF5] p-3">
+              {PERMISSOES_DE_GRUPO.map((permissao) => (
+                <label key={permissao.chave} className="flex items-start gap-2">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={permissoes[permissao.chave] === true}
+                    onCheckedChange={() => alternarPermissao(permissao.chave)}
+                  />
+                  <span className="text-[13px] text-[#1F2937]">
+                    <span className="block font-medium">{permissao.rotulo}</span>
+                    <span className="block text-[12px] text-[#64748B]">{permissao.descricao}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onFechar}>
@@ -169,6 +233,17 @@ function GrupoDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Resumo do que o grupo libera, mostrado na lista. */
+function resumoDoGrupo(grupo: GrupoAcesso): string {
+  const modulos = lerModulosPerm(grupo.modulosPerm);
+  const telas = modulos.rotas?.length ?? 0;
+  const permissoes = PERMISSOES_DE_GRUPO.filter(
+    (permissao) => modulos.permissoes?.[permissao.chave] === true,
+  ).length;
+  if (telas === 0 && permissoes === 0) return "Sem acessos extras";
+  return `${telas} ${telas === 1 ? "tela" : "telas"} · ${permissoes} ${permissoes === 1 ? "permissão" : "permissões"}`;
 }
 
 export function GruposAcessoTab({
@@ -203,7 +278,7 @@ export function GruposAcessoTab({
     <>
       <Cartao
         titulo="Grupos de acesso"
-        descricao="Defina os grupos usados no cadastro dos colaboradores."
+        descricao="Crie grupos e defina quais telas e permissões cada um libera aos integrantes."
         acao={
           podeGerenciar
             ? {
@@ -231,6 +306,9 @@ export function GruposAcessoTab({
                 {grupo.descricao ? (
                   <p className="truncate text-[12px] text-[#64748B]">{grupo.descricao}</p>
                 ) : null}
+                <p className="truncate text-[12px] text-[#64748B]">
+                  {resumoDoGrupo(grupo)}
+                </p>
               </div>
               {podeGerenciar ? (
                 confirmando === grupo.id ? (

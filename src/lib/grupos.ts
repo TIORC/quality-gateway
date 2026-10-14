@@ -1,7 +1,8 @@
 import { clienteLivre } from "@/lib/supabase-livro";
+import { exigirCloud } from "@/integrations/supabase/client";
 import { traduzErro, tabelaAusente } from "@/lib/organizacao";
 import { str } from "@/lib/planos-base";
-import type { UserSession } from "@/lib/auth";
+import { getSession, type UserSession } from "@/lib/auth";
 import { ehUsuarioDaQualidade, ehLiderancaDaQualidade } from "@/lib/permissoes";
 import type { GrupoAcesso } from "@/lib/projetos-crud";
 
@@ -39,30 +40,42 @@ export async function listarGruposAcesso(session: UserSession | null | undefined
   }
 }
 
+/**
+ * Gravações de grupos passam por funções do banco, que conferem se quem pede é
+ * Gestor da Qualidade ou Desenvolvedor do Sistema (ver a migração de grupos).
+ */
+async function chamarGrupoRpc(nome: string, args: Record<string, unknown>): Promise<Rec> {
+  const session = getSession();
+  if (!session) throw new Error("Sua sessão expirou. Entre novamente.");
+  const client = exigirCloud();
+  const rpc = client.rpc as unknown as (
+    fn: string,
+    params: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+  const { data, error } = await rpc.call(client, nome, { p_email: session.email, ...args });
+  if (error) throw error;
+  return data as Rec;
+}
+
 export async function criarGrupoAcesso(nome: string, descricao: string, modulosPerm: Record<string, unknown>): Promise<GrupoAcesso> {
-  const client = clienteLivre();
-  const { data, error } = await client.from("grupos_acessos").insert({
-    nome: nome.trim(), descricao, modulos_perm: JSON.stringify(modulosPerm),
-  }).select("*").single();
-  if (error) throw traduzErro(error);
-  return grupoDoRow(data as unknown as Rec);
+  const linha = await chamarGrupoRpc("grupo_acesso_salvar", {
+    p_id: null, p_nome: nome.trim(), p_descricao: descricao, p_modulos: modulosPerm,
+  });
+  return grupoDoRow(linha);
 }
 
 export async function atualizarGrupoAcesso(id: string, patch: Partial<Omit<GrupoAcesso, "id">>): Promise<GrupoAcesso> {
-  const client = clienteLivre();
-  const u: Record<string, unknown> = {};
-    if (patch.nome !== undefined) u["nome"] = patch.nome;
-  if (patch.descricao !== undefined) u["descricao"] = patch.descricao;
-  if (patch.modulosPerm !== undefined) u["modulos_perm"] = JSON.stringify(patch.modulosPerm);
-  const { data, error } = await client.from("grupos_acessos").update(u).eq("id", id).select("*").single();
-  if (error) throw traduzErro(error);
-  return grupoDoRow(data as unknown as Rec);
+  const linha = await chamarGrupoRpc("grupo_acesso_salvar", {
+    p_id: id,
+    p_nome: patch.nome?.trim() ?? null,
+    p_descricao: patch.descricao ?? null,
+    p_modulos: patch.modulosPerm ?? null,
+  });
+  return grupoDoRow(linha);
 }
 
 export async function excluirGrupoAcesso(id: string): Promise<void> {
-  const client = clienteLivre();
-  const { error } = await client.from("grupos_acessos").delete().eq("id", id);
-  if (error) throw traduzErro(error);
+  await chamarGrupoRpc("grupo_acesso_excluir", { p_id: id });
 }
 
 interface ProjetoGrupoPermissao { podeVer: boolean; podeEditar: boolean; }

@@ -85,6 +85,8 @@ export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> 
   if (!session) return new Set();
   const permitidas = rotasGerais(session);
   if (podeVerLogs(session)) permitidas.add(ROTA_LOGS);
+  // Rotas liberadas pelos grupos de acesso da pessoa.
+  for (const rota of session.rotasDeGrupos ?? []) permitidas.add(rota as AppRoutePath);
   return permitidas;
 }
 
@@ -196,6 +198,19 @@ export function podeGerenciarCadastros(session: UserSession | null | undefined):
     session.role === "gestor" ||
     session.nivelAcesso === NIVEL_GESTOR_QUALIDADE ||
     session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE
+  );
+}
+
+/**
+ * Criar, editar e excluir grupos de acesso e definir o que cada um libera:
+ * Desenvolvedor do Sistema e Gestor da Qualidade.
+ */
+export function podeGerenciarGrupos(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return (
+    ehAdministrador(session) ||
+    session.role === "gestor" ||
+    session.nivelAcesso === NIVEL_GESTOR_QUALIDADE
   );
 }
 

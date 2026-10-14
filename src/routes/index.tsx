@@ -2,8 +2,10 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { isAuthenticated, login } from "@/lib/auth";
+import { solicitarPrimeiroAcesso } from "@/lib/convites";
 import { AppFooter } from "@/components/app-footer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +43,11 @@ function Login() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [recuperarAberto, setRecuperarAberto] = useState(false);
+  const [primeiroAcessoAberto, setPrimeiroAcessoAberto] = useState(false);
+  const [emailPrimeiroAcesso, setEmailPrimeiroAcesso] = useState("");
+  const [erroPrimeiroAcesso, setErroPrimeiroAcesso] = useState("");
+  const [enviandoPrimeiroAcesso, setEnviandoPrimeiroAcesso] = useState(false);
+  const [emailEnviado, setEmailEnviado] = useState("");
 
   // Se já houver sessão ativa, passa pela tela de loading e vai ao painel.
   useEffect(() => {
@@ -72,6 +79,30 @@ function Login() {
 
     setErro(result.error);
     setCarregando(false);
+  }
+
+  function abrirPrimeiroAcesso() {
+    setEmailPrimeiroAcesso(email);
+    setErroPrimeiroAcesso("");
+    setEmailEnviado("");
+    setPrimeiroAcessoAberto(true);
+  }
+
+  async function onSubmitPrimeiroAcesso(e: FormEvent) {
+    e.preventDefault();
+    if (!emailPrimeiroAcesso.includes("@")) {
+      setErroPrimeiroAcesso("Informe um e-mail corporativo válido.");
+      return;
+    }
+    setErroPrimeiroAcesso("");
+    setEnviandoPrimeiroAcesso(true);
+    const resultado = await solicitarPrimeiroAcesso(emailPrimeiroAcesso);
+    setEnviandoPrimeiroAcesso(false);
+    if (resultado.ok) {
+      setEmailEnviado(emailPrimeiroAcesso.trim());
+      return;
+    }
+    setErroPrimeiroAcesso(resultado.error);
   }
 
   return (
@@ -168,6 +199,14 @@ function Login() {
                 Esqueci minha senha
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => abrirPrimeiroAcesso()}
+              className="w-full rounded-xl border border-brand-line bg-white/5 py-3 text-sm font-semibold text-brand-foreground transition hover:bg-white/10"
+            >
+              Primeiro acesso
+            </button>
           </form>
         </section>
       </div>
@@ -192,6 +231,74 @@ function Login() {
               Entendi
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={primeiroAcessoAberto}
+        onOpenChange={(abre) => !abre && setPrimeiroAcessoAberto(false)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Primeiro acesso</DialogTitle>
+            <DialogDescription>
+              Informe o seu e-mail corporativo. Se a conta existir e a senha ainda não tiver sido
+              criada, enviaremos um link para você definir a sua senha.
+            </DialogDescription>
+          </DialogHeader>
+
+          {emailEnviado ? (
+            <div className="space-y-4">
+              <p className="text-sm text-brand-foreground">
+                Enviamos o link para <strong>{emailEnviado}</strong>. Abra o e-mail e clique no
+                botão para criar a sua senha. O link vale por 24 horas.
+              </p>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  className="w-full bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                  onClick={() => setPrimeiroAcessoAberto(false)}
+                >
+                  Entendi
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <form onSubmit={onSubmitPrimeiroAcesso} className="space-y-4">
+              <div className="space-y-2">
+                <label
+                  htmlFor="email-primeiro-acesso"
+                  className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
+                >
+                  E-mail corporativo
+                </label>
+                <Input
+                  id="email-primeiro-acesso"
+                  type="email"
+                  autoComplete="email"
+                  value={emailPrimeiroAcesso}
+                  onChange={(e) => setEmailPrimeiroAcesso(e.target.value)}
+                  placeholder="nome@empresa.com.br"
+                />
+              </div>
+
+              {erroPrimeiroAcesso ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {erroPrimeiroAcesso}
+                </p>
+              ) : null}
+
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  disabled={enviandoPrimeiroAcesso}
+                  className="w-full bg-[#1E3A8A] text-white hover:bg-[#1E40AF] disabled:opacity-70"
+                >
+                  {enviandoPrimeiroAcesso ? "Enviando…" : "Enviar link"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </main>
