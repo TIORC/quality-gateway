@@ -201,7 +201,7 @@ function colaboradorParaInsercao(dados: Colaborador): {
     perm_modificar_documentos: dados.permModificarDocumentos ?? false,
     perm_excluir_documentos: dados.permExcluirDocumentos ?? false,
     perm_excluir_planos: dados.permExcluirPlanos ?? false,
-    setores_liderados: dados.nivelAcesso === "Líder de setor" ? (dados.setoresLiderados ?? []) : [],
+    setores_liderados: nivelLideraSetores(dados.nivelAcesso) ? (dados.setoresLiderados ?? []) : [],
   };
 }
 
@@ -235,8 +235,13 @@ function colaboradorParaAtualizacao(dados: Colaborador): {
     perm_modificar_documentos: dados.permModificarDocumentos ?? false,
     perm_excluir_documentos: dados.permExcluirDocumentos ?? false,
     perm_excluir_planos: dados.permExcluirPlanos ?? false,
-    setores_liderados: dados.nivelAcesso === "Líder de setor" ? (dados.setoresLiderados ?? []) : [],
+    setores_liderados: nivelLideraSetores(dados.nivelAcesso) ? (dados.setoresLiderados ?? []) : [],
   };
+}
+
+/** Níveis que podem liderar setores (`setores_liderados`): Líder de setor e Gestor da Qualidade. */
+function nivelLideraSetores(nivel: string | undefined): boolean {
+  return nivel === "Líder de setor" || nivel === "Gestor da Qualidade";
 }
 
 /** Relação setor × cargos (estrutura usada na tela de Configurações). */

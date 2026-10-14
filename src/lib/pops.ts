@@ -11,6 +11,7 @@ import { getSession, type UserSession } from "@/lib/auth";
 import {
   NIVEIS_FILTRAM_POR_SETOR,
   NIVEL_AUXILIAR_QUALIDADE,
+  NIVEL_GESTOR_QUALIDADE,
   NIVEL_LIDER_SETOR,
   normalizarSetor,
 } from "@/lib/niveis-acesso";
@@ -850,6 +851,8 @@ export function podeAprovarLiderQualidade(sessao: UserSession | null | undefined
  * Líder do processo/setor: aprova a 1ª etapa. Em POP setorial, precisa liderar o
  * setor do POP (`setoresLiderados`). Em POP geral, qualquer líder de setor (ou a
  * liderança da Qualidade) pode aprovar. O Auxiliar da Qualidade não aprova.
+ * O Gestor da Qualidade que também lidera setores (`setores_liderados`) aprova
+ * a 1ª etapa dos POPs desses setores.
  */
 export function podeAprovarLiderProcesso(
   sessao: UserSession | null | undefined,
@@ -860,7 +863,13 @@ export function podeAprovarLiderProcesso(
   if (ehAdministrador(sessao)) return true;
   const ehLiderDeSetor = sessao.nivelAcesso === NIVEL_LIDER_SETOR;
   if (pop.setorId === "geral") return ehLiderDeSetor || podeAprovarLiderQualidade(sessao);
-  return ehLiderDeSetor && liderDoSetor(sessao, nomeSetorDoPop);
+  if (ehLiderDeSetor) return liderDoSetor(sessao, nomeSetorDoPop);
+  const alvo = normalizarSetor(nomeSetorDoPop);
+  return (
+    sessao.nivelAcesso === NIVEL_GESTOR_QUALIDADE &&
+    !!alvo &&
+    (sessao.setoresLiderados ?? []).some((nome) => normalizarSetor(nome) === alvo)
+  );
 }
 
 /** Sessão usada como autor na criação e nas aprovações. */

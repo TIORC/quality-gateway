@@ -35,6 +35,7 @@ import {
   NIVEL_DESENVOLVEDOR_SISTEMA,
   NIVEIS_ACESSO,
   NIVEIS_RESERVADOS_GESTAO,
+  NIVEL_GESTOR_QUALIDADE,
   NIVEL_LIDER_SETOR,
   NIVEL_SOMENTE_LIBERADOS,
   normalizarSetor,
@@ -1584,7 +1585,9 @@ function GerirColaboradorDialog({
       permExcluirDocumentos: permExcluir,
       permExcluirPlanos: permExcluirPlanos,
       setoresLiderados:
-        nivelAcesso === NIVEL_LIDER_SETOR ? setoresLiderados.filter((nome) => nome !== setor) : [],
+        nivelAcesso === NIVEL_LIDER_SETOR || nivelAcesso === NIVEL_GESTOR_QUALIDADE
+          ? setoresLiderados.filter((nome) => nome !== setor)
+          : [],
     };
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
@@ -1701,7 +1704,7 @@ function GerirColaboradorDialog({
             ) : null}
           </Campo>
 
-          {nivelAcesso === NIVEL_LIDER_SETOR ? (
+          {nivelAcesso === NIVEL_LIDER_SETOR || nivelAcesso === NIVEL_GESTOR_QUALIDADE ? (
             <Campo rotulo="Setores que lidera (além do próprio setor)">
               {(() => {
                 const outrosSetores = setores.filter((item) => item.nome !== setor);
