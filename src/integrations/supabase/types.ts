@@ -2016,6 +2016,48 @@ export type Database = {
         }
         Relationships: []
       }
+      tarefas_gestta: {
+        Row: {
+          cliente: string
+          competencia: string
+          data_conclusao: string | null
+          departamento: string
+          id: string
+          importado_em: string
+          nome: string
+          responsavel: string
+          status: string
+          tipo: string
+          vencimento: string | null
+        }
+        Insert: {
+          cliente?: string
+          competencia?: string
+          data_conclusao?: string | null
+          departamento?: string
+          id: string
+          importado_em?: string
+          nome?: string
+          responsavel?: string
+          status?: string
+          tipo?: string
+          vencimento?: string | null
+        }
+        Update: {
+          cliente?: string
+          competencia?: string
+          data_conclusao?: string | null
+          departamento?: string
+          id?: string
+          importado_em?: string
+          nome?: string
+          responsavel?: string
+          status?: string
+          tipo?: string
+          vencimento?: string | null
+        }
+        Relationships: []
+      }
       tipos_reuniao: {
         Row: {
           ativo: boolean
@@ -2104,8 +2146,8 @@ export type Database = {
           id: string
           nome: string
           role?: string
-          senha_hash: string
           senha_alterada_em?: string | null
+          senha_hash: string
           senha_salt: string
           setor?: string
           updated_at?: string
@@ -2273,6 +2315,41 @@ export type Database = {
       eh_participante_do_tipo: {
         Args: { tipo_id: string; usuario_id: string }
         Returns: boolean
+      }
+      grupo_acesso_ajustar_membros: {
+        Args: { p_antigo: string; p_novo: string }
+        Returns: undefined
+      }
+      grupo_acesso_excluir: {
+        Args: { p_email: string; p_id: string }
+        Returns: undefined
+      }
+      grupo_acesso_pode_gerenciar: {
+        Args: { p_email: string }
+        Returns: boolean
+      }
+      grupo_acesso_salvar: {
+        Args: {
+          p_descricao: string
+          p_email: string
+          p_id: string
+          p_modulos: Json
+          p_nome: string
+        }
+        Returns: {
+          created_at: string
+          descricao: string
+          id: string
+          modulos_perm: Json
+          nome: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "grupos_acessos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       mudar_ativo_tipo_reuniao: {
         Args: { ativo?: boolean; email_caller: string; id: string }
