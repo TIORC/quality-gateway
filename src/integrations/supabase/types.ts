@@ -2018,10 +2018,15 @@ export type Database = {
       }
       tarefas_gestta: {
         Row: {
+          baixado: string
           cliente: string
+          cnpj_cpf: string
           competencia: string
           data_conclusao: string | null
+          data_legal: string | null
           departamento: string
+          feito_atrasado: string
+          feito_com_multa: string
           id: string
           importado_em: string
           nome: string
@@ -2031,10 +2036,15 @@ export type Database = {
           vencimento: string | null
         }
         Insert: {
+          baixado?: string
           cliente?: string
+          cnpj_cpf?: string
           competencia?: string
           data_conclusao?: string | null
+          data_legal?: string | null
           departamento?: string
+          feito_atrasado?: string
+          feito_com_multa?: string
           id: string
           importado_em?: string
           nome?: string
@@ -2044,10 +2054,15 @@ export type Database = {
           vencimento?: string | null
         }
         Update: {
+          baixado?: string
           cliente?: string
+          cnpj_cpf?: string
           competencia?: string
           data_conclusao?: string | null
+          data_legal?: string | null
           departamento?: string
+          feito_atrasado?: string
+          feito_com_multa?: string
           id?: string
           importado_em?: string
           nome?: string
