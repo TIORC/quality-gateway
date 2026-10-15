@@ -2131,6 +2131,7 @@ export type Database = {
           id: string
           nome: string
           role: string
+          senha_alterada_em: string | null
           senha_hash: string
           senha_salt: string
           setor: string
@@ -2145,6 +2146,7 @@ export type Database = {
           id: string
           nome: string
           role?: string
+          senha_alterada_em?: string | null
           senha_hash: string
           senha_salt: string
           setor?: string
@@ -2159,6 +2161,7 @@ export type Database = {
           id?: string
           nome?: string
           role?: string
+          senha_alterada_em?: string | null
           senha_hash?: string
           senha_salt?: string
           setor?: string

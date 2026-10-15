@@ -22,6 +22,13 @@
       "when": 1792101442869,
       "tag": "0002_tarefas_gestta",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792101462243,
+      "tag": "0003_usuarios_senha_alterada_em",
+      "breakpoints": true
     }
   ]
 }
