@@ -2016,6 +2016,48 @@ export type Database = {
         }
         Relationships: []
       }
+      tarefas_gestta: {
+        Row: {
+          cliente: string
+          competencia: string
+          data_conclusao: string | null
+          departamento: string
+          id: string
+          importado_em: string
+          nome: string
+          responsavel: string
+          status: string
+          tipo: string
+          vencimento: string | null
+        }
+        Insert: {
+          cliente?: string
+          competencia?: string
+          data_conclusao?: string | null
+          departamento?: string
+          id: string
+          importado_em?: string
+          nome?: string
+          responsavel?: string
+          status?: string
+          tipo?: string
+          vencimento?: string | null
+        }
+        Update: {
+          cliente?: string
+          competencia?: string
+          data_conclusao?: string | null
+          departamento?: string
+          id?: string
+          importado_em?: string
+          nome?: string
+          responsavel?: string
+          status?: string
+          tipo?: string
+          vencimento?: string | null
+        }
+        Relationships: []
+      }
       tipos_reuniao: {
         Row: {
           ativo: boolean
