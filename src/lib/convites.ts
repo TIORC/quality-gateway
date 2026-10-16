@@ -108,20 +108,12 @@ export async function buscarConviteAcesso(
  */
 export async function solicitarPrimeiroAcesso(
   email: string,
+  tipo: "primeiro-acesso" | "redefinir" = "primeiro-acesso",
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!lovableCloudConfigurado) {
-    return { ok: false, error: "Lovable Cloud não configurado." };
-  }
   try {
-    const client = exigirCloud();
-    const { data, error } = await client.functions.invoke<{ ok: boolean; error?: string }>(
-      "enviar-primeiro-acesso",
-      { body: { email: email.trim().toLowerCase() } },
-    );
-    if (error) throw error;
-    if (!data?.ok) {
-      return { ok: false, error: data?.error ?? "Não foi possível iniciar o primeiro acesso." };
-    }
+    const { enviarLinkSenha } = await import("@/lib/link-senha.functions");
+    const r = await enviarLinkSenha({ data: { email: email.trim().toLowerCase(), tipo } });
+    if (!r.ok) return { ok: false, error: r.error ?? "Não foi possível enviar o e-mail." };
     return { ok: true };
   } catch {
     return {

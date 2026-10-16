@@ -36,6 +36,13 @@
       "when": 1792102115019,
       "tag": "0004_tarefas_gestta_colunas_extras",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792158474788,
+      "tag": "0005_redefinir_senha_solicitar",
+      "breakpoints": true
     }
   ]
 }
