@@ -9,7 +9,7 @@
 
 import type { UserSession } from "@/lib/auth";
 import { normalizarSetor, NIVEL_LIDER_SETOR } from "@/lib/niveis-acesso";
-import { ehUsuarioDaQualidade, liderDoSetor } from "@/lib/permissoes";
+import { ehUsuarioDaQualidade, liderDoSetor, setoresLiderados } from "@/lib/permissoes";
 
 /* -------------------------------------------------------------------------- */
 /* Constantes                                                                  */
@@ -409,6 +409,28 @@ export function paraNumero(texto: string): number | null {
 /* -------------------------------------------------------------------------- */
 /* Permissões                                                                  */
 /* -------------------------------------------------------------------------- */
+
+/** Diretoria que, além da Qualidade, enxerga todos os indicadores (somente leitura). */
+const EMAILS_VEEM_TODOS_INDICADORES = new Set([
+  "jacson@orcoma.com.br",
+  "celso.alcantara@orcoma.com.br",
+]);
+
+/**
+ * O que a pessoa enxerga em Indicadores:
+ *  - `todos`: Desenvolvedor do Sistema, Gestor da Qualidade, setor da Qualidade, Jacson e Celso;
+ *  - `setor`: Líder de setor, só os indicadores dos setores que lidera;
+ *  - `proprio`: demais, só os indicadores em que é o responsável.
+ */
+export type EscopoIndicadores = "todos" | "setor" | "proprio";
+
+export function escopoDosIndicadores(session: UserSession | null | undefined): EscopoIndicadores {
+  if (!session) return "proprio";
+  if (ehUsuarioDaQualidade(session)) return "todos";
+  if (EMAILS_VEEM_TODOS_INDICADORES.has((session.email ?? "").trim().toLowerCase())) return "todos";
+  if (setoresLiderados(session).length > 0) return "setor";
+  return "proprio";
+}
 
 /**
  * Cria, edita, arquiva indicadores, define meta e fecha o mês: Qualidade/Admin

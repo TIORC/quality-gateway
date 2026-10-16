@@ -1,3 +1,4 @@
+import { registrarPresenca } from "@/lib/organizacao";
 import {
   BarChart3,
   BookOpen,
@@ -104,6 +105,24 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
       ativo = false;
     };
   }, [router, location.pathname]);
+
+  // Presença: enquanto o portal está aberto e visível, avisa a cada minuto que a pessoa está online.
+  const colaboradorId = session?.colaboradorId ?? "";
+  useEffect(() => {
+    if (!colaboradorId) return;
+    const bater = () => {
+      if (document.visibilityState === "visible") {
+        void registrarPresenca(colaboradorId).catch(() => undefined);
+      }
+    };
+    bater();
+    const id = window.setInterval(bater, 60_000);
+    document.addEventListener("visibilitychange", bater);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", bater);
+    };
+  }, [colaboradorId]);
 
   // Fecha o menu mobile ao navegar.
   useEffect(() => {

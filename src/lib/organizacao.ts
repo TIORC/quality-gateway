@@ -571,3 +571,23 @@ export async function excluirColaborador(colaboradorId: string): Promise<void> {
   const { error } = await client.from("colaboradores").delete().eq("id", colaboradorId);
   if (error) throw traduzErro(error);
 }
+
+
+/** Janela em que uma pessoa sem novo sinal ainda conta como online. */
+const JANELA_ONLINE_MS = 2 * 60 * 1000;
+
+/** Marca a pessoa como ativa agora (batimento enviado enquanto o portal está aberto). */
+export async function registrarPresenca(colaboradorId: string): Promise<void> {
+  if (!colaboradorId) return;
+  await exigirCloud()
+    .from("colaboradores")
+    .update({ ultimo_acesso: new Date().toISOString() })
+    .eq("id", colaboradorId);
+}
+
+/** Online = último sinal de atividade dentro da janela de presença. */
+export function estaOnline(ultimoAcesso: string | null | undefined): boolean {
+  if (!ultimoAcesso) return false;
+  const quando = new Date(ultimoAcesso).getTime();
+  return Number.isFinite(quando) && Date.now() - quando < JANELA_ONLINE_MS;
+}

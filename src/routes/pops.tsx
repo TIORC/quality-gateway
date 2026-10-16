@@ -2553,7 +2553,14 @@ function Pops() {
     const setorNorm = normalizarSetor(sessao?.setor ?? "");
     const prefixo = prefixoDoSetor(sessao?.setor ?? "");
     return setores.filter((s) => {
-      if (s.id === "geral" || normalizarSetor(s.nome) === "geral") return true;
+      if (
+        s.id === "geral" ||
+        s.categoria === "GERAL" ||
+        s.prefixo?.toUpperCase() === "GER" ||
+        normalizarSetor(s.nome).includes("geral")
+      ) {
+        return true;
+      }
       if (setorNorm && normalizarSetor(s.nome) === setorNorm) return true;
       if (prefixo && s.prefixo && s.prefixo.toUpperCase() === prefixo.toUpperCase()) return true;
       return false;

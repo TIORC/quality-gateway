@@ -120,8 +120,18 @@ function Funcionarios() {
       .finally(() => {
         if (ativo) setCarregando(false);
       });
+    // Atualiza a lista a cada 30s para o status "Online" acompanhar quem entra e sai.
+    const id = window.setInterval(() => {
+      org
+        .carregarFuncionarios()
+        .then((lista) => {
+          if (ativo) setFuncionarios(veInativos ? lista : lista.filter((f) => f.status === "Ativo"));
+        })
+        .catch(() => undefined);
+    }, 30_000);
     return () => {
       ativo = false;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -303,7 +313,12 @@ function Funcionarios() {
                         <StatusBadge status={funcionario.status} />
                       </td>
                       <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                        {funcionario.ultimoAcesso ? (
+                        {org.estaOnline(funcionario.ultimoAcesso) ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#DCFCE7] px-2.5 py-1 text-[12px] font-semibold text-[#166534]">
+                            <span className="h-2 w-2 rounded-full bg-[#22C55E]" />
+                            Online
+                          </span>
+                        ) : funcionario.ultimoAcesso ? (
                           <span title={funcionario.ultimoAcesso}>
                             {formatarDataHoraBrasilia(funcionario.ultimoAcesso)}
                           </span>

@@ -51,6 +51,7 @@ import {
   mesReferenciaAtual,
   mesReferenciaDe,
   MODOS_PERIODO,
+  escopoDosIndicadores,
   normalizarIntervalo,
   podeGerenciarIndicadores,
   podeLancarApuracao,
@@ -70,6 +71,7 @@ import { listarOcorrencias, listarTipos } from "@/lib/ocorrencias-base";
 import { ocorrenciaAtrasada } from "@/lib/ocorrencias";
 import { listarPlanos } from "@/lib/planos-base";
 import { normalizarSetor } from "@/lib/niveis-acesso";
+import { setoresLiderados } from "@/lib/permissoes";
 import type { PlanoAcao } from "@/lib/planos";
 import {
   agruparMetricas,
@@ -301,10 +303,14 @@ function DetalheTarefasSheet({
 function TabelaMetricas({
   titulo,
   grupos,
+  ocultarVazio = false,
 }: {
   titulo: string;
   grupos: { nome: string; metricas: MetricasTarefas }[];
+  /** Colaborador não vê o aviso de "nenhuma tarefa importada". */
+  ocultarVazio?: boolean;
 }) {
+  if (grupos.length === 0 && ocultarVazio) return null;
   if (grupos.length === 0) {
     return (
       <p className="mt-6 rounded-xl border border-[#D9E0EA] bg-white px-6 py-10 text-center text-sm text-[#64748B]">
@@ -411,8 +417,9 @@ function Indicadores() {
   );
 
   // Primitivos: a sessão é recriada a cada render e não pode entrar nas dependências.
-  const soDoColaborador = sessao?.nivelAcesso === "Colaborador" && !podeGerenciar;
+  const escopo = escopoDosIndicadores(sessao);
   const colaboradorId = sessao?.colaboradorId ?? "";
+  const setoresDoEscopo = setoresLiderados(sessao).join("|");
 
   const recarregar = useCallback(async () => {
     setCarregando(true);
@@ -423,23 +430,27 @@ function Indicadores() {
         listarApuracoes(),
         listarPlanos().catch(() => [] as PlanoAcao[]),
       ]);
-      // Colaborador vê somente os indicadores em que é o responsável.
-      const meusIds = new Set(
-        listaIndicadores.filter((i) => i.responsavelId === colaboradorId).map((i) => i.id),
+      // Líder de setor vê os indicadores do(s) seu(s) setor(es); os demais, só os que são seus.
+      const setores = new Set(setoresDoEscopo.split("|").filter(Boolean));
+      const permitidos = new Set(
+        listaIndicadores
+          .filter((i) =>
+            escopo === "setor"
+              ? setores.has(normalizarSetor(i.setor))
+              : i.responsavelId === colaboradorId,
+          )
+          .map((i) => i.id),
       );
-      setIndicadores(
-        soDoColaborador ? listaIndicadores.filter((i) => meusIds.has(i.id)) : listaIndicadores,
-      );
-      setApuracoes(
-        soDoColaborador ? listaApuracoes.filter((a) => meusIds.has(a.indicadorId)) : listaApuracoes,
-      );
+      const restrito = escopo !== "todos";
+      setIndicadores(restrito ? listaIndicadores.filter((i) => permitidos.has(i.id)) : listaIndicadores);
+      setApuracoes(restrito ? listaApuracoes.filter((a) => permitidos.has(a.indicadorId)) : listaApuracoes);
       setPlanos(listaPlanos);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar os indicadores.");
     } finally {
       setCarregando(false);
     }
-  }, [soDoColaborador, colaboradorId]);
+  }, [escopo, colaboradorId, setoresDoEscopo]);
 
   useEffect(() => {
     void recarregar();
@@ -548,12 +559,20 @@ function Indicadores() {
   }
 
   const tarefasFiltradas = useMemo(() => {
+    if (escopo === "setor") {
+      const setores = new Set(setoresDoEscopo.split("|").filter(Boolean));
+      return tarefas.filter((t) => setores.has(normalizarSetor(t.departamento)));
+    }
+    if (escopo === "proprio") {
+      const eu = normalizarSetor(sessao?.nome);
+      return eu ? tarefas.filter((t) => normalizarSetor(t.responsavel) === eu) : [];
+    }
     if (secao === "por-setor" && setorFiltro !== "todos")
       return tarefas.filter((t) => t.departamento === setorFiltro);
     if (secao === "por-colaborador" && colaboradorFiltro !== "todos")
       return tarefas.filter((t) => t.responsavel === colaboradorFiltro);
     return tarefas;
-  }, [tarefas, secao, setorFiltro, colaboradorFiltro]);
+  }, [tarefas, secao, setorFiltro, colaboradorFiltro, escopo, setoresDoEscopo, sessao?.nome]);
   const metricasTarefas = useMemo(
     () => calcularMetricas(tarefasFiltradas, mesEscolhido),
     [tarefasFiltradas, mesEscolhido],
@@ -574,6 +593,18 @@ function Indicadores() {
       ),
     [tarefas],
   );
+
+  // Colaborador: só a seção "Por Colaborador", já com o próprio nome selecionado.
+  const soProprio = escopo === "proprio";
+  const meuNomeNasTarefas =
+    colaboradoresTarefas.find((n) => normalizarSetor(n) === normalizarSetor(sessao?.nome)) ??
+    sessao?.nome ??
+    "";
+  useEffect(() => {
+    if (!soProprio) return;
+    setSecao((atual) => (atual === "por-colaborador" ? atual : "por-colaborador"));
+    if (meuNomeNasTarefas) setColaboradorFiltro(meuNomeNasTarefas);
+  }, [soProprio, meuNomeNasTarefas]);
 
   const setorDaSessao = normalizarSetor(sessao?.setor);
   const listaVisaoGeral =
@@ -656,6 +687,10 @@ function Indicadores() {
     const nomes = new Set(catalogo.setores.map(unificarSetor));
     for (const indicador of ativos) if (indicador.setor) nomes.add(unificarSetor(indicador.setor));
     for (const t of tarefas) if (t.departamento) nomes.add(t.departamento);
+    // O Fiscal é dividido por unidade: sai o genérico e ficam Jaguaquara e Maracás.
+    nomes.delete("Fiscal");
+    nomes.add("Fiscal Jaguaquara");
+    nomes.add("Fiscal Maracás");
     return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [catalogo.setores, ativos, tarefas]);
 
@@ -720,7 +755,7 @@ function Indicadores() {
           aria-label="Seções de indicadores"
           className="mt-6 flex flex-wrap gap-2 rounded-xl border border-[#D9E0EA] bg-white p-1.5"
         >
-          {SECOES_INDICADORES.map((s) => {
+          {SECOES_INDICADORES.filter((s) => !soProprio || s.valor === "por-colaborador").map((s) => {
             const Icone = s.icone;
             const ativa = secao === s.valor;
             return (
@@ -760,13 +795,17 @@ function Indicadores() {
           {secao === "por-colaborador" ? (
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-[#64748B]">Colaborador</Label>
-              <Select value={colaboradorFiltro} onValueChange={setColaboradorFiltro}>
+              <Select
+                value={colaboradorFiltro}
+                onValueChange={setColaboradorFiltro}
+                disabled={soProprio}
+              >
                 <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os colaboradores</SelectItem>
-                  {colaboradoresTarefas.map((n) => (
+                  {soProprio ? null : <SelectItem value="todos">Todos os colaboradores</SelectItem>}
+                  {(soProprio ? [meuNomeNasTarefas] : colaboradoresTarefas).filter(Boolean).map((n) => (
                     <SelectItem key={n} value={n}>
                       {n}
                     </SelectItem>
@@ -811,6 +850,7 @@ function Indicadores() {
           <TabelaMetricas
             titulo={secao === "por-colaborador" ? "Colaborador" : "Setor"}
             grupos={gruposTarefas}
+            ocultarVazio={soProprio}
           />
         )}
         </>

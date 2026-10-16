@@ -1,5 +1,7 @@
 import { History } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { getSession } from "@/lib/auth";
+import { ehUsuarioDaQualidade } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 
 /** Uma etapa do ciclo de vida do documento (publicação, aprovações, vigência). */
@@ -30,6 +32,9 @@ export function HistoricoAprovacao({
   etapas: EtapaHistorico[];
   className?: string;
 }) {
+  // Colaborador (fora da Qualidade) não vê o histórico de aprovação.
+  const sessao = getSession();
+  if (sessao?.nivelAcesso === "Colaborador" && !ehUsuarioDaQualidade(sessao)) return null;
   return (
     <Popover>
       <PopoverTrigger asChild>

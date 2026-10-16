@@ -32,6 +32,15 @@ export function SinoNotificacoes() {
     const email = sessao?.email;
     if (!email) return;
     try {
+      // Colaborador não recebe avisos de atraso, só as novas atualizações.
+      if (sessao?.nivelAcesso === "Colaborador") {
+        const lista = (await listarNotificacoes(email, 50))
+          .filter((n) => !n.titulo.endsWith("está atrasada"))
+          .slice(0, 20);
+        setItens(lista);
+        setNaoLidas(lista.filter((n) => !n.lida).length);
+        return;
+      }
       const [lista, total] = await Promise.all([
         listarNotificacoes(email, 20), contarNaoLidas(email),
       ]);

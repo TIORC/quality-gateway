@@ -123,6 +123,7 @@ export const SETOR_PARA_PREFIXO: Record<string, string> = {
   qualidade: "QUA",
   ti: "TI",
   "ti/desenvolvimento": "TI",
+  "ti / desenvolvimento": "TI",
   desenvolvimento: "TI",
   tecnico: "TEC",
   técnico: "TEC",

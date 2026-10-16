@@ -314,12 +314,12 @@
 /* Cards e superfícies claras ---------------------------------------- */
 
 .dark .bg-white {
-  background-color: color-mix(in oklab, var(--card) 60%, transparent);
+  background-color: color-mix(in oklab, var(--card) 80%, transparent);
 }
 
 /* Modo claro: cards brancos semitransparentes, para a marca d'água aparecer atrás. */
 :root:not(.dark) .bg-white {
-  background-color: rgb(255 255 255 / 0.6);
+  background-color: rgb(255 255 255 / 0.8);
 }
 
 .dark .bg-\[\#F8FAFC\] {

@@ -226,12 +226,27 @@ const SETORES_EQUIVALENTES: Record<string, string> = {
   "sucesso do cliente/relacionamento": "Sucesso do Cliente",
   ti: "TI - Desenvolvimento",
   "suporte ti": "TI - Desenvolvimento",
+  "ti / desenvolvimento": "TI - Desenvolvimento",
+  "ti/desenvolvimento": "TI - Desenvolvimento",
+  "ti - desenvolvimento": "TI - Desenvolvimento",
 };
 
-/** Nome único do setor: junta variações de grafia (ex.: "Sucesso do Cliente/ Relacionamento"). */
+/**
+ * Nome único do setor: junta variações de grafia (ex.: "Sucesso do Cliente/ Relacionamento").
+ * Vale para importações, para os dados já gravados e para os setores do cadastro.
+ *  - TI: sempre "TI - Desenvolvimento";
+ *  - Recepção: qualquer variação vira "Recepção";
+ *  - Fiscal: só "Fiscal Jaguaquara" e "Fiscal Maracás" (variações de grafia são unificadas).
+ */
 export function unificarSetor(nome: string): string {
   const limpo = nome.replace(/\s+/g, " ").trim();
-  return SETORES_EQUIVALENTES[semAcento(limpo)] ?? limpo;
+  const chave = semAcento(limpo);
+  const equivalente = SETORES_EQUIVALENTES[chave];
+  if (equivalente) return equivalente;
+  if (chave.startsWith("recepcao")) return "Recepção";
+  if (/^fiscal.*jaguaquara/.test(chave)) return "Fiscal Jaguaquara";
+  if (/^fiscal.*maracas/.test(chave)) return "Fiscal Maracás";
+  return limpo;
 }
 
 const COLUNAS_SELECT =

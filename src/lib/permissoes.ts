@@ -56,6 +56,9 @@ const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter(
   (rota) => rota !== "/configuracoes" && rota !== ROTA_LOGS,
 );
 
+/** Pessoas fora da gestão a quem foi liberada a tela de Configurações. */
+const EMAILS_COM_CONFIGURACOES = new Set(["kaylane.oliveira@orcoma.com.br"]);
+
 /** Colaborador: públicas + os próprios indicadores. */
 const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
 
@@ -85,6 +88,9 @@ export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> 
   if (!session) return new Set();
   const permitidas = rotasGerais(session);
   if (podeVerLogs(session)) permitidas.add(ROTA_LOGS);
+  if (EMAILS_COM_CONFIGURACOES.has(session.email.trim().toLowerCase())) {
+    permitidas.add("/configuracoes");
+  }
   // Rotas liberadas pelos grupos de acesso da pessoa.
   for (const rota of session.rotasDeGrupos ?? []) permitidas.add(rota as AppRoutePath);
   return permitidas;

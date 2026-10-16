@@ -3,6 +3,7 @@ import { Layers, Pencil, Plus, Search, Trash2, UserPlus, Users, Wrench } from "l
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { GruposAcessoTab, OrigensAcaoTab, TiposReuniaoTab } from "@/components/config-cadastros";
+import { CelulaTab } from "@/components/config-celula";
 import { ImportarColaboradoresDialog } from "@/components/importar-colaboradores-dialog";
 import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
@@ -75,6 +76,7 @@ const ABAS = [
   { valor: "grupos", rotulo: "Grupos de acesso" },
   { valor: "tipos-reuniao", rotulo: "Tipos de reunião" },
   { valor: "origens", rotulo: "Origens de ação" },
+  { valor: "celula", rotulo: "Célula" },
   { valor: "lixeira", rotulo: "Lixeira" },
 ] as const;
 
@@ -322,6 +324,9 @@ function Configuracoes() {
         </TabsContent>
         <TabsContent value="origens">
           <OrigensAcaoTab podeGerenciar={podeGerenciar} />
+        </TabsContent>
+        <TabsContent value="celula">
+          <CelulaTab setores={gerenciador.setores} colaboradores={colaboradores} />
         </TabsContent>
         <TabsContent value="lixeira">
           <TabEmConstrucao
@@ -1016,13 +1021,13 @@ function ColaboradoresTab({
                         {colaborador.cidade}
                       </td>
                       <td className="px-4 py-3 align-middle">
-                        <span className="rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
+                        <span className="whitespace-nowrap rounded-md bg-[#EEF2F7] px-2 py-1 text-[11px] font-medium text-[#1F2937]">
                           {colaborador.setor}
                         </span>
                       </td>
                       <td className="px-4 py-3 align-middle">
                         <span
-                          className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${corAcesso(colaborador.nivelAcesso ?? "")}`}
+                          className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${corAcesso(colaborador.nivelAcesso ?? "")}`}
                         >
                           {colaborador.nivelAcesso}
                         </span>
@@ -1032,7 +1037,7 @@ function ColaboradoresTab({
                       </td>
                       <td className="px-4 py-3 align-middle">
                         <span
-                          className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                          className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                             temLogin ? "bg-[#DCFCE7] text-[#166534]" : "bg-[#F1F5F9] text-[#64748B]"
                           }`}
                         >
