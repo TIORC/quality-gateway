@@ -2403,6 +2403,10 @@ export type Database = {
         Returns: boolean
       }
       pop_recalcular_contadores: { Args: { alvo: string }; Returns: undefined }
+      redefinir_senha_solicitar: {
+        Args: { p_email: string; p_token_hash: string }
+        Returns: string
+      }
       salvar_leitura_assistida: {
         Args: {
           acoes?: Json
