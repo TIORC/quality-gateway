@@ -1,0 +1,1 @@
+alter table public.usuarios add column if not exists senha_alterada_em timestamptz;

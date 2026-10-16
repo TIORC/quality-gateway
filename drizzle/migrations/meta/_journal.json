@@ -15,6 +15,27 @@
       "when": 1792005363595,
       "tag": "0001_logs_e_anotacoes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792101442869,
+      "tag": "0002_tarefas_gestta",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792101462243,
+      "tag": "0003_usuarios_senha_alterada_em",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792102115019,
+      "tag": "0004_tarefas_gestta_colunas_extras",
+      "breakpoints": true
     }
   ]
 }
