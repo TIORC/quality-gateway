@@ -1,6 +1,19 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { AlertTriangle, BarChart3, CalendarDays, Library, Plus, TrainFront } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  Calculator,
+  CalendarDays,
+  Download,
+  Library,
+  Network,
+  Plus,
+  TrainFront,
+  Upload,
+  Users,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type CSSProperties, type ReactNode } from "react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -9,6 +22,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DetalheIndicadorDrawer } from "@/components/indicador-detalhe-drawer";
@@ -54,6 +71,22 @@ import { ocorrenciaAtrasada } from "@/lib/ocorrencias";
 import { listarPlanos } from "@/lib/planos-base";
 import { normalizarSetor } from "@/lib/niveis-acesso";
 import type { PlanoAcao } from "@/lib/planos";
+import {
+  agruparMetricas,
+  calcularMetricas,
+  carregarTarefas,
+  importarTarefas,
+  lerPlanilhaAtrasadas,
+  lerPlanilhaTarefas,
+  pct,
+  tarefasDoIndicador,
+  tarefasEmCache,
+  unificarSetor,
+  type ChaveIndicador,
+  type MetricasTarefas,
+  type ResultadoImportacao,
+  type TarefaGestta,
+} from "@/lib/tarefas-gestta";
 
 export const Route = createFileRoute("/indicadores")({
   head: () => ({
@@ -62,22 +95,277 @@ export const Route = createFileRoute("/indicadores")({
   component: Indicadores,
 });
 
+type SecaoIndicadores = "por-setor" | "por-colaborador" | "por-celula" | "importar";
+
+const SECOES_INDICADORES: { valor: SecaoIndicadores; rotulo: string; icone: typeof Building2 }[] = [
+  { valor: "por-setor", rotulo: "Por Setor", icone: Building2 },
+  { valor: "por-colaborador", rotulo: "Por Colaborador", icone: Users },
+  { valor: "por-celula", rotulo: "Por Célula", icone: Network },
+  { valor: "importar", rotulo: "Importar", icone: Upload },
+];
+
+function cardsDeTarefas(m: MetricasTarefas): {
+  chave: ChaveIndicador;
+  label: string;
+  valor: string;
+  cor: string;
+  rodape: string;
+}[] {
+  const p = (n: number) => pct(n, m.total);
+  return [
+    { chave: "total", label: "Total de tarefas", valor: String(m.total), cor: "#1F2937", rodape: "vencimento no mês" },
+    { chave: "concluidas", label: "% concluídas", valor: p(m.concluidas), cor: "#1F2937", rodape: `${m.concluidas} tarefas` },
+    { chave: "noPrazo", label: "% concluídas no prazo", valor: p(m.noPrazo), cor: "#059669", rodape: `${m.noPrazo} tarefas` },
+    { chave: "foraDoPrazo", label: "% concluídas fora do prazo", valor: p(m.foraDoPrazo), cor: "#D97706", rodape: `${m.foraDoPrazo} tarefas` },
+    { chave: "impedimento", label: "% em impedimento", valor: p(m.impedimento), cor: "#D97706", rodape: `${m.impedimento} tarefas` },
+    { chave: "abertasEmAtraso", label: "% abertas em atraso", valor: p(m.abertasEmAtraso), cor: "#E11D48", rodape: `${m.abertasEmAtraso} tarefas` },
+    { chave: "antecipadas", label: "% antecipadas", valor: p(m.antecipadas), cor: "#059669", rodape: `${m.antecipadas} tarefas` },
+    {
+      chave: "concluidasNoMes",
+      label: "Concluídas no mês (todas competências)",
+      valor: String(m.concluidasNoMes),
+      cor: "#1F2937",
+      rodape: "data de conclusão no mês",
+    },
+    {
+      chave: "acumuladasAnteriores",
+      label: "Acumuladas concluídas no(s) mês(es) anterior(es)",
+      valor: String(m.acumuladasAnteriores),
+      cor: "#1F2937",
+      rodape: "vencimento em meses anteriores",
+    },
+  ];
+}
+
+function CardsTarefas({
+  metricas,
+  tarefas,
+  mes,
+}: {
+  metricas: MetricasTarefas;
+  tarefas: TarefaGestta[];
+  mes: string;
+}) {
+  const [aberto, setAberto] = useState<{ chave: ChaveIndicador; label: string } | null>(null);
+  return (
+    <>
+      <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {cardsDeTarefas(metricas).map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            onClick={() => setAberto({ chave: c.chave, label: c.label })}
+            className="block cursor-pointer rounded-xl text-left transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+          >
+            <SummaryCard
+              label={c.label}
+              value={c.valor}
+              valueClass={`mt-3 text-[30px] font-semibold leading-none ${
+                c.cor === "#1F2937" ? "text-[#1F2937] dark:text-white" : ""
+              }`}
+              accent={c.cor}
+              footer={c.rodape}
+              style={c.cor === "#1F2937" ? undefined : { color: c.cor }}
+            />
+          </button>
+        ))}
+      </section>
+      <DetalheTarefasSheet
+        aberto={aberto}
+        tarefas={tarefas}
+        mes={mes}
+        onFechar={() => setAberto(null)}
+      />
+    </>
+  );
+}
+
+const LIMITE_LINHAS = 100;
+
+/** Mesmas colunas, na mesma ordem, da planilha exportada do Gestta. */
+const COLUNAS_PLANILHA: { titulo: string; valor: (t: TarefaGestta) => string }[] = [
+  { titulo: "Id", valor: (t) => t.id },
+  { titulo: "Nome", valor: (t) => t.nome },
+  { titulo: "Tipo", valor: (t) => t.tipo },
+  { titulo: "Status", valor: (t) => t.status },
+  { titulo: "Cliente", valor: (t) => t.cliente },
+  { titulo: "CNPJ/CPF", valor: (t) => t.cnpjCpf },
+  { titulo: "Departamento", valor: (t) => t.departamento },
+  { titulo: "Responsável", valor: (t) => t.responsavel },
+  { titulo: "Vencimento", valor: (t) => formatarData(t.vencimento) },
+  { titulo: "Data Legal", valor: (t) => formatarData(t.dataLegal) },
+  { titulo: "Competência", valor: (t) => t.competencia },
+  { titulo: "Data de Conclusão", valor: (t) => formatarData(t.dataConclusao) },
+  { titulo: "Feito atrasado", valor: (t) => t.feitoAtrasado },
+  { titulo: "Feito com multa", valor: (t) => t.feitoComMulta },
+  { titulo: "Baixado", valor: (t) => t.baixado },
+];
+
+function formatarData(iso: string | null) {
+  if (!iso) return "—";
+  const [a, m, d] = iso.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+function DetalheTarefasSheet({
+  aberto,
+  tarefas,
+  mes,
+  onFechar,
+}: {
+  aberto: { chave: ChaveIndicador; label: string } | null;
+  tarefas: TarefaGestta[];
+  mes: string;
+  onFechar: () => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [limite, setLimite] = useState(LIMITE_LINHAS);
+  const chave = aberto?.chave;
+  useEffect(() => {
+    setBusca("");
+    setLimite(LIMITE_LINHAS);
+  }, [chave]);
+
+  const lista = useMemo(
+    () => (chave ? tarefasDoIndicador(tarefas, mes, chave) : []),
+    [tarefas, mes, chave],
+  );
+  const filtrada = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return lista;
+    return lista.filter((t) =>
+      `${t.nome} ${t.cliente} ${t.responsavel} ${t.departamento}`.toLowerCase().includes(q),
+    );
+  }, [lista, busca]);
+
+  return (
+    <Sheet open={aberto !== null} onOpenChange={(o) => (o ? undefined : onFechar())}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-[min(95vw,1200px)]">
+        <SheetHeader>
+          <SheetTitle>{aberto?.label}</SheetTitle>
+          <SheetDescription>
+            {lista.length} tarefa(s) em {mes.split("-").reverse().join("/")}
+          </SheetDescription>
+        </SheetHeader>
+        <Input
+          value={busca}
+          onChange={(e) => {
+            setBusca(e.target.value);
+            setLimite(LIMITE_LINHAS);
+          }}
+          placeholder="Buscar por tarefa, cliente, setor ou colaborador"
+          className="mt-4"
+        />
+        <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-md border border-[#CBD5E1]">
+          <table className="w-max min-w-full border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-[#E2E8F0] text-[#1F2937] dark:bg-[#1E293B] dark:text-white">
+              <tr>
+                {COLUNAS_PLANILHA.map((c) => (
+                  <th
+                    key={c.titulo}
+                    className="whitespace-nowrap border border-[#CBD5E1] px-2 py-1.5 text-left font-semibold"
+                  >
+                    {c.titulo}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtrada.slice(0, limite).map((t) => (
+                <tr key={t.id} className="odd:bg-transparent even:bg-[#94A3B8]/10">
+                  {COLUNAS_PLANILHA.map((c) => (
+                    <td key={c.titulo} className="whitespace-nowrap border border-[#CBD5E1]/60 px-2 py-1">
+                      {c.valor(t)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtrada.length === 0 ? (
+            <p className="py-10 text-center text-sm text-[#64748B]">Nenhuma tarefa encontrada.</p>
+          ) : null}
+          {filtrada.length > limite ? (
+            <div className="p-3">
+              <Button variant="outline" className="w-full" onClick={() => setLimite((l) => l + LIMITE_LINHAS)}>
+                Mostrar mais ({filtrada.length - limite} restantes)
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function TabelaMetricas({
+  titulo,
+  grupos,
+}: {
+  titulo: string;
+  grupos: { nome: string; metricas: MetricasTarefas }[];
+}) {
+  if (grupos.length === 0) {
+    return (
+      <p className="mt-6 rounded-xl border border-[#D9E0EA] bg-white px-6 py-10 text-center text-sm text-[#64748B]">
+        Nenhuma tarefa importada para esta competência. Use a aba Importar.
+      </p>
+    );
+  }
+  const cab = ["Total", "% concl.", "% no prazo", "% fora", "% imped.", "% atraso", "% antec.", "Concl. no mês", "Acum. ant."];
+  return (
+    <div className="mt-6 overflow-x-auto rounded-xl border border-[#D9E0EA] bg-white">
+      <table className="w-full text-sm">
+        <thead className="bg-[#F8FAFC] text-left text-[11px] uppercase tracking-wider text-[#64748B]">
+          <tr>
+            <th className="px-3 py-2">{titulo}</th>
+            {cab.map((c) => (
+              <th key={c} className="px-3 py-2 text-right">{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {grupos.map(({ nome, metricas: m }) => (
+            <tr key={nome} className="border-t border-[#E2E8F0]">
+              <td className="px-3 py-2 font-medium text-[#1F2937]">{nome}</td>
+              {[
+                String(m.total),
+                pct(m.concluidas, m.total),
+                pct(m.noPrazo, m.total),
+                pct(m.foraDoPrazo, m.total),
+                pct(m.impedimento, m.total),
+                pct(m.abertasEmAtraso, m.total),
+                pct(m.antecipadas, m.total),
+                String(m.concluidasNoMes),
+                String(m.acumuladasAnteriores),
+              ].map((v, i) => (
+                <td key={i} className="px-3 py-2 text-right tabular-nums text-[#475569]">{v}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface SummaryCardProps {
   label: string;
   value: string;
   valueClass: string;
   accent: string;
   footer: string;
+  style?: CSSProperties;
 }
 
-function SummaryCard({ label, value, valueClass, accent, footer }: SummaryCardProps) {
+function SummaryCard({ label, value, valueClass, accent, footer, style }: SummaryCardProps) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-[#D9E0EA] bg-white p-4">
       <span className="absolute inset-y-0 left-0 w-[3px]" style={{ backgroundColor: accent }} />
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
         {label}
       </p>
-      <p className={valueClass}>{value}</p>
+      <p className={valueClass} style={style}>{value}</p>
       <p className="mt-2 text-[13px] text-[#64748B]">{footer}</p>
     </div>
   );
@@ -100,6 +388,9 @@ function Indicadores() {
   const [erro, setErro] = useState("");
   const [setorFiltro, setSetorFiltro] = useState("todos");
   const [aba, setAba] = useState("visao-geral");
+  const [secao, setSecao] = useState<SecaoIndicadores>("por-setor");
+  const [tarefas, setTarefas] = useState<TarefaGestta[]>([]);
+  const [colaboradorFiltro, setColaboradorFiltro] = useState("todos");
   /** Período de exibição (cards, gráficos, resumo e histórico). */
   const [periodo, setPeriodo] = useState<FiltroPeriodo>({ modo: "ultimos12" });
   const [mesEscolhido, setMesEscolhido] = useState(mesReferenciaAtual());
@@ -219,24 +510,70 @@ function Indicadores() {
     setPeriodo({ modo: "ultimos12" });
   }
 
-  /** Números dos cards do topo: apurados, fechados e dentro do período. */
-  const resumo = useMemo(() => {
-    const noPeriodo = new Set(mesesPeriodo);
-    const fechadas = apuracoes.filter(
-      (a) => a.fechado && a.valorRealizado !== null && noPeriodo.has(a.mesReferencia),
-    );
-    const ultimoFechamento = fechadas.reduce(
-      (max, a) => (a.mesReferencia > max ? a.mesReferencia : max),
-      "",
-    );
-    const doMes = ultimoFechamento ? fechadas.filter((a) => a.mesReferencia === ultimoFechamento) : [];
-    return {
-      acompanhados: ativos.length,
-      dentro: doMes.filter((a) => a.status === "dentro_da_meta").length,
-      abaixo: doMes.filter((a) => a.status === "abaixo_da_meta").length,
-      ultimoFechamento,
+  useEffect(() => {
+    const abrir = (lista: TarefaGestta[]) => {
+      setTarefas(lista);
+      // Abre já no mês mais recente que tem tarefas (senão mostraria o mês atual, vazio).
+      const ultimo = lista.reduce((max, t) => (t.vencimento && t.vencimento.slice(0, 7) > max ? t.vencimento.slice(0, 7) : max), "");
+      if (ultimo) setMesEscolhido(ultimo);
     };
-  }, [ativos, apuracoes, mesesPeriodo]);
+    const emCache = tarefasEmCache();
+    if (emCache) abrir(emCache);
+    carregarTarefas()
+      .then((lista) => (emCache ? setTarefas(lista) : abrir(lista)))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));
+  }, []);
+
+  const controleImport = useMemo(
+    () => [0, 1, 2].map(() => ({ current: null }) as MutableRefObject<(() => Promise<void>) | null>),
+    [],
+  );
+  const [arquivosProntos, setArquivosProntos] = useState([false, false, false]);
+  const [importandoTudo, setImportandoTudo] = useState(false);
+  const marcarArquivo = useMemo(
+    () =>
+      [0, 1, 2].map((i) => (tem: boolean) =>
+        setArquivosProntos((atual) => (atual[i] === tem ? atual : atual.map((v, k) => (k === i ? tem : v)))),
+      ),
+    [],
+  );
+  /** Importa na ordem: Gestta, complementares e, por último, o relatório de atrasadas (só Ids novos). */
+  async function importarTudo() {
+    setImportandoTudo(true);
+    try {
+      for (const c of controleImport) await c.current?.();
+    } finally {
+      setImportandoTudo(false);
+    }
+  }
+
+  const tarefasFiltradas = useMemo(() => {
+    if (secao === "por-setor" && setorFiltro !== "todos")
+      return tarefas.filter((t) => t.departamento === setorFiltro);
+    if (secao === "por-colaborador" && colaboradorFiltro !== "todos")
+      return tarefas.filter((t) => t.responsavel === colaboradorFiltro);
+    return tarefas;
+  }, [tarefas, secao, setorFiltro, colaboradorFiltro]);
+  const metricasTarefas = useMemo(
+    () => calcularMetricas(tarefasFiltradas, mesEscolhido),
+    [tarefasFiltradas, mesEscolhido],
+  );
+  const gruposTarefas = useMemo(
+    () =>
+      agruparMetricas(
+        tarefasFiltradas,
+        mesEscolhido,
+        secao === "por-colaborador" ? "responsavel" : "departamento",
+      ),
+    [tarefasFiltradas, mesEscolhido, secao],
+  );
+  const colaboradoresTarefas = useMemo(
+    () =>
+      [...new Set(tarefas.map((t) => t.responsavel).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, "pt-BR"),
+      ),
+    [tarefas],
+  );
 
   const setorDaSessao = normalizarSetor(sessao?.setor);
   const listaVisaoGeral =
@@ -316,10 +653,11 @@ function Indicadores() {
   }
 
   const setoresDoFiltro = useMemo(() => {
-    const nomes = new Set(catalogo.setores);
-    for (const indicador of ativos) if (indicador.setor) nomes.add(indicador.setor);
+    const nomes = new Set(catalogo.setores.map(unificarSetor));
+    for (const indicador of ativos) if (indicador.setor) nomes.add(unificarSetor(indicador.setor));
+    for (const t of tarefas) if (t.departamento) nomes.add(t.departamento);
     return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [catalogo.setores, ativos]);
+  }, [catalogo.setores, ativos, tarefas]);
 
   function conteudoLista(lista: Indicador[], vazio: ReactNode) {
     if (carregando) {
@@ -376,191 +714,113 @@ function Indicadores() {
             </p>
           </div>
 
-          {podeGerenciar ? (
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => setBibliotecaAberta(true)}>
-                <Library className="h-4 w-4" />
-                Usar indicador pronto
-              </Button>
-              <Button onClick={() => abrirFormulario(null)}>
-                <Plus className="h-4 w-4" />
-                Novo indicador
-              </Button>
-            </div>
-          ) : null}
         </div>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            label="Indicadores acompanhados"
-            value={String(resumo.acompanhados)}
-            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937]"
-            accent="#1F2937"
-            footer="indicadores ativos em toda a operação"
-          />
-          <SummaryCard
-            label="Dentro da meta"
-            value={String(resumo.dentro)}
-            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#059669]"
-            accent="#059669"
-            footer={
-              resumo.ultimoFechamento
-                ? `no fechamento de ${rotuloMes(resumo.ultimoFechamento)}`
-                : "sem fechamento ainda"
-            }
-          />
-          <SummaryCard
-            label="Abaixo da meta"
-            value={String(resumo.abaixo)}
-            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#E11D48]"
-            accent="#E11D48"
-            footer="exigem plano de ação vinculado"
-          />
-          <SummaryCard
-            label="Último fechamento"
-            value={resumo.ultimoFechamento ? rotuloMes(resumo.ultimoFechamento) : "—"}
-            valueClass="mt-3 text-[30px] font-semibold leading-none text-[#4F46E5]"
-            accent="#4F46E5"
-            footer={
-              resumo.ultimoFechamento
-                ? ehPadraoPeriodo
-                  ? "mês de referência fechado"
-                  : `fechado dentro de ${rotuloPeriodoAtual}`
-                : ehPadraoPeriodo
-                  ? "nenhum mês fechado até agora"
-                  : `nenhum fechamento em ${rotuloPeriodoAtual}`
-            }
-          />
-        </section>
+        <nav
+          aria-label="Seções de indicadores"
+          className="mt-6 flex flex-wrap gap-2 rounded-xl border border-[#D9E0EA] bg-white p-1.5"
+        >
+          {SECOES_INDICADORES.map((s) => {
+            const Icone = s.icone;
+            const ativa = secao === s.valor;
+            return (
+              <button
+                key={s.valor}
+                type="button"
+                aria-current={ativa ? "page" : undefined}
+                onClick={() => setSecao(s.valor)}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  ativa
+                    ? "bg-[#1E293B] text-white shadow-sm"
+                    : "text-[#475569] hover:bg-[#F1F5F9] hover:text-[#1F2937]"
+                }`}
+              >
+                <Icone className="h-4 w-4" />
+                {s.rotulo}
+              </button>
+            );
+          })}
+        </nav>
 
-        <Tabs value={aba} onValueChange={setAba}>
-          <div className="mt-6 flex flex-col gap-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <TabsList>
-                <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
-                <TabsTrigger value="meu-setor">Meu setor</TabsTrigger>
-                <TabsTrigger value="ocorrencias">Ocorrências</TabsTrigger>
-              </TabsList>
-
-              <Select value={setorFiltro} onValueChange={setSetorFiltro}>
+        {secao !== "importar" ? (
+        <>
+        <div className="mt-6 flex flex-wrap items-end gap-4 rounded-xl border border-[#D9E0EA] bg-white p-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="competencia-indicadores" className="text-xs text-[#64748B]">
+              Competência (importação atual)
+            </Label>
+            <Input
+              id="competencia-indicadores"
+              type="month"
+              value={mesEscolhido}
+              onChange={(e) => setMesEscolhido(e.target.value)}
+              className="w-[180px]"
+            />
+          </div>
+          {secao === "por-colaborador" ? (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-[#64748B]">Colaborador</Label>
+              <Select value={colaboradorFiltro} onValueChange={setColaboradorFiltro}>
                 <SelectTrigger className="w-full sm:w-[220px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os setores</SelectItem>
-                  {setoresDoFiltro.map((setor) => (
-                    <SelectItem key={setor} value={setor}>
-                      {setor}
+                  <SelectItem value="todos">Todos os colaboradores</SelectItem>
+                  {colaboradoresTarefas.map((n) => (
+                    <SelectItem key={n} value={n}>
+                      {n}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Filtro de período: recorta resumo, cards, gráficos e histórico. */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-card px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground shadow-sm">
-                Período
-              </span>
-              <Select value={periodo.modo} onValueChange={mudarModoPeriodo}>
-                <SelectTrigger className="w-full sm:w-[190px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODOS_PERIODO.map((m) => (
-                    <SelectItem key={m.valor} value={m.valor}>
-                      {m.rotulo}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {periodo.modo === "mes" ? (
-                <Select
-                  value={mesEscolhido}
-                  onValueChange={(valor) => {
-                    setMesEscolhido(valor);
-                    setPeriodo({ modo: "mes", mes: valor });
-                  }}
-                >
-                  <SelectTrigger className="w-full sm:w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mesesDisponiveis.map((mes) => (
-                      <SelectItem key={mes} value={mes}>
-                        {rotuloMes(mes)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-
-              {periodo.modo === "ano" ? (
-                <Select
-                  value={String(anoEscolhido)}
-                  onValueChange={(valor) => {
-                    const ano = Number(valor);
-                    setAnoEscolhido(ano);
-                    setPeriodo({ modo: "ano", ano });
-                  }}
-                >
-                  <SelectTrigger className="w-full sm:w-[110px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {anosDisponiveis.map((ano) => (
-                      <SelectItem key={ano} value={String(ano)}>
-                        {ano}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-
-              {periodo.modo === "intervalo" ? (
-                <Popover open={popoverIntervalo} onOpenChange={setPopoverIntervalo}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline">
-                      <CalendarDays className="h-4 w-4" />
-                      {periodo.inicio ? rotuloPeriodoAtual : "Selecionar datas"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="range"
-                      selected={intervaloCal}
-                      onSelect={(range) => aoSelecionarIntervalo(range)}
-                      numberOfMonths={2}
-                      locale={ptBR}
-                      disabled={{ after: new Date() }}
-                      resetOnSelect
-                    />
-                    <p className="border-t border-[#E9EEF5] px-4 py-2.5 text-[12px] text-[#64748B]">
-                      1º clique marca a data inicial; arraste o mouse e dê o 2º clique para marcar a final.
-                    </p>
-                  </PopoverContent>
-                </Popover>
-              ) : null}
-
-              {!ehPadraoPeriodo ? (
-                <Button variant="ghost" size="sm" onClick={limparPeriodo}>
-                  Limpar
-                </Button>
-              ) : null}
-            </div>
+          ) : secao === "por-setor" ? (
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-[#64748B]">Setor</Label>
+            <Select value={setorFiltro} onValueChange={setSetorFiltro}>
+              <SelectTrigger className="w-full sm:w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os setores</SelectItem>
+                {setoresDoFiltro.map((setor) => (
+                  <SelectItem key={setor} value={setor}>
+                    {setor}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          ) : null}
+          <Button disabled title="Ainda sem integração neste projeto">
+            <Calculator className="h-4 w-4" />
+            Recalcular snapshot
+          </Button>
+          <Button variant="outline" disabled title="Ainda sem integração neste projeto">
+            <Download className="h-4 w-4" />
+            Exportar snapshot
+          </Button>
+        </div>
+        <CardsTarefas metricas={metricasTarefas} tarefas={tarefasFiltradas} mes={mesEscolhido} />
+        {secao === "por-celula" ? (
+          <p className="mt-6 rounded-xl border border-[#D9E0EA] bg-white px-6 py-10 text-center text-sm text-[#64748B]">
+            As células ainda não foram definidas. Quando você cadastrar quem faz parte de cada célula, os
+            números aparecerão aqui.
+          </p>
+        ) : (
+          <TabelaMetricas
+            titulo={secao === "por-colaborador" ? "Colaborador" : "Setor"}
+            grupos={gruposTarefas}
+          />
+        )}
+        </>
+        ) : null}
+
+        {secao === "por-setor" ? (
+        <Tabs value={aba} onValueChange={setAba}>
 
           <TabsContent value="visao-geral">
-            {conteudoLista(
-              listaVisaoGeral,
-              <EstadoVazioIndicadores
-                podeGerenciar={podeGerenciar}
-                temIndicadores={ativos.length > 0}
-                onCriar={() => abrirFormulario(null)}
-                onBiblioteca={() => setBibliotecaAberta(true)}
-              />,
-            )}
+            {conteudoLista(listaVisaoGeral, null)}
           </TabsContent>
 
           <TabsContent value="meu-setor">
@@ -599,6 +859,48 @@ function Indicadores() {
             <OcorrenciasIndicadores />
           </TabsContent>
         </Tabs>
+        ) : secao === "importar" ? (
+          <div className="space-y-6">
+            <ImportadorTarefas
+              controle={controleImport[0]}
+              aoMudarArquivo={marcarArquivo[0]}
+              titulo="Tarefas - Gestta"
+              descricao="Envie a planilha de tarefas exportada do Gestta (.xlsx). Tarefas já importadas (mesmo Id) não são duplicadas: se algo mudou, como status ou data de conclusão, a tarefa é atualizada."
+              totalImportadas={tarefas.length}
+              aoConcluir={(r, lista) => {
+                setTarefas(lista);
+                if (r.mesPredominante) setMesEscolhido(r.mesPredominante);
+              }}
+            />
+            <ImportadorTarefas
+              controle={controleImport[1]}
+              aoMudarArquivo={marcarArquivo[1]}
+              titulo="Tarefas complementares (concluídas de meses anteriores)"
+              descricao="Envie o relatório de tarefas concluídas de outros meses (.xlsx). Só entram tarefas com Id novo; as que já existem são ignoradas."
+              atrasadas
+              totalImportadas={tarefas.length}
+              aoConcluir={(_, lista) => setTarefas(lista)}
+            />
+            <ImportadorTarefas
+              controle={controleImport[2]}
+              aoMudarArquivo={marcarArquivo[2]}
+              titulo="Tarefas acumuladas (abertas / atrasadas / impedimentos)"
+              descricao="Envie o Relatório de tarefas atrasadas (.xlsx, tarefas abertas e em impedimento). Só entram tarefas com Id novo; as que já existem são ignoradas."
+              atrasadas
+              totalImportadas={tarefas.length}
+              aoConcluir={(_, lista) => setTarefas(lista)}
+            />
+            <div className="flex justify-end">
+              <Button
+                disabled={importandoTudo || !arquivosProntos.some(Boolean)}
+                onClick={() => void importarTudo()}
+              >
+                <Upload className="h-4 w-4" />
+                {importandoTudo ? "Importando tudo..." : "Importar tudo"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {podeGerenciar ? (
@@ -821,22 +1123,6 @@ function EstadoVazioIndicadores({ podeGerenciar, temIndicadores, onCriar, onBibl
         <h3 className="mt-4 text-base font-semibold text-[#1F2937]">
           {temIndicadores ? "Nenhum indicador neste setor" : "Nenhum indicador cadastrado aqui"}
         </h3>
-        <p className="mt-1.5 max-w-lg text-sm text-[#64748B]">
-          Use um modelo pronto da biblioteca ou crie o indicador do zero: a Qualidade define a meta e como
-          ele é apurado, e o setor lança o resultado todo mês.
-        </p>
-        {podeGerenciar ? (
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <Button variant="outline" onClick={onBiblioteca}>
-              <Library className="h-4 w-4" />
-              Usar indicador pronto
-            </Button>
-            <Button onClick={onCriar}>
-              <Plus className="h-4 w-4" />
-              Criar indicador
-            </Button>
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -988,3 +1274,168 @@ function OcorrenciasIndicadores() {
 }
 
 
+
+function ImportadorTarefas({
+  titulo,
+  descricao,
+  totalImportadas,
+  aoConcluir,
+  atrasadas = false,
+  controle,
+  aoMudarArquivo,
+}: {
+  atrasadas?: boolean;
+  controle?: MutableRefObject<(() => Promise<void>) | null>;
+  aoMudarArquivo?: (temArquivo: boolean) => void;
+  titulo: string;
+  descricao: string;
+  totalImportadas: number;
+  aoConcluir: (r: ResultadoImportacao, lista: TarefaGestta[]) => void;
+}) {
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const entradaRef = useRef<HTMLInputElement>(null);
+  // Evita que o navegador abra o arquivo se ele for solto fora da área.
+  useEffect(() => {
+    const bloquear = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", bloquear);
+    window.addEventListener("drop", bloquear);
+    return () => {
+      window.removeEventListener("dragover", bloquear);
+      window.removeEventListener("drop", bloquear);
+    };
+  }, []);
+  const [arrastando, setArrastando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [progresso, setProgresso] = useState<{ etapa: string; valor: number } | null>(null);
+  const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
+
+  async function importar() {
+    if (!arquivo || importando) return;
+    setImportando(true);
+    setResultado(null);
+    setProgresso({ etapa: "Lendo a planilha...", valor: 5 });
+    try {
+      const { tarefas: lidas, duplicadasNoArquivo } = await (atrasadas ? lerPlanilhaAtrasadas : lerPlanilhaTarefas)(arquivo);
+      if (lidas.length === 0) throw new Error("Nenhuma tarefa encontrada na planilha.");
+      setProgresso({ etapa: `Verificando ${lidas.length} tarefas já importadas...`, valor: 15 });
+      const r = await importarTarefas(lidas, duplicadasNoArquivo, (feito, total) =>
+        setProgresso({
+          etapa: `Gravando tarefas: ${feito} de ${total}`,
+          valor: 20 + (total === 0 ? 70 : Math.round((feito / total) * 70)),
+        }),
+        atrasadas,
+      );
+      setProgresso({ etapa: "Atualizando os números...", valor: 95 });
+      setResultado(r);
+      aoConcluir(r, await carregarTarefas());
+      setArquivo(null);
+      toast.success("Importação concluída.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao importar a planilha.");
+    } finally {
+      setImportando(false);
+      setProgresso(null);
+    }
+  }
+
+  const importarRef = useRef(importar);
+  importarRef.current = importar;
+  useEffect(() => {
+    if (!controle) return;
+    controle.current = () => importarRef.current();
+    return () => {
+      controle.current = null;
+    };
+  }, [controle]);
+  useEffect(() => {
+    aoMudarArquivo?.(arquivo !== null);
+  }, [arquivo, aoMudarArquivo]);
+
+  return (
+    <section className="rounded-xl border border-[#D9E0EA] bg-white p-6">
+      <h3 className="text-base font-semibold text-[#1F2937]">{titulo}</h3>
+      <p className="mt-1 text-sm text-[#64748B]">{descricao}</p>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => entradaRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            entradaRef.current?.click();
+          }
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setArrastando(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "copy";
+          setArrastando(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastando(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setArrastando(false);
+          const f = e.dataTransfer.files?.[0];
+          if (!f) return;
+          if (!/\.(xlsx|xls|csv)$/i.test(f.name)) {
+            toast.error("Envie um arquivo .xlsx, .xls ou .csv.");
+            return;
+          }
+          setArquivo(f);
+        }}
+        className={`mt-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center text-sm text-[#475569] hover:bg-[#F1F5F9] ${
+          arrastando ? "border-[#2563EB] bg-[#EFF6FF]" : "border-[#CBD5E1] bg-[#F8FAFC]"
+        }`}
+      >
+        <Upload className="pointer-events-none h-6 w-6 text-[#94A3B8]" />
+        <span className="pointer-events-none">
+          {arquivo ? arquivo.name : "Arraste o arquivo aqui ou clique para escolher"}
+        </span>
+        <input
+          ref={entradaRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="sr-only"
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <Button disabled={!arquivo || importando} onClick={() => void importar()}>
+          <Upload className="h-4 w-4" />
+          {importando ? "Importando..." : "Importar tarefas"}
+        </Button>
+        <span className="text-sm text-[#64748B]">{totalImportadas} tarefas já importadas</span>
+      </div>
+      {progresso ? (
+        <div className="mt-4 max-w-xl">
+          <div className="mb-1.5 flex justify-between text-sm text-[#475569]">
+            <span>{progresso.etapa}</span>
+            <span className="tabular-nums">{progresso.valor}%</span>
+          </div>
+          <Progress value={progresso.valor} />
+        </div>
+      ) : null}
+      {resultado ? (
+        <ul className="mt-4 space-y-1 text-sm text-[#475569]">
+          <li>Linhas lidas: {resultado.lidas}</li>
+          <li>Novas: {resultado.novas}</li>
+          <li>Atualizadas: {resultado.atualizadas}</li>
+          <li>Já existiam, sem mudança (ignoradas): {resultado.ignoradas}</li>
+          <li>Repetidas dentro do arquivo: {resultado.duplicadasNoArquivo}</li>
+        </ul>
+      ) : null}
+    </section>
+  );
+}
