@@ -44,6 +44,7 @@ function Login() {
   const [carregando, setCarregando] = useState(false);
   const [recuperarAberto, setRecuperarAberto] = useState(false);
   const [primeiroAcessoAberto, setPrimeiroAcessoAberto] = useState(false);
+  const [modoLink, setModoLink] = useState<"primeiro-acesso" | "redefinir">("primeiro-acesso");
   const [emailPrimeiroAcesso, setEmailPrimeiroAcesso] = useState("");
   const [erroPrimeiroAcesso, setErroPrimeiroAcesso] = useState("");
   const [enviandoPrimeiroAcesso, setEnviandoPrimeiroAcesso] = useState(false);
@@ -81,7 +82,8 @@ function Login() {
     setCarregando(false);
   }
 
-  function abrirPrimeiroAcesso() {
+  function abrirPrimeiroAcesso(modo: "primeiro-acesso" | "redefinir" = "primeiro-acesso") {
+    setModoLink(modo);
     setEmailPrimeiroAcesso(email);
     setErroPrimeiroAcesso("");
     setEmailEnviado("");
@@ -96,7 +98,7 @@ function Login() {
     }
     setErroPrimeiroAcesso("");
     setEnviandoPrimeiroAcesso(true);
-    const resultado = await solicitarPrimeiroAcesso(emailPrimeiroAcesso);
+    const resultado = await solicitarPrimeiroAcesso(emailPrimeiroAcesso, modoLink);
     setEnviandoPrimeiroAcesso(false);
     if (resultado.ok) {
       setEmailEnviado(emailPrimeiroAcesso.trim());
@@ -193,7 +195,7 @@ function Login() {
             <div className="text-center">
               <button
                 type="button"
-                onClick={() => setRecuperarAberto(true)}
+                onClick={() => abrirPrimeiroAcesso("redefinir")}
                 className="text-sm text-brand-muted transition hover:text-brand-foreground"
               >
                 Esqueci minha senha
@@ -240,10 +242,11 @@ function Login() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Primeiro acesso</DialogTitle>
+            <DialogTitle>{modoLink === "redefinir" ? "Esqueci minha senha" : "Primeiro acesso"}</DialogTitle>
             <DialogDescription>
-              Informe o seu e-mail corporativo. Se a conta existir e a senha ainda não tiver sido
-              criada, enviaremos um link para você definir a sua senha.
+              {modoLink === "redefinir"
+                ? "Informe o seu e-mail corporativo. Enviaremos um link para você criar uma nova senha."
+                : "Informe o seu e-mail corporativo. Se a conta existir e a senha ainda não tiver sido criada, enviaremos um link para você definir a sua senha."}
             </DialogDescription>
           </DialogHeader>
 
