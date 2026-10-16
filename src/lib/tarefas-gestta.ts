@@ -32,6 +32,7 @@ export interface TarefaGestta {
   feitoAtrasado: string;
   feitoComMulta: string;
   baixado: string;
+  origem: string; // gestta | complementar | acumulada
 }
 
 export interface ResultadoImportacao {
@@ -135,6 +136,7 @@ export async function lerPlanilhaTarefas(
       feitoAtrasado: textoCelula(pega(linha, "feitoAtrasado")),
       feitoComMulta: textoCelula(pega(linha, "feitoComMulta")),
       baixado: textoCelula(pega(linha, "baixado")),
+      origem: "gestta",
     });
   }
   return { tarefas: [...porId.values()], duplicadasNoArquivo };
@@ -166,6 +168,7 @@ function statusAtrasada(v: string): string {
 /** Lê os relatórios "Tarefa - ..." (atrasadas: abertas/impedimentos; concluídas de outros meses). */
 export async function lerPlanilhaAtrasadas(
   arquivo: File,
+  origem: "complementar" | "acumulada" = "acumulada",
 ): Promise<{ tarefas: TarefaGestta[]; duplicadasNoArquivo: number }> {
   const XLSX = await import("xlsx");
   const wb = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
@@ -212,6 +215,7 @@ export async function lerPlanilhaAtrasadas(
       feitoAtrasado: "",
       feitoComMulta: textoCelula(pega(linha, "feitoComMulta")),
       baixado: "",
+      origem,
     });
   }
   return { tarefas: [...porId.values()], duplicadasNoArquivo };
@@ -250,7 +254,7 @@ export function unificarSetor(nome: string): string {
 }
 
 const COLUNAS_SELECT =
-  "id,nome,tipo,status,cliente,departamento,responsavel,vencimento,data_conclusao,competencia,cnpj_cpf,data_legal,feito_atrasado,feito_com_multa,baixado";
+  "id,nome,tipo,status,cliente,departamento,responsavel,vencimento,data_conclusao,competencia,cnpj_cpf,data_legal,feito_atrasado,feito_com_multa,baixado,origem";
 const PAGINAS_SIMULTANEAS = 6;
 
 let cacheTarefas: TarefaGestta[] | null = null;
@@ -263,14 +267,20 @@ export function tarefasEmCache(): TarefaGestta[] | null {
 /** Todas as tarefas já gravadas, buscando várias páginas ao mesmo tempo. */
 export async function carregarTarefas(): Promise<TarefaGestta[]> {
   const cliente = clienteLivre();
+  let colunas = COLUNAS_SELECT;
   const consultaPagina = (de: number) =>
     cliente
       .from(TABELA)
-      .select(COLUNAS_SELECT)
+      .select(colunas)
       .order("id")
       .range(de, de + TAMANHO_PAGINA - 1);
 
-  const primeira = await consultaPagina(0);
+  let primeira = await consultaPagina(0);
+  if (primeira.error && !tabelaAusente(primeira.error)) {
+    // Migration da coluna "origem" ainda não aplicada: carrega sem ela.
+    colunas = COLUNAS_SELECT.replace(",origem", "");
+    primeira = await consultaPagina(0);
+  }
   if (primeira.error) {
     if (tabelaAusente(primeira.error)) return [];
     throw traduzErro(primeira.error);
@@ -315,6 +325,7 @@ export async function carregarTarefas(): Promise<TarefaGestta[]> {
         feitoAtrasado: r.feito_atrasado ?? "",
         feitoComMulta: r.feito_com_multa ?? "",
         baixado: r.baixado ?? "",
+        origem: r.origem ?? "gestta",
       });
     }
   }
@@ -394,10 +405,16 @@ export async function importarTarefas(
       feito_atrasado: t.feitoAtrasado,
       feito_com_multa: t.feitoComMulta,
       baixado: t.baixado,
+      origem: t.origem,
       importado_em: agora,
     }));
     const { error } = await cliente.from(TABELA).upsert(lote, { onConflict: "id" });
     if (error) {
+      if (/origem/i.test(error.message ?? "")) {
+        throw new Error(
+          "Aplique a migration 20261016040000_tarefas_gestta_origem.sql (coluna origem) antes de importar.",
+        );
+      }
       if (tabelaAusente(error)) {
         throw new Error(
           "A tabela tarefas_gestta ainda não existe no banco. Aplique a migration 20261015010000_tarefas_gestta.sql.",
@@ -448,6 +465,18 @@ function ehAcumuladaConcluida(t: TarefaGestta, mes: string): boolean {
   return t.vencimento.slice(0, 7) < mes && t.dataConclusao.slice(0, 7) <= mes;
 }
 
+/** Acumulada (relatório de atrasadas): qualquer status, vencimento em mês anterior ao escolhido. */
+function ehAcumuladaDoMes(t: TarefaGestta, mes: string): boolean {
+  return t.origem === "acumulada" && !!t.vencimento && t.vencimento.slice(0, 7) < mes;
+}
+
+/** Complementar: concluída no mês escolhido, com vencimento em mês anterior. */
+function ehComplementarDoMes(t: TarefaGestta, mes: string): boolean {
+  if (t.origem !== "complementar" || t.status !== "CONCLUIDO" || !t.dataConclusao || !t.vencimento)
+    return false;
+  return t.dataConclusao.slice(0, 7) === mes && t.vencimento.slice(0, 7) < mes;
+}
+
 export function calcularMetricas(
   tarefas: TarefaGestta[],
   mes: string,
@@ -466,14 +495,11 @@ export function calcularMetricas(
   };
   for (const t of tarefas) {
     const concluida = t.status === "CONCLUIDO";
-    if (concluida && t.dataConclusao) {
-      const mesConclusao = t.dataConclusao.slice(0, 7);
-      if (mesConclusao === mes) m.concluidasNoMes += 1;
-      if (ehAcumuladaConcluida(t, mes)) {
-        m.acumuladasAnteriores += 1;
-        if (mesConclusao === mes && t.dataConclusao > (t.vencimento ?? "")) m.foraDoPrazo += 1;
-      }
-    }
+    // Cada origem alimenta só os seus cards: complementar → concluídas no mês;
+    // acumulada → acumuladas; Gestta → os demais.
+    if (ehComplementarDoMes(t, mes)) m.concluidasNoMes += 1;
+    if (ehAcumuladaDoMes(t, mes)) m.acumuladasAnteriores += 1;
+    if (t.origem !== "gestta") continue;
     if (!t.vencimento || t.vencimento.slice(0, 7) !== mes) continue;
     m.total += 1;
     if (concluida) {
@@ -513,10 +539,9 @@ export function tarefasDoIndicador(
   return tarefas.filter((t) => {
     const concluida = t.status === "CONCLUIDO";
     const mesConclusao = concluida && t.dataConclusao ? t.dataConclusao.slice(0, 7) : "";
-    if (chave === "concluidasNoMes") return mesConclusao === mes;
-    if (chave === "acumuladasAnteriores") return ehAcumuladaConcluida(t, mes);
-    if (chave === "foraDoPrazo" && ehAcumuladaConcluida(t, mes))
-      return mesConclusao === mes && t.dataConclusao! > t.vencimento!;
+    if (chave === "concluidasNoMes") return ehComplementarDoMes(t, mes);
+    if (chave === "acumuladasAnteriores") return ehAcumuladaDoMes(t, mes);
+    if (t.origem !== "gestta") return false;
     if (!t.vencimento || t.vencimento.slice(0, 7) !== mes) return false;
     switch (chave) {
       case "total":

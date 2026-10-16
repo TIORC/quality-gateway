@@ -918,6 +918,7 @@ function Indicadores() {
               titulo="Tarefas complementares (concluídas de meses anteriores)"
               descricao="Envie o relatório de tarefas concluídas de outros meses (.xlsx). Só entram tarefas com Id novo; as que já existem são ignoradas."
               atrasadas
+              origemRelatorio="complementar"
               totalImportadas={tarefas.length}
               aoConcluir={(_, lista) => setTarefas(lista)}
             />
@@ -1321,10 +1322,12 @@ function ImportadorTarefas({
   totalImportadas,
   aoConcluir,
   atrasadas = false,
+  origemRelatorio = "acumulada",
   controle,
   aoMudarArquivo,
 }: {
   atrasadas?: boolean;
+  origemRelatorio?: "complementar" | "acumulada";
   controle?: MutableRefObject<(() => Promise<void>) | null>;
   aoMudarArquivo?: (temArquivo: boolean) => void;
   titulo: string;
@@ -1357,7 +1360,7 @@ function ImportadorTarefas({
     setResultado(null);
     setProgresso({ etapa: "Lendo a planilha...", valor: 5 });
     try {
-      const { tarefas: lidas, duplicadasNoArquivo } = await (atrasadas ? lerPlanilhaAtrasadas : lerPlanilhaTarefas)(arquivo);
+      const { tarefas: lidas, duplicadasNoArquivo } = await (atrasadas ? (a: File) => lerPlanilhaAtrasadas(a, origemRelatorio) : lerPlanilhaTarefas)(arquivo);
       if (lidas.length === 0) throw new Error("Nenhuma tarefa encontrada na planilha.");
       setProgresso({ etapa: `Verificando ${lidas.length} tarefas já importadas...`, valor: 15 });
       const r = await importarTarefas(lidas, duplicadasNoArquivo, (feito, total) =>
