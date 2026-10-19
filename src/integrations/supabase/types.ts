@@ -750,6 +750,104 @@ export type Database = {
         }
         Relationships: []
       }
+      pesquisas_satisfacao: {
+        Row: {
+          created_at: string
+          empresa: string
+          id: string
+          nome_pessoa: string
+          nota_atendimento: number
+          nota_orientacoes: number
+          nota_prazos: number
+          nota_qualidade: number
+          nota_recomendacao: number
+          sugestao: string
+          unidade: string
+        }
+        Insert: {
+          created_at?: string
+          empresa?: string
+          id?: string
+          nome_pessoa?: string
+          nota_atendimento: number
+          nota_orientacoes: number
+          nota_prazos: number
+          nota_qualidade: number
+          nota_recomendacao: number
+          sugestao?: string
+          unidade?: string
+        }
+        Update: {
+          created_at?: string
+          empresa?: string
+          id?: string
+          nome_pessoa?: string
+          nota_atendimento?: number
+          nota_orientacoes?: number
+          nota_prazos?: number
+          nota_qualidade?: number
+          nota_recomendacao?: number
+          sugestao?: string
+          unidade?: string
+        }
+        Relationships: []
+      }
+      pesquisas_modelos: {
+        Row: {
+          created_at: string
+          criado_por: string
+          descricao: string
+          id: string
+          perguntas: Json
+          titulo: string
+        }
+        Insert: {
+          created_at?: string
+          criado_por?: string
+          descricao?: string
+          id?: string
+          perguntas?: Json
+          titulo?: string
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string
+          descricao?: string
+          id?: string
+          perguntas?: Json
+          titulo?: string
+        }
+        Relationships: []
+      }
+      pesquisas_respostas: {
+        Row: {
+          created_at: string
+          id: string
+          modelo_id: string
+          respostas: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          modelo_id: string
+          respostas?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          modelo_id?: string
+          respostas?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pesquisas_respostas_modelo_id_fkey"
+            columns: ["modelo_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas_modelos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notificacoes: {
         Row: {
           autor_email: string

@@ -19,6 +19,7 @@ import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MeuPerfilRouteImport } from './routes/meu-perfil'
 import { Route as OcorrenciasRouteImport } from './routes/ocorrencias'
 import { Route as PainelRouteImport } from './routes/painel'
+import { Route as PesquisasDeSatisfacaoRouteImport } from './routes/pesquisas-de-satisfacao'
 import { Route as PlanosDeAcaoRouteImport } from './routes/planos-de-acao'
 import { Route as PoliticasRouteImport } from './routes/politicas'
 import { Route as PopsRouteImport } from './routes/pops'
@@ -78,6 +79,11 @@ const OcorrenciasRoute = OcorrenciasRouteImport.update({
 const PainelRoute = PainelRouteImport.update({
   id: '/painel',
   path: '/painel',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PesquisasDeSatisfacaoRoute = PesquisasDeSatisfacaoRouteImport.update({
+  id: '/pesquisas-de-satisfacao',
+  path: '/pesquisas-de-satisfacao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlanosDeAcaoRoute = PlanosDeAcaoRouteImport.update({
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
+  '/pesquisas-de-satisfacao': typeof PesquisasDeSatisfacaoRoute
   '/planos-de-acao': typeof PlanosDeAcaoRoute
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
+  '/pesquisas-de-satisfacao': typeof PesquisasDeSatisfacaoRoute
   '/planos-de-acao': typeof PlanosDeAcaoRoute
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/meu-perfil': typeof MeuPerfilRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
+  '/pesquisas-de-satisfacao': typeof PesquisasDeSatisfacaoRoute
   '/planos-de-acao': typeof PlanosDeAcaoRoute
   '/politicas': typeof PoliticasRoute
   '/pops': typeof PopsRoute
@@ -212,6 +221,7 @@ export interface FileRouteTypes {
     | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
+    | '/pesquisas-de-satisfacao'
     | '/planos-de-acao'
     | '/politicas'
     | '/pops'
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
     | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
+    | '/pesquisas-de-satisfacao'
     | '/planos-de-acao'
     | '/politicas'
     | '/pops'
@@ -256,6 +267,7 @@ export interface FileRouteTypes {
     | '/meu-perfil'
     | '/ocorrencias'
     | '/painel'
+    | '/pesquisas-de-satisfacao'
     | '/planos-de-acao'
     | '/politicas'
     | '/pops'
@@ -279,6 +291,7 @@ export interface RootRouteChildren {
   MeuPerfilRoute: typeof MeuPerfilRoute
   OcorrenciasRoute: typeof OcorrenciasRoute
   PainelRoute: typeof PainelRoute
+  PesquisasDeSatisfacaoRoute: typeof PesquisasDeSatisfacaoRoute
   PlanosDeAcaoRoute: typeof PlanosDeAcaoRoute
   PoliticasRoute: typeof PoliticasRoute
   PopsRoute: typeof PopsRoute
@@ -361,6 +374,13 @@ declare module '@tanstack/react-router' {
       path: '/painel'
       fullPath: '/painel'
       preLoaderRoute: typeof PainelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pesquisas-de-satisfacao': {
+      id: '/pesquisas-de-satisfacao'
+      path: '/pesquisas-de-satisfacao'
+      fullPath: '/pesquisas-de-satisfacao'
+      preLoaderRoute: typeof PesquisasDeSatisfacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planos-de-acao': {
@@ -447,6 +467,7 @@ const rootRouteChildren: RootRouteChildren = {
   MeuPerfilRoute: MeuPerfilRoute,
   OcorrenciasRoute: OcorrenciasRoute,
   PainelRoute: PainelRoute,
+  PesquisasDeSatisfacaoRoute: PesquisasDeSatisfacaoRoute,
   PlanosDeAcaoRoute: PlanosDeAcaoRoute,
   PoliticasRoute: PoliticasRoute,
   PopsRoute: PopsRoute,

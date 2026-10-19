@@ -32,6 +32,7 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
   "/pops",
   "/funcionarios",
   "/configuracoes",
+  "/pesquisas-de-satisfacao",
   "/logs",
   "/meu-perfil",
 ];
@@ -191,6 +192,14 @@ export function liderDoSetor(
 ): boolean {
   const alvo = normalizarSetor(nomeSetor);
   return !!alvo && setoresLiderados(session).includes(alvo);
+}
+
+/**
+ * Criar e editar pesquisas de satisfação: Gestor da Qualidade e Desenvolvedor do Sistema.
+ */
+export function podeGerenciarPesquisas(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return ehAdministrador(session) || session.nivelAcesso === NIVEL_GESTOR_QUALIDADE;
 }
 
 /**

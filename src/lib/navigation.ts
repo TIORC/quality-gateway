@@ -12,6 +12,7 @@ export type AppRoutePath =
   | "/pops"
   | "/funcionarios"
   | "/configuracoes"
+  | "/pesquisas-de-satisfacao"
   | "/logs"
   | "/meu-perfil";
 
@@ -44,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Gestão",
     items: [
+      { label: "Pesquisas de Satisfação", path: "/pesquisas-de-satisfacao" },
       { label: "Configurações", path: "/configuracoes" },
       { label: "Logs de atividade", path: "/logs" },
     ],

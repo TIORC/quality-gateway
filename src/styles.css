@@ -412,6 +412,10 @@
   color: var(--card-foreground);
 }
 
+.dark .text-\[\#0F172A\] {
+  color: var(--card-foreground);
+}
+
 /*
  * Hierarquia dos textos no modo escuro ---------------------------------
  *
