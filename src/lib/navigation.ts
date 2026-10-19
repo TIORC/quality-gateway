@@ -33,6 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Painel", path: "/painel" },
       { label: "Planos de Ação", path: "/planos-de-acao" },
       { label: "Ocorrencias", path: "/ocorrencias" },
+      { label: "Pesquisas de Satisfação", path: "/pesquisas-de-satisfacao" },
       { label: "Auditorias", path: "/auditorias" },
       { label: "Atas de Reunião", path: "/atas-de-reuniao" },
       { label: "Projetos e Estretégias", path: "/projetos-e-estrategias" },
@@ -45,7 +46,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Gestão",
     items: [
-      { label: "Pesquisas de Satisfação", path: "/pesquisas-de-satisfacao" },
       { label: "Configurações", path: "/configuracoes" },
       { label: "Logs de atividade", path: "/logs" },
     ],

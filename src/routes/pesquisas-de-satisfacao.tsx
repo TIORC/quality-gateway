@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Pencil, Plus, RefreshCw } from "lucide-react";
+import { Check, Copy, Download, Pencil, Plus, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -18,6 +18,7 @@ import { GraficosPerguntas } from "@/components/pesquisas/graficos-perguntas";
 import { PanelShell } from "@/components/panel-shell";
 import { getSession } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { listarModelosPesquisa, type ModeloPesquisa } from "@/lib/pesquisas-modelos";
 import {
+  PERGUNTAS_NOTA,
   listarPesquisas,
   mediaGeral,
   mediaPorPergunta,
@@ -44,6 +46,7 @@ export const Route = createFileRoute("/pesquisas-de-satisfacao")({
 
 const COR_BARRA = "#2563EB";
 const COR_MEDIA_GERAL = "#0F172A";
+const CAMINHO_FORMULARIO = "/responder-pesquisa";
 
 function PesquisasDeSatisfacao() {
   const [pesquisas, setPesquisas] = useState<PesquisaSatisfacao[]>([]);
@@ -51,10 +54,17 @@ function PesquisasDeSatisfacao() {
   const [criandoPesquisa, setCriandoPesquisa] = useState(false);
   const [modelos, setModelos] = useState<ModeloPesquisa[]>([]);
   const [modeloEditando, setModeloEditando] = useState<ModeloPesquisa | null>(null);
+  const [linkCopiado, setLinkCopiado] = useState(false);
+  // O link depende do endereço do site, que só existe no navegador.
+  const [linkFormulario, setLinkFormulario] = useState("");
   // `usePanelSession` só funciona dentro do PanelShell, que é o pai desta página;
   // por isso lemos a sessão em cache diretamente.
   const sessao = getSession();
   const podeGerenciar = podeGerenciarPesquisas(sessao);
+
+  useEffect(() => {
+    setLinkFormulario(`${window.location.origin}${CAMINHO_FORMULARIO}`);
+  }, []);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -86,26 +96,40 @@ function PesquisasDeSatisfacao() {
   const geral = useMemo(() => mediaGeral(pesquisas), [pesquisas]);
   const atendimento = medias[0] ?? { rotulo: "", media: 0 };
   const demais = medias.slice(1);
+  // As perguntas além do atendimento ainda não estão no formulário público.
+  const temDemais = demais.some((m) => m.media > 0);
   const dadosGeral = [
     ...medias.map((m) => ({ rotulo: m.rotulo, media: m.media })),
     { rotulo: "Média Geral", media: geral },
   ];
 
+  async function copiarLink() {
+    try {
+      await navigator.clipboard.writeText(linkFormulario);
+      setLinkCopiado(true);
+      setTimeout(() => setLinkCopiado(false), 2000);
+    } catch {
+      toast.error("Não foi possível copiar. Selecione o link e copie manualmente.");
+    }
+  }
+
   function exportarExcel() {
-    const linhas = pesquisas.map((p) => ({
-      Empresa: p.empresa,
-      "Nome completo": p.nomePessoa,
-      Unidade: p.unidade,
-      Atendimento: p.notaAtendimento,
-      Qualidade: p.notaQualidade,
-      Orientações: p.notaOrientacoes,
-      Prazos: p.notaPrazos,
-      Recomendação: p.notaRecomendacao,
-      "Data da resposta": new Date(p.criadoEm).toLocaleDateString("pt-BR"),
-    }));
+    const linhas = pesquisas.map((p) => {
+      const linha: Record<string, string | number | null> = {
+        "Carimbo de data/hora": new Date(p.criadoEm).toLocaleString("pt-BR"),
+        "Nome da Empresa": p.empresa,
+        "Respondido por": p.nomePessoa,
+        "Sou atendido pela unidade": p.unidade,
+      };
+      PERGUNTAS_NOTA.forEach((pergunta, indice) => {
+        linha[`${indice + 1} - ${pergunta.pergunta}`] = p[pergunta.chave];
+      });
+      linha["6 - Que sugestão você nos recomenda para melhorar ainda mais?"] = p.sugestao;
+      return linha;
+    });
     const planilha = XLSX.utils.json_to_sheet(linhas);
     const pasta = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(pasta, planilha, "Empresas");
+    XLSX.utils.book_append_sheet(pasta, planilha, "Form_Responses");
     XLSX.writeFile(pasta, "pesquisas-de-satisfacao.xlsx");
   }
 
@@ -153,6 +177,71 @@ function PesquisasDeSatisfacao() {
         )}
       </div>
 
+      <section className="mb-6 rounded-xl border border-[#E2E8F0] bg-white p-5">
+        <h2 className="mb-1 text-base font-semibold text-[#0F172A]">Link da pesquisa</h2>
+        <p className="mb-3 text-xs text-[#64748B]">
+          Envie este link aos clientes para que respondam o formulário.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input readOnly value={linkFormulario} onFocus={(e) => e.target.select()} />
+          <Button variant="outline" onClick={() => void copiarLink()} disabled={!linkFormulario}>
+            {linkCopiado ? (
+              <Check className="mr-2 h-4 w-4" />
+            ) : (
+              <Copy className="mr-2 h-4 w-4" />
+            )}
+            {linkCopiado ? "Copiado" : "Copiar link"}
+          </Button>
+        </div>
+      </section>
+
+      <section className="mb-6 rounded-xl border border-[#E2E8F0] bg-white p-5">
+        <h2 className="mb-3 text-base font-semibold text-[#0F172A]">Respostas</h2>
+        <div className="overflow-x-auto rounded-md border border-[#D4D4D8]">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={CABECALHO}>Carimbo de data/hora</TableHead>
+                <TableHead className={CABECALHO}>Nome da Empresa</TableHead>
+                <TableHead className={CABECALHO}>Respondido por</TableHead>
+                <TableHead className={CABECALHO}>Sou atendido pela unidade</TableHead>
+                {PERGUNTAS_NOTA.map((pergunta, indice) => (
+                  <TableHead key={pergunta.chave} className={`${CABECALHO} text-center`}>
+                    {`${indice + 1} - ${pergunta.pergunta}`}
+                  </TableHead>
+                ))}
+                <TableHead className={CABECALHO}>6 - Que sugestão você nos recomenda para melhorar ainda mais?</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pesquisas.map((p) => (
+                <TableRow key={p.id} className="border-[#E4E4E7]">
+                  <TableCell className="whitespace-nowrap">
+                    {new Date(p.criadoEm).toLocaleString("pt-BR")}
+                  </TableCell>
+                  <TableCell>{p.empresa || "—"}</TableCell>
+                  <TableCell>{p.nomePessoa || "—"}</TableCell>
+                  <TableCell>{p.unidade || "—"}</TableCell>
+                  {PERGUNTAS_NOTA.map((pergunta) => (
+                    <TableCell key={pergunta.chave} className="text-center">
+                      {p[pergunta.chave] ?? "—"}
+                    </TableCell>
+                  ))}
+                  <TableCell className="min-w-[16rem] whitespace-pre-wrap">{p.sugestao || "—"}</TableCell>
+                </TableRow>
+              ))}
+              {!carregando && pesquisas.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5 + PERGUNTAS_NOTA.length} className="py-8 text-center text-[#64748B]">
+                    Nenhuma resposta de pesquisa recebida ainda.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+
       {modelos.length > 0 && (
         <section className="mb-6 rounded-xl border border-[#E2E8F0] bg-white p-5">
           <h2 className="mb-3 text-base font-semibold text-[#0F172A]">Pesquisas criadas</h2>
@@ -189,52 +278,8 @@ function PesquisasDeSatisfacao() {
 
       <GraficosPerguntas modelos={modelos} />
 
-      {!carregando && pesquisas.length === 0 ? (
-        <div className="rounded-xl border border-[#E2E8F0] bg-white p-8 text-center text-sm text-[#64748B]">
-          Nenhuma resposta de pesquisa recebida ainda.
-        </div>
-      ) : (
-        <div className="grid gap-6">
-          <section className="rounded-xl border border-[#E2E8F0] bg-white p-5">
-            <h2 className="mb-3 text-base font-semibold text-[#0F172A]">
-              Empresas que responderam
-            </h2>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Nome completo</TableHead>
-                    <TableHead>Unidade atendida</TableHead>
-                    <TableHead className="text-center">Atendimento</TableHead>
-                    <TableHead className="text-center">Qualidade</TableHead>
-                    <TableHead className="text-center">Orientações</TableHead>
-                    <TableHead className="text-center">Prazos</TableHead>
-                    <TableHead className="text-center">Recomendação</TableHead>
-                    <TableHead>Data</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pesquisas.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell>{p.empresa || "—"}</TableCell>
-                      <TableCell>{p.nomePessoa || "—"}</TableCell>
-                      <TableCell>{p.unidade || "—"}</TableCell>
-                      <TableCell className="text-center">{p.notaAtendimento}</TableCell>
-                      <TableCell className="text-center">{p.notaQualidade}</TableCell>
-                      <TableCell className="text-center">{p.notaOrientacoes}</TableCell>
-                      <TableCell className="text-center">{p.notaPrazos}</TableCell>
-                      <TableCell className="text-center">{p.notaRecomendacao}</TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-[#475569]">
-                        {new Date(p.criadoEm).toLocaleDateString("pt-BR")}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </section>
-
+      {pesquisas.length > 0 && (
+        <div className="mt-6 grid gap-6">
           <section className="rounded-xl border border-[#E2E8F0] bg-white p-5">
             <h2 className="mb-1 text-base font-semibold text-[#0F172A]">{atendimento.rotulo}</h2>
             <p className="mb-3 text-xs text-[#64748B]">
@@ -243,27 +288,35 @@ function PesquisasDeSatisfacao() {
             <GraficoMedia dados={[{ rotulo: "Atendimento", media: atendimento.media }]} />
           </section>
 
-          <section className="rounded-xl border border-[#E2E8F0] bg-white p-5">
-            <h2 className="mb-3 text-base font-semibold text-[#0F172A]">
-              Médias das demais perguntas
-            </h2>
-            <GraficoMedia dados={demais.map((m) => ({ rotulo: m.rotulo, media: m.media }))} />
-          </section>
+          {temDemais && (
+            <>
+              <section className="rounded-xl border border-[#E2E8F0] bg-white p-5">
+                <h2 className="mb-3 text-base font-semibold text-[#0F172A]">
+                  Médias das demais perguntas
+                </h2>
+                <GraficoMedia dados={demais.map((m) => ({ rotulo: m.rotulo, media: m.media }))} />
+              </section>
 
-          <section className="rounded-xl border border-[#E2E8F0] bg-white p-5">
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-base font-semibold text-[#0F172A]">Média Geral</h2>
-              <span className="text-2xl font-semibold text-[#0F172A]">
-                {geral.toLocaleString("pt-BR")}
-              </span>
-            </div>
-            <GraficoMedia dados={dadosGeral} destacarUltima />
-          </section>
+              <section className="rounded-xl border border-[#E2E8F0] bg-white p-5">
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-base font-semibold text-[#0F172A]">Média Geral</h2>
+                  <span className="text-2xl font-semibold text-[#0F172A]">
+                    {geral.toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <GraficoMedia dados={dadosGeral} destacarUltima />
+              </section>
+            </>
+          )}
         </div>
       )}
     </PanelShell>
   );
 }
+
+/** Cabeçalho azul; no modo escuro, azul claro com texto escuro para manter a leitura. */
+const CABECALHO =
+  "bg-[#2563EB] font-semibold text-white hover:bg-[#2563EB] dark:bg-[#93C5FD] dark:text-[#0F172A] dark:hover:bg-[#93C5FD]";
 
 function GraficoMedia({
   dados,

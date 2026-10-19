@@ -753,27 +753,29 @@ export type Database = {
       pesquisas_satisfacao: {
         Row: {
           created_at: string
+          email: string
           empresa: string
           id: string
           nome_pessoa: string
           nota_atendimento: number
-          nota_orientacoes: number
-          nota_prazos: number
-          nota_qualidade: number
-          nota_recomendacao: number
+          nota_orientacoes: number | null
+          nota_prazos: number | null
+          nota_qualidade: number | null
+          nota_recomendacao: number | null
           sugestao: string
           unidade: string
         }
         Insert: {
           created_at?: string
+          email?: string
           empresa?: string
           id?: string
           nome_pessoa?: string
           nota_atendimento: number
-          nota_orientacoes: number
-          nota_prazos: number
-          nota_qualidade: number
-          nota_recomendacao: number
+          nota_orientacoes?: number | null
+          nota_prazos?: number | null
+          nota_qualidade?: number | null
+          nota_recomendacao?: number | null
           sugestao?: string
           unidade?: string
         }

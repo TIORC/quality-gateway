@@ -25,6 +25,7 @@ import { Route as PoliticasRouteImport } from './routes/politicas'
 import { Route as PopsRouteImport } from './routes/pops'
 import { Route as PrimeiroAcessoRouteImport } from './routes/primeiro-acesso'
 import { Route as ProjetosEEstrategiasRouteImport } from './routes/projetos-e-estrategias'
+import { Route as ResponderPesquisaRouteImport } from './routes/responder-pesquisa'
 import { Route as FuncionariosIndexRouteImport } from './routes/funcionarios/index'
 import { Route as FuncionariosIdRouteImport } from './routes/funcionarios/$id'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
@@ -111,6 +112,11 @@ const ProjetosEEstrategiasRoute = ProjetosEEstrategiasRouteImport.update({
   path: '/projetos-e-estrategias',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResponderPesquisaRoute = ResponderPesquisaRouteImport.update({
+  id: '/responder-pesquisa',
+  path: '/responder-pesquisa',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FuncionariosIndexRoute = FuncionariosIndexRouteImport.update({
   id: '/funcionarios/',
   path: '/funcionarios/',
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/pops': typeof PopsRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
+  '/responder-pesquisa': typeof ResponderPesquisaRoute
   '/funcionarios/$id': typeof FuncionariosIdRoute
   '/funcionarios/': typeof FuncionariosIndexRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/pops': typeof PopsRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
+  '/responder-pesquisa': typeof ResponderPesquisaRoute
   '/funcionarios/$id': typeof FuncionariosIdRoute
   '/funcionarios': typeof FuncionariosIndexRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/pops': typeof PopsRoute
   '/primeiro-acesso': typeof PrimeiroAcessoRoute
   '/projetos-e-estrategias': typeof ProjetosEEstrategiasRoute
+  '/responder-pesquisa': typeof ResponderPesquisaRoute
   '/funcionarios/$id': typeof FuncionariosIdRoute
   '/funcionarios/': typeof FuncionariosIndexRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
@@ -227,6 +236,7 @@ export interface FileRouteTypes {
     | '/pops'
     | '/primeiro-acesso'
     | '/projetos-e-estrategias'
+    | '/responder-pesquisa'
     | '/funcionarios/$id'
     | '/funcionarios/'
     | '/lovable/email/auth/preview'
@@ -250,6 +260,7 @@ export interface FileRouteTypes {
     | '/pops'
     | '/primeiro-acesso'
     | '/projetos-e-estrategias'
+    | '/responder-pesquisa'
     | '/funcionarios/$id'
     | '/funcionarios'
     | '/lovable/email/auth/preview'
@@ -273,6 +284,7 @@ export interface FileRouteTypes {
     | '/pops'
     | '/primeiro-acesso'
     | '/projetos-e-estrategias'
+    | '/responder-pesquisa'
     | '/funcionarios/$id'
     | '/funcionarios/'
     | '/lovable/email/auth/preview'
@@ -297,6 +309,7 @@ export interface RootRouteChildren {
   PopsRoute: typeof PopsRoute
   PrimeiroAcessoRoute: typeof PrimeiroAcessoRoute
   ProjetosEEstrategiasRoute: typeof ProjetosEEstrategiasRoute
+  ResponderPesquisaRoute: typeof ResponderPesquisaRoute
   FuncionariosIdRoute: typeof FuncionariosIdRoute
   FuncionariosIndexRoute: typeof FuncionariosIndexRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
@@ -418,6 +431,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjetosEEstrategiasRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/responder-pesquisa': {
+      id: '/responder-pesquisa'
+      path: '/responder-pesquisa'
+      fullPath: '/responder-pesquisa'
+      preLoaderRoute: typeof ResponderPesquisaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/funcionarios/': {
       id: '/funcionarios/'
       path: '/funcionarios'
@@ -473,6 +493,7 @@ const rootRouteChildren: RootRouteChildren = {
   PopsRoute: PopsRoute,
   PrimeiroAcessoRoute: PrimeiroAcessoRoute,
   ProjetosEEstrategiasRoute: ProjetosEEstrategiasRoute,
+  ResponderPesquisaRoute: ResponderPesquisaRoute,
   FuncionariosIdRoute: FuncionariosIdRoute,
   FuncionariosIndexRoute: FuncionariosIndexRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
