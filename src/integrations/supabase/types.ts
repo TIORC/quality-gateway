@@ -850,6 +850,60 @@ export type Database = {
           },
         ]
       }
+      nps_respostas: {
+        Row: {
+          created_at: string
+          empresa: string
+          grupo: string
+          id: string
+          modelo_id: string | null
+          nota: number
+          pergunta_id: string
+          pergunta_texto: string
+          pessoa: string
+          resposta_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          empresa?: string
+          grupo: string
+          id?: string
+          modelo_id?: string | null
+          nota: number
+          pergunta_id: string
+          pergunta_texto?: string
+          pessoa?: string
+          resposta_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          empresa?: string
+          grupo?: string
+          id?: string
+          modelo_id?: string | null
+          nota?: number
+          pergunta_id?: string
+          pergunta_texto?: string
+          pessoa?: string
+          resposta_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_respostas_modelo_id_fkey"
+            columns: ["modelo_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas_modelos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_respostas_resposta_id_fkey"
+            columns: ["resposta_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas_respostas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notificacoes: {
         Row: {
           autor_email: string

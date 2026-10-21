@@ -1,18 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   LabelList,
   ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { BarraDestacada } from "@/components/barra-destacada";
+import { GraficoNpsPredio } from "@/components/pesquisas/grafico-nps-predio";
+import { apurarNps, formatarNps, GRUPOS_NPS, grupoDaNota, type GrupoNps } from "@/lib/nps";
 import {
-  listarRespostasModelo,
+  chaveEmpresaDo,
   type ModeloPesquisa,
   type PerguntaModelo,
+  type RespostaModelo,
   type RespostaPesquisa,
 } from "@/lib/pesquisas-modelos";
 
@@ -20,76 +24,24 @@ const COR_BARRA = "#2563EB";
 const ROTULO_OUTRO = "Outro";
 
 interface GraficosPerguntasProps {
-  modelos: ModeloPesquisa[];
+  modelo: ModeloPesquisa;
+  /** Respostas da pesquisa, já filtradas pela razão social escolhida na página. */
+  respostas: RespostaModelo[];
 }
 
 /**
- * Um gráfico por pergunta do modelo escolhido. O título é o texto atual da
+ * Um gráfico por pergunta da pesquisa. O título é o texto atual da
  * pergunta, então qualquer edição no formulário aparece aqui. Sem respostas, os
  * gráficos aparecem zerados.
  */
-export function GraficosPerguntas({ modelos }: GraficosPerguntasProps) {
-  const [modeloId, setModeloId] = useState<string | null>(null);
-  const [respostas, setRespostas] = useState<RespostaPesquisa[]>([]);
-  const [carregando, setCarregando] = useState(false);
-
-  const modelo = modelos.find((m) => m.id === (modeloId ?? modelos[0]?.id)) ?? null;
-  const modeloAtualId = modelo?.id;
-
-  // Nome de quem respondeu: a pergunta "Respondido por", ou a empresa se ela não existir.
-  const nomeDe = useMemo(() => {
-    const chavePessoa = modelo?.perguntas.find((p) => /respondido/i.test(p.texto))?.id;
-    const chaveEmpresa = modelo?.perguntas.find((p) => /nome da empresa/i.test(p.texto))?.id;
-    return (resposta: RespostaPesquisa) => {
-      const pessoa = chavePessoa ? resposta[chavePessoa] : undefined;
-      const empresa = chaveEmpresa ? resposta[chaveEmpresa] : undefined;
-      return String(pessoa || empresa || "Sem identificação");
-    };
-  }, [modelo]);
-
-  useEffect(() => {
-    if (!modeloAtualId) return;
-    let ativo = true;
-    setCarregando(true);
-    listarRespostasModelo(modeloAtualId)
-      .then((lista) => {
-        if (ativo) setRespostas(lista);
-      })
-      .catch((erro: unknown) => {
-        toast.error(
-          erro instanceof Error ? erro.message : "Não foi possível carregar as respostas.",
-        );
-      })
-      .finally(() => {
-        if (ativo) setCarregando(false);
-      });
-    return () => {
-      ativo = false;
-    };
-  }, [modeloAtualId]);
-
-  if (!modelo) return null;
+export function GraficosPerguntas({ modelo, respostas }: GraficosPerguntasProps) {
+  const valores = useMemo(() => respostas.map((r) => r.respostas), [respostas]);
+  // Pergunta que traz a razão social de quem respondeu.
+  const chaveEmpresa = chaveEmpresaDo(modelo.perguntas);
 
   return (
-    <section className="mb-6 rounded-xl border border-[#E2E8F0] bg-white p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-[#0F172A]">Gráficos por pergunta</h2>
-        {modelos.length > 1 && (
-          <select
-            className="rounded-md border border-[#CBD5E1] bg-white px-3 py-2 text-sm text-[#0F172A]"
-            value={modelo.id}
-            onChange={(e) => setModeloId(e.target.value)}
-          >
-            {modelos.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.titulo}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {carregando && <p className="text-sm text-[#64748B]">Carregando respostas…</p>}
+    <div>
+      <h3 className="mb-4 text-sm font-semibold text-[#0F172A]">Gráficos por pergunta</h3>
 
       <div className="grid gap-4">
         {modelo.perguntas.map((pergunta, indice) => (
@@ -97,12 +49,12 @@ export function GraficosPerguntas({ modelos }: GraficosPerguntasProps) {
             key={pergunta.id}
             numero={indice + 1}
             pergunta={pergunta}
-            respostas={respostas}
-            nomeDe={nomeDe}
+            respostas={valores}
+            chaveEmpresa={chaveEmpresa}
           />
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -110,22 +62,25 @@ function CartaoPergunta({
   numero,
   pergunta,
   respostas,
-  nomeDe,
+  chaveEmpresa,
 }: {
   numero: number;
   pergunta: PerguntaModelo;
   respostas: RespostaPesquisa[];
-  nomeDe: (resposta: RespostaPesquisa) => string;
+  chaveEmpresa?: string;
 }) {
   const pares = useMemo(
     () =>
       respostas
-        .map((r) => ({ nome: nomeDe(r), valor: r[pergunta.id] }))
+        .map((r) => ({
+          empresa: String((chaveEmpresa && r[chaveEmpresa]) || "Empresa não informada"),
+          valor: r[pergunta.id],
+        }))
         .filter(
-          (p): p is { nome: string; valor: number | string | string[] } =>
+          (p): p is { empresa: string; valor: number | string | string[] } =>
             p.valor !== undefined && p.valor !== "",
         ),
-    [respostas, pergunta.id, nomeDe],
+    [respostas, pergunta.id, chaveEmpresa],
   );
   const valores = pares.map((p) => p.valor);
 
@@ -139,11 +94,12 @@ function CartaoPergunta({
         {valores.length} {valores.length === 1 ? "resposta" : "respostas"}
       </p>
       {pergunta.tipo === "escala" && <GraficoEscala pares={pares} />}
+      {pergunta.tipo === "nps" && <GraficoNps pares={pares} />}
       {(pergunta.tipo === "multipla_escolha" ||
         pergunta.tipo === "caixas_selecao" ||
         pergunta.tipo === "sim_nao") && <GraficoOpcoes pergunta={pergunta} valores={valores} />}
       {(pergunta.tipo === "texto_curto" || pergunta.tipo === "texto_longo") && (
-        <RespostasTexto pares={pares} />
+        <RespostasTexto valores={valores} />
       )}
     </div>
   );
@@ -152,12 +108,12 @@ function CartaoPergunta({
 function GraficoEscala({
   pares,
 }: {
-  pares: { nome: string; valor: number | string | string[] }[];
+  pares: { empresa: string; valor: number | string | string[] }[];
 }) {
   const dados = Array.from({ length: 10 }, (_, i) => {
     const nota = i + 1;
-    const nomes = pares.filter((p) => Number(p.valor) === nota).map((p) => p.nome);
-    return { rotulo: String(nota), total: nomes.length, nomes };
+    const empresas = pares.filter((p) => Number(p.valor) === nota).map((p) => p.empresa);
+    return { rotulo: String(nota), total: empresas.length, empresas };
   });
 
   const notas = pares.map((p) => Number(p.valor)).filter((n) => !Number.isNaN(n));
@@ -179,9 +135,51 @@ function GraficoEscala({
           .filter((d) => d.total > 0)
           .map((d) => (
             <li key={d.rotulo}>
-              <span className="font-semibold">Nota {d.rotulo}:</span> {d.nomes.join(", ")}
+              <span className="font-semibold">Nota {d.rotulo}:</span> {d.empresas.join(", ")}
             </li>
           ))}
+      </ul>
+    </div>
+  );
+}
+
+function GraficoNps({
+  pares,
+}: {
+  pares: { empresa: string; valor: number | string | string[] }[];
+}) {
+  const apuracao = apurarNps(pares.map((p) => Number(p.valor)));
+
+  const empresasPorGrupo: Record<GrupoNps, string[]> = {
+    detratores: [],
+    neutros: [],
+    promotores: [],
+  };
+  for (const p of pares) {
+    const grupo = grupoDaNota(Number(p.valor));
+    if (grupo) empresasPorGrupo[grupo].push(`${p.empresa} (nota ${p.valor})`);
+  }
+
+  return (
+    <div className="grid gap-3">
+      <GraficoNpsPredio apuracao={apuracao} />
+      <p className="text-sm text-[#0F172A]">
+        <span className="font-semibold">NPS: </span>
+        {formatarNps(apuracao.score)}
+        <span className="text-[#64748B]">
+          {" "}
+          ({apuracao.total} {apuracao.total === 1 ? "voto" : "votos"})
+        </span>
+      </p>
+      <ul className="grid gap-1 text-sm text-[#334155]">
+        {GRUPOS_NPS.filter((g) => empresasPorGrupo[g.chave].length > 0).map((g) => (
+          <li key={g.chave}>
+            <span className="font-semibold">
+              {g.rotulo} ({g.faixa}):
+            </span>{" "}
+            {empresasPorGrupo[g.chave].join(", ")}
+          </li>
+        ))}
       </ul>
     </div>
   );
@@ -280,27 +278,23 @@ const ESTILO_SENTIMENTO = {
   neutra: "bg-[#F8FAFC] text-[#334155]",
 } as const;
 
-function RespostasTexto({
-  pares,
-}: {
-  pares: { nome: string; valor: number | string | string[] }[];
-}) {
-  if (pares.length === 0) {
+function RespostasTexto({ valores }: { valores: (number | string | string[])[] }) {
+  if (valores.length === 0) {
     return <p className="text-sm text-[#64748B]">Nenhuma resposta ainda.</p>;
   }
   return (
     <ul className="grid gap-2 text-sm">
-      {pares
+      {valores
         .slice(-5)
         .reverse()
-        .map((par, indice) => {
-          const texto = String(par.valor);
+        .map((valor, indice) => {
+          const texto = String(valor);
           return (
             <li
               key={indice}
               className={`rounded-md px-3 py-2 ${ESTILO_SENTIMENTO[classificarTexto(texto)]}`}
             >
-              <span className="font-semibold">{par.nome}:</span> {texto}
+              {texto}
             </li>
           );
         })}
@@ -316,7 +310,16 @@ function GraficoBarras({ dados }: { dados: { rotulo: string; total: number }[] }
           <CartesianGrid vertical={false} stroke="#E2E8F0" />
           <XAxis dataKey="rotulo" tick={{ fontSize: 12 }} interval={0} />
           <YAxis allowDecimals={false} domain={[0, "auto"]} tick={{ fontSize: 12 }} />
-          <Bar dataKey="total" fill={COR_BARRA} radius={[4, 4, 0, 0]}>
+          <Tooltip
+            cursor={{ fill: COR_BARRA, fillOpacity: 0.06 }}
+            formatter={(valor) => [Number(valor), "Respostas"]}
+          />
+          <Bar
+            dataKey="total"
+            fill={COR_BARRA}
+            radius={[4, 4, 0, 0]}
+            activeBar={<BarraDestacada />}
+          >
             <LabelList dataKey="total" position="top" />
           </Bar>
         </BarChart>

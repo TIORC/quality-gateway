@@ -1,0 +1,86 @@
+-- ---------------------------------------------------------------------------
+-- Nome de quem respondeu nas notas NPS, para buscar por pessoa
+-- ---------------------------------------------------------------------------
+--   * `nps_respostas.pessoa` guarda o nome de quem respondeu: a resposta à pergunta
+--     cujo texto traz "nome" ou "respondido por" (sem "empresa" nem "razão social").
+--     Fica vazia quando a pesquisa não pergunta o nome.
+--   * O trigger passa a gravar o nome em cada nota nova.
+--   * A carga abaixo preenche as notas que já existem.
+--   * Idempotente: pode rodar mais de uma vez.
+--
+-- Como aplicar: cole no SQL editor do Lovable Cloud (ou Supabase).
+-- ---------------------------------------------------------------------------
+
+alter table public.nps_respostas add column if not exists pessoa text not null default '';
+
+create index if not exists nps_respostas_pessoa_idx on public.nps_respostas (pessoa);
+
+-- Trigger atualizado: igual ao anterior, mais o nome de quem respondeu.
+create or replace function public.registrar_nps_resposta()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.nps_respostas (created_at, modelo_id, resposta_id, pergunta_id, pergunta_texto, nota, grupo, empresa, pessoa)
+  select
+    new.created_at,
+    new.modelo_id,
+    new.id,
+    n.pergunta_id,
+    n.texto,
+    n.valor::smallint,
+    case
+      when n.valor <= 6 then 'detratores'
+      when n.valor <= 8 then 'neutros'
+      else 'promotores'
+    end,
+    n.empresa,
+    n.pessoa
+  from (
+    select
+      p->>'id' as pergunta_id,
+      coalesce(p->>'texto', '') as texto,
+      case
+        when jsonb_typeof(new.respostas->(p->>'id')) = 'number'
+          then (new.respostas->>(p->>'id'))::numeric
+      end as valor,
+      coalesce((
+        select trim(coalesce(new.respostas->>(q->>'id'), ''))
+        from jsonb_array_elements(m.perguntas) as q
+        where q->>'texto' ~* 'nome da empresa|raz[aã]o social'
+        limit 1
+      ), '') as empresa,
+      coalesce((
+        select trim(coalesce(new.respostas->>(q->>'id'), ''))
+        from jsonb_array_elements(m.perguntas) as q
+        where q->>'texto' ~* 'nome|respondido por'
+          and q->>'texto' !~* 'empresa|raz[aã]o social'
+        limit 1
+      ), '') as pessoa
+    from public.pesquisas_modelos m
+    cross join lateral jsonb_array_elements(m.perguntas) as p
+    where m.id = new.modelo_id
+      and p->>'tipo' = 'nps'
+  ) n
+  where n.valor between 0 and 10
+    and n.valor = trunc(n.valor)
+  on conflict (resposta_id, pergunta_id) do nothing;
+  return new;
+end;
+$$;
+
+-- Preenche o nome das notas que já existem (enquanto a resposta ainda existir).
+update public.nps_respostas n
+set pessoa = coalesce((
+  select trim(coalesce(r.respostas->>(q->>'id'), ''))
+  from public.pesquisas_respostas r
+  join public.pesquisas_modelos m on m.id = r.modelo_id
+  cross join lateral jsonb_array_elements(m.perguntas) as q
+  where r.id = n.resposta_id
+    and q->>'texto' ~* 'nome|respondido por'
+    and q->>'texto' !~* 'empresa|raz[aã]o social'
+  limit 1
+), '')
+where n.pessoa = '';

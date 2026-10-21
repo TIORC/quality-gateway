@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   atualizarModeloPesquisa,
   criarModeloPesquisa,
+  linkDaPesquisa,
   TIPOS_COM_OPCOES,
   TIPOS_RESPOSTA,
   type ModeloPesquisa,
@@ -70,6 +71,16 @@ export function CriarPesquisaDialog({
     setDescricao(modelo?.descricao ?? "");
     setPerguntas(modelo?.perguntas.length ? modelo.perguntas : [novaPergunta()]);
   }, [aberto, modelo]);
+
+  async function copiarLink() {
+    if (!modelo) return;
+    try {
+      await navigator.clipboard.writeText(linkDaPesquisa(modelo.id));
+      toast.success("Link copiado.");
+    } catch {
+      toast.error("Não foi possível copiar o link.");
+    }
+  }
 
   function atualizar(id: string, mudancas: Partial<PerguntaModelo>) {
     setPerguntas((atuais) => atuais.map((p) => (p.id === id ? { ...p, ...mudancas } : p)));
@@ -189,6 +200,26 @@ export function CriarPesquisaDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {modelo && (
+          <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+            <p className="text-sm font-semibold text-[#0F172A]">Link desta pesquisa</p>
+            <p className="mb-3 text-xs text-[#64748B]">
+              Envie este link aos clientes. Ele abre somente esta pesquisa.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                readOnly
+                value={linkDaPesquisa(modelo.id)}
+                onFocus={(e) => e.target.select()}
+              />
+              <Button variant="outline" onClick={() => void copiarLink()}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copiar link
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-4">
           <div className="rounded-xl border border-[#E2E8F0] bg-white p-5">
             <Input
@@ -306,14 +337,17 @@ export function CriarPesquisaDialog({
               {pergunta.tipo === "texto_longo" && (
                 <Textarea disabled placeholder="Resposta longa" className="mb-3" />
               )}
-              {pergunta.tipo === "escala" && (
+              {(pergunta.tipo === "escala" || pergunta.tipo === "nps") && (
                 <div className="mb-3 flex flex-wrap gap-2 text-sm text-[#64748B]">
-                  {Array.from({ length: 10 }, (_, i) => (
+                  {Array.from(
+                    { length: pergunta.tipo === "nps" ? 11 : 10 },
+                    (_, i) => (pergunta.tipo === "nps" ? i : i + 1),
+                  ).map((nota) => (
                     <span
-                      key={i}
+                      key={nota}
                       className="flex h-8 w-8 items-center justify-center rounded-full border border-[#CBD5E1]"
                     >
-                      {i + 1}
+                      {nota}
                     </span>
                   ))}
                 </div>
