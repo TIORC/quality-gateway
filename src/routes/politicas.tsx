@@ -298,7 +298,25 @@ function Politicas() {
     return itens;
   }
 
-  function salvarPolitica(politicaId: string | null, dados: Omit<PoliticaItem, "id">) {
+  async function salvarPolitica(
+    politicaId: string | null,
+    dados: Omit<PoliticaItem, "id">,
+  ): Promise<boolean> {
+    if (!politicaId && usarBanco) {
+      // Nova política entra na lista só depois que o banco confirma o INSERT: assim
+      // ela nunca fica com um ID temporário, que a leitura não consegue gravar.
+      try {
+        const criada = await criarPolitica({ id: "", ...dados });
+        setItens((atual) => [criada, ...atual]);
+        if (criada.codigo !== dados.codigo) {
+          toast.warning(`O código ${dados.codigo} já estava em uso. A política foi salva como ${criada.codigo}.`);
+        }
+        return true;
+      } catch (erro) {
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a política.");
+        return false;
+      }
+    }
     const idTemporario = politicaId ?? novaId();
     setItens((atual) => {
       if (politicaId) {
@@ -309,24 +327,15 @@ function Politicas() {
     setPoliticaAberta((aberta) =>
       aberta && politicaId && aberta.id === politicaId ? { id: politicaId, ...dados } : aberta,
     );
-    if (!usarBanco) return;
-    if (politicaId) {
-      void atualizarPolitica({ id: politicaId, ...dados })
-        .then((atualizada) =>
-          setItens((atual) => atual.map((item) => (item.id === politicaId ? atualizada : item))),
-        )
-        .catch((erro) =>
-          toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a política."),
-        );
-    } else {
-      void criarPolitica({ id: idTemporario, ...dados })
-        .then((criada) =>
-          setItens((atual) => atual.map((item) => (item.id === idTemporario ? criada : item))),
-        )
-        .catch((erro) =>
-          toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a política."),
-        );
-    }
+    if (!usarBanco) return true;
+    void atualizarPolitica({ id: idTemporario, ...dados })
+      .then((atualizada) =>
+        setItens((atual) => atual.map((item) => (item.id === idTemporario ? atualizada : item))),
+      )
+      .catch((erro) =>
+        toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar a política."),
+      );
+    return true;
   }
 
   function registrarParecer(id: string, parecer: ParecerPolitica | null) {
@@ -841,7 +850,7 @@ interface PoliticaDialogProps {
   opcoesSetores: string[];
   carregandoSetores: boolean;
   onFechar: () => void;
-  onSalvar: (politicaId: string | null, dados: Omit<PoliticaItem, "id">) => void;
+  onSalvar: (politicaId: string | null, dados: Omit<PoliticaItem, "id">) => boolean | Promise<boolean>;
 }
 
 function PoliticaDialog({
@@ -1053,7 +1062,7 @@ function PoliticaDialog({
                 observacao: observacaoRevisao.trim() || "Publicação inicial da política.",
               },
             ];
-    onSalvar(politica?.id ?? null, {
+    const salvou = await onSalvar(politica?.id ?? null, {
       codigo: codigo.trim() || codigoSugerido,
       titulo: titulo.trim(),
       objetivo: objetivo.trim(),
@@ -1071,7 +1080,8 @@ function PoliticaDialog({
       parecer: politica?.parecer ?? null,
       sugestoes: politica?.sugestoes ?? [],
     });
-    onFechar();
+    // Se o banco recusou a criação, o diálogo continua aberto com os dados digitados.
+    if (salvou) onFechar();
   }
 
   return (

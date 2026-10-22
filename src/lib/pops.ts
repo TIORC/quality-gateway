@@ -1234,6 +1234,30 @@ export async function atualizarPop(
   return salvo;
 }
 
+/**
+ * Corrige a data da revisão vigente de um POP (sem gerar nova revisão).
+ * Restrito ao Gestor da Qualidade e ao Desenvolvedor do Sistema.
+ */
+export async function alterarDataRevisaoPop(id: string, dataBr: string): Promise<void> {
+  if (!ehLiderancaDaQualidade(getSession())) {
+    throw new Error("Só o Gestor da Qualidade e o Desenvolvedor do Sistema podem alterar a data da revisão.");
+  }
+  const iso = dataBrParaIso(dataBr);
+  if (!iso) throw new Error("Informe uma data válida (dd/mm/aaaa).");
+  const client = exigirCloud();
+  const { data: antes } = await client.from("pops").select("codigo,titulo").eq("id", id).maybeSingle();
+  const { error } = await client.from("pops").update({ data_revisao: iso }).eq("id", id);
+  if (error) throw traduzErro(error);
+  await registrarLog({
+    acao: "editado",
+    entidade: "pop",
+    entidadeId: id,
+    codigo: antes?.codigo ?? "",
+    titulo: antes?.titulo ?? "",
+    detalhe: `Data da revisão: ${dataBr}`,
+  });
+}
+
 export async function excluirPop(id: string): Promise<void> {
   if (!podeExcluirDocumentos(getSession())) {
     throw new Error("Você não tem permissão para excluir documentos.");

@@ -236,17 +236,43 @@ export async function carregarPoliticasAcessiveis(
   }
 }
 
+/** `true` quando o banco recusou o código por já existir (violação de unicidade). */
+function codigoDuplicado(erro: unknown): boolean {
+  const info = erro as { code?: unknown; message?: unknown };
+  return info.code === "23505" || String(info.message ?? "").includes("politicas_codigo_key");
+}
+
+/** Próximo código sequencial livre, calculado sobre todos os códigos gravados no banco. */
+async function proximoCodigoLivre(): Promise<string> {
+  const client = exigirCloud();
+  const { data, error } = await client.from("politicas").select("codigo");
+  if (error) throw traduzErro(error);
+  let maior = 0;
+  for (const linha of data ?? []) {
+    const m = /(\d+)\s*$/.exec(linha.codigo.trim());
+    if (m) maior = Math.max(maior, Number(m[1]));
+  }
+  return `POLITICA – ORC – ${String(maior + 1).padStart(3, "0")}`;
+}
+
 /** Cria uma política no banco e devolve o registro persistido. */
 export async function criarPolitica(item: PoliticaItem): Promise<PoliticaItem> {
   if (!podeAdicionarDocumentos(getSession())) {
     throw new Error("Você não tem permissão para adicionar documentos.");
   }
   const client = exigirCloud();
-  const { data, error } = await client
-    .from("politicas")
-    .insert({ ...politicaParaInsercao(item), ...marcosDeAprovacao("", item.status) })
-    .select()
-    .single();
+  const inserir = (codigo: string) =>
+    client
+      .from("politicas")
+      .insert({ ...politicaParaInsercao({ ...item, codigo }), ...marcosDeAprovacao("", item.status) })
+      .select()
+      .single();
+  let resultado = await inserir(item.codigo);
+  if (resultado.error && codigoDuplicado(resultado.error)) {
+    // Código já existe no banco (a sugestão veio de uma lista incompleta): usa o próximo livre.
+    resultado = await inserir(await proximoCodigoLivre());
+  }
+  const { data, error } = resultado;
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível criar a política.");
   const criada = politicaDoRow(data);

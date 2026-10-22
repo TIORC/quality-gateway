@@ -85,6 +85,7 @@ import {
 } from "@/lib/permissoes";
 import {
   ENTRADA_PADRAO,
+  alterarDataRevisaoPop,
   aplicarContadores,
   aprovarPopLiderProcesso,
   aprovarPopLiderQualidade,
@@ -311,6 +312,66 @@ interface PopCardProps {
   onExcluir: (pop: Pop) => void;
   onDiscutir: (pop: Pop) => void;
   onFavoritar: (pop: Pop) => void;
+  onAtualizado: () => void;
+}
+
+/** Diálogo para corrigir a data da revisão vigente (Gestor da Qualidade e Desenvolvedor). */
+function PopDataRevisaoDialog({
+  aberto,
+  pop,
+  onFechar,
+  onSalvo,
+}: {
+  aberto: boolean;
+  pop: Pop;
+  onFechar: () => void;
+  onSalvo: () => void;
+}) {
+  const [valor, setValor] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (aberto) setValor(dataIsoParaBr(pop.dataRevisao));
+  }, [aberto, pop.dataRevisao]);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await alterarDataRevisaoPop(pop.id, valor);
+      toast.success("Data da revisão atualizada");
+      onSalvo();
+      onFechar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível alterar a data da revisão");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Data da revisão</DialogTitle>
+          <DialogDescription>{`${pop.codigo} — ${pop.titulo}. Corrige a data sem gerar nova revisão.`}</DialogDescription>
+        </DialogHeader>
+        <Input
+          value={valor}
+          onChange={(e) => setValor(mascaraDataBr(e.target.value))}
+          placeholder="dd/mm/aaaa"
+          inputMode="numeric"
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={onFechar} disabled={salvando}>
+            Cancelar
+          </Button>
+          <Button onClick={() => void salvar()} disabled={salvando || valor.length !== 10}>
+            Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function PopCard({
@@ -326,8 +387,11 @@ function PopCard({
   onExcluir,
   onDiscutir,
   onFavoritar,
+  onAtualizado,
 }: PopCardProps) {
   const responsaveis = nomesDosSetores(pop.setoresResponsaveis ?? [], setores);
+  const podeCorrigirData = ehLiderancaDaQualidade(getSession());
+  const [corrigindoData, setCorrigindoData] = useState(false);
   const etapasHistorico: EtapaHistorico[] = [
     {
       rotulo: "Publicado por",
@@ -388,6 +452,12 @@ function PopCard({
             </Tag>
           ))}
         </div>
+        <PopDataRevisaoDialog
+          aberto={corrigindoData}
+          pop={pop}
+          onFechar={() => setCorrigindoData(false)}
+          onSalvo={onAtualizado}
+        />
       </div>
 
       <aside className="lg:w-64 flex shrink-0 flex-col rounded-xl border border-[#E9EEF5] bg-[#F8FAFC]">
@@ -395,7 +465,7 @@ function PopCard({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
             Controles
           </p>
-          {podeAdicionar || podeModificar || podeExcluir ? (
+          {podeAdicionar || podeModificar || podeExcluir || podeCorrigirData ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -416,6 +486,11 @@ function PopCard({
                 {podeAdicionar ? (
                   <DropdownMenuItem onClick={() => onDuplicar(pop)}>
                     <Copy className="h-4 w-4" /> Duplicar
+                  </DropdownMenuItem>
+                ) : null}
+                {podeCorrigirData ? (
+                  <DropdownMenuItem onClick={() => setCorrigindoData(true)}>
+                    <History className="h-4 w-4" /> Alterar data da revisão
                   </DropdownMenuItem>
                 ) : null}
                 {podeExcluir ? (
@@ -659,6 +734,7 @@ interface ListaProps {
   aoExcluir: (pop: Pop) => void;
   aoDiscutir: (pop: Pop) => void;
   aoFavoritar: (pop: Pop) => void;
+  aoAtualizar: () => void;
 }
 
 function ListaDePops({
@@ -683,6 +759,7 @@ function ListaDePops({
   aoExcluir,
   aoDiscutir,
   aoFavoritar,
+  aoAtualizar,
 }: ListaProps) {
   return (
     <>
@@ -757,6 +834,7 @@ function ListaDePops({
               onExcluir={aoExcluir}
               onDiscutir={aoDiscutir}
               onFavoritar={aoFavoritar}
+              onAtualizado={aoAtualizar}
             />
           ))
         )}
@@ -2665,6 +2743,7 @@ function Pops() {
         aoDiscutir={setPopEmDiscussao}
         favoritos={favoritosMeus}
         aoFavoritar={(p) => void alternarFavorito(p)}
+        aoAtualizar={() => void buscarDados()}
       />
     );
   }
