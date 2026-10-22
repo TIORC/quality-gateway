@@ -85,7 +85,7 @@ import {
 } from "@/lib/permissoes";
 import {
   ENTRADA_PADRAO,
-  alterarDataRevisaoPop,
+  alterarDataPop,
   aplicarContadores,
   aprovarPopLiderProcesso,
   aprovarPopLiderQualidade,
@@ -221,6 +221,8 @@ function StatusBadge({ status }: { status: StatusPop }) {
 const COR_REVISAO = "bg-[#EEF2FF] text-[#4F46E5]";
 /** Cor da tag neutra (setores, materiais e afins). */
 const COR_NEUTRA = "bg-[#F1F5F9] text-[#475569]";
+const COR_DATA_REVISAO = "bg-[#ECFDF5] text-[#047857]";
+const COR_DATA_PUBLICACAO = "bg-[#FFF7ED] text-[#C2410C]";
 
 function paginasCompactas(paginaAtual: number, totalPaginas: number): (number | "…")[] {
   if (totalPaginas <= 7) {
@@ -315,30 +317,41 @@ interface PopCardProps {
   onAtualizado: () => void;
 }
 
-/** Diálogo para corrigir a data da revisão vigente (Gestor da Qualidade e Desenvolvedor). */
-function PopDataRevisaoDialog({
+/** Campos de data que a liderança da Qualidade pode corrigir sem gerar nova revisão. */
+type CampoDataPop = "data_revisao" | "data_publicacao";
+
+const ROTULO_CAMPO_DATA: Record<CampoDataPop, string> = {
+  data_revisao: "Data da revisão",
+  data_publicacao: "Data de publicação",
+};
+
+/** Diálogo para corrigir a data da revisão ou a de publicação (Gestor da Qualidade e Desenvolvedor). */
+function PopDataDialog({
   aberto,
   pop,
+  campo,
   onFechar,
   onSalvo,
 }: {
   aberto: boolean;
   pop: Pop;
+  campo: CampoDataPop;
   onFechar: () => void;
   onSalvo: () => void;
 }) {
   const [valor, setValor] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const valorAtual = campo === "data_revisao" ? pop.dataRevisao : pop.dataPublicacao ?? pop.criadoEm ?? null;
 
   useEffect(() => {
-    if (aberto) setValor(dataIsoParaBr(pop.dataRevisao));
-  }, [aberto, pop.dataRevisao]);
+    if (aberto) setValor(dataIsoParaBr(valorAtual));
+  }, [aberto, valorAtual]);
 
   async function salvar() {
     setSalvando(true);
     try {
-      await alterarDataRevisaoPop(pop.id, valor);
-      toast.success("Data da revisão atualizada");
+      await alterarDataPop(pop.id, campo, valor);
+      toast.success(`${ROTULO_CAMPO_DATA[campo]} atualizada`);
       onSalvo();
       onFechar();
     } catch (erro) {
@@ -352,7 +365,7 @@ function PopDataRevisaoDialog({
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Data da revisão</DialogTitle>
+          <DialogTitle>{ROTULO_CAMPO_DATA[campo]}</DialogTitle>
           <DialogDescription>{`${pop.codigo} — ${pop.titulo}. Corrige a data sem gerar nova revisão.`}</DialogDescription>
         </DialogHeader>
         <Input
@@ -391,7 +404,7 @@ function PopCard({
 }: PopCardProps) {
   const responsaveis = nomesDosSetores(pop.setoresResponsaveis ?? [], setores);
   const podeCorrigirData = ehLiderancaDaQualidade(getSession());
-  const [corrigindoData, setCorrigindoData] = useState(false);
+  const [corrigindoData, setCorrigindoData] = useState<CampoDataPop | null>(null);
   const etapasHistorico: EtapaHistorico[] = [
     {
       rotulo: "Publicado por",
@@ -443,8 +456,11 @@ function PopCard({
           <Tag cor={COR_REVISAO} rotulo="Revisão">
             {rotuloRevisao(pop.revisao)}
           </Tag>
-          <Tag cor={COR_NEUTRA} rotulo="Data da revisão">
+          <Tag cor={COR_DATA_REVISAO} rotulo="Data da revisão">
             {formatarDataRevisao(pop.dataRevisao)}
+          </Tag>
+          <Tag cor={COR_DATA_PUBLICACAO} rotulo="Data de publicação">
+            {formatarDataRevisao(pop.dataPublicacao ?? pop.criadoEm ?? null)}
           </Tag>
           {responsaveis.map((nome) => (
             <Tag key={nome} cor={COR_NEUTRA} rotulo="Responsável">
@@ -452,10 +468,11 @@ function PopCard({
             </Tag>
           ))}
         </div>
-        <PopDataRevisaoDialog
-          aberto={corrigindoData}
+        <PopDataDialog
+          aberto={corrigindoData !== null}
           pop={pop}
-          onFechar={() => setCorrigindoData(false)}
+          campo={corrigindoData ?? "data_revisao"}
+          onFechar={() => setCorrigindoData(null)}
           onSalvo={onAtualizado}
         />
       </div>
@@ -489,9 +506,14 @@ function PopCard({
                   </DropdownMenuItem>
                 ) : null}
                 {podeCorrigirData ? (
-                  <DropdownMenuItem onClick={() => setCorrigindoData(true)}>
-                    <History className="h-4 w-4" /> Alterar data da revisão
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem onClick={() => setCorrigindoData("data_revisao")}>
+                      <History className="h-4 w-4" /> Alterar data da revisão
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setCorrigindoData("data_publicacao")}>
+                      <History className="h-4 w-4" /> Alterar data de publicação
+                    </DropdownMenuItem>
+                  </>
                 ) : null}
                 {podeExcluir ? (
                   <>

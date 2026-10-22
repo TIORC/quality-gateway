@@ -91,6 +91,8 @@ export interface Pop {
   revisao: number;
   /** Data da revisão vigente, no formato `aaaa-mm-dd`. */
   dataRevisao: string | null;
+  /** Data de publicação, no formato `aaaa-mm-dd`. Sem valor, usa a data de criação. */
+  dataPublicacao?: string | null;
   /** O que foi alterado na revisão vigente (alimenta o histórico de modificações). */
   observacaoRevisao: string;
   /** Setores responsáveis pelo processo (ids de `public.pop_setores`). */
@@ -486,6 +488,7 @@ function popDoRow(row: PopRow): Pop {
     // não foi aplicada, os valores caem nos padrões e nada quebra.
     revisao: typeof row.revisao === "number" && row.revisao > 0 ? row.revisao : 1,
     dataRevisao: row.data_revisao ?? null,
+    dataPublicacao: row.data_publicacao ?? null,
     observacaoRevisao: row.observacao_revisao ?? "",
     setoresResponsaveis: row.setores_responsaveis ?? [],
     visualizadores: row.visualizadores ?? [],
@@ -1235,18 +1238,22 @@ export async function atualizarPop(
 }
 
 /**
- * Corrige a data da revisão vigente de um POP (sem gerar nova revisão).
+ * Corrige a data da revisão ou a data de publicação de um POP (sem gerar nova revisão).
  * Restrito ao Gestor da Qualidade e ao Desenvolvedor do Sistema.
  */
-export async function alterarDataRevisaoPop(id: string, dataBr: string): Promise<void> {
+export async function alterarDataPop(
+  id: string,
+  campo: "data_revisao" | "data_publicacao",
+  dataBr: string,
+): Promise<void> {
   if (!ehLiderancaDaQualidade(getSession())) {
-    throw new Error("Só o Gestor da Qualidade e o Desenvolvedor do Sistema podem alterar a data da revisão.");
+    throw new Error("Só o Gestor da Qualidade e o Desenvolvedor do Sistema podem alterar essas datas.");
   }
   const iso = dataBrParaIso(dataBr);
   if (!iso) throw new Error("Informe uma data válida (dd/mm/aaaa).");
   const client = exigirCloud();
   const { data: antes } = await client.from("pops").select("codigo,titulo").eq("id", id).maybeSingle();
-  const { error } = await client.from("pops").update({ data_revisao: iso }).eq("id", id);
+  const { error } = await client.from("pops").update({ [campo]: iso } as never).eq("id", id);
   if (error) throw traduzErro(error);
   await registrarLog({
     acao: "editado",
@@ -1254,7 +1261,7 @@ export async function alterarDataRevisaoPop(id: string, dataBr: string): Promise
     entidadeId: id,
     codigo: antes?.codigo ?? "",
     titulo: antes?.titulo ?? "",
-    detalhe: `Data da revisão: ${dataBr}`,
+    detalhe: `${campo === "data_revisao" ? "Data da revisão" : "Data de publicação"}: ${dataBr}`,
   });
 }
 

@@ -1970,6 +1970,7 @@ export type Database = {
           criado_por: string
           criado_por_nome: string
           data_revisao: string
+          data_publicacao: string | null
           data_vencimento: string | null
           departamento: string
           descricao: string
@@ -2017,6 +2018,7 @@ export type Database = {
           criado_por?: string
           criado_por_nome?: string
           data_revisao?: string
+          data_publicacao?: string | null
           data_vencimento?: string | null
           departamento?: string
           descricao?: string
@@ -2064,6 +2066,7 @@ export type Database = {
           criado_por?: string
           criado_por_nome?: string
           data_revisao?: string
+          data_publicacao?: string | null
           data_vencimento?: string | null
           departamento?: string
           descricao?: string
