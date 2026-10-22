@@ -414,6 +414,71 @@ export type Database = {
           },
         ]
       }
+      celula_colaboradores: {
+        Row: {
+          celula_id: string
+          colaborador_id: string
+          created_at: string
+        }
+        Insert: {
+          celula_id: string
+          colaborador_id: string
+          created_at?: string
+        }
+        Update: {
+          celula_id?: string
+          colaborador_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "celula_colaboradores_celula_id_fkey"
+            columns: ["celula_id"]
+            isOneToOne: false
+            referencedRelation: "celulas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "celula_colaboradores_colaborador_id_fkey"
+            columns: ["colaborador_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      celulas: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          setor_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          setor_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          setor_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "celulas_setor_id_fkey"
+            columns: ["setor_id"]
+            isOneToOne: false
+            referencedRelation: "setores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       colaboradores: {
         Row: {
           cargo: string
@@ -750,160 +815,6 @@ export type Database = {
         }
         Relationships: []
       }
-      pesquisas_satisfacao: {
-        Row: {
-          created_at: string
-          email: string
-          empresa: string
-          id: string
-          nome_pessoa: string
-          nota_atendimento: number
-          nota_orientacoes: number | null
-          nota_prazos: number | null
-          nota_qualidade: number | null
-          nota_recomendacao: number | null
-          sugestao: string
-          unidade: string
-        }
-        Insert: {
-          created_at?: string
-          email?: string
-          empresa?: string
-          id?: string
-          nome_pessoa?: string
-          nota_atendimento: number
-          nota_orientacoes?: number | null
-          nota_prazos?: number | null
-          nota_qualidade?: number | null
-          nota_recomendacao?: number | null
-          sugestao?: string
-          unidade?: string
-        }
-        Update: {
-          created_at?: string
-          empresa?: string
-          id?: string
-          nome_pessoa?: string
-          nota_atendimento?: number
-          nota_orientacoes?: number
-          nota_prazos?: number
-          nota_qualidade?: number
-          nota_recomendacao?: number
-          sugestao?: string
-          unidade?: string
-        }
-        Relationships: []
-      }
-      pesquisas_modelos: {
-        Row: {
-          created_at: string
-          criado_por: string
-          descricao: string
-          id: string
-          perguntas: Json
-          titulo: string
-        }
-        Insert: {
-          created_at?: string
-          criado_por?: string
-          descricao?: string
-          id?: string
-          perguntas?: Json
-          titulo?: string
-        }
-        Update: {
-          created_at?: string
-          criado_por?: string
-          descricao?: string
-          id?: string
-          perguntas?: Json
-          titulo?: string
-        }
-        Relationships: []
-      }
-      pesquisas_respostas: {
-        Row: {
-          created_at: string
-          id: string
-          modelo_id: string
-          respostas: Json
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          modelo_id: string
-          respostas?: Json
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          modelo_id?: string
-          respostas?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pesquisas_respostas_modelo_id_fkey"
-            columns: ["modelo_id"]
-            isOneToOne: false
-            referencedRelation: "pesquisas_modelos"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      nps_respostas: {
-        Row: {
-          created_at: string
-          empresa: string
-          grupo: string
-          id: string
-          modelo_id: string | null
-          nota: number
-          pergunta_id: string
-          pergunta_texto: string
-          pessoa: string
-          resposta_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          empresa?: string
-          grupo: string
-          id?: string
-          modelo_id?: string | null
-          nota: number
-          pergunta_id: string
-          pergunta_texto?: string
-          pessoa?: string
-          resposta_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          empresa?: string
-          grupo?: string
-          id?: string
-          modelo_id?: string | null
-          nota?: number
-          pergunta_id?: string
-          pergunta_texto?: string
-          pessoa?: string
-          resposta_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "nps_respostas_modelo_id_fkey"
-            columns: ["modelo_id"]
-            isOneToOne: false
-            referencedRelation: "pesquisas_modelos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "nps_respostas_resposta_id_fkey"
-            columns: ["resposta_id"]
-            isOneToOne: false
-            referencedRelation: "pesquisas_respostas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       notificacoes: {
         Row: {
           autor_email: string
@@ -973,6 +884,60 @@ export type Database = {
             columns: ["pop_id"]
             isOneToOne: false
             referencedRelation: "pops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nps_respostas: {
+        Row: {
+          created_at: string
+          empresa: string
+          grupo: string
+          id: string
+          modelo_id: string | null
+          nota: number
+          pergunta_id: string
+          pergunta_texto: string
+          pessoa: string
+          resposta_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          empresa?: string
+          grupo: string
+          id?: string
+          modelo_id?: string | null
+          nota: number
+          pergunta_id: string
+          pergunta_texto?: string
+          pessoa?: string
+          resposta_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          empresa?: string
+          grupo?: string
+          id?: string
+          modelo_id?: string | null
+          nota?: number
+          pergunta_id?: string
+          pergunta_texto?: string
+          pessoa?: string
+          resposta_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nps_respostas_modelo_id_fkey"
+            columns: ["modelo_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas_modelos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nps_respostas_resposta_id_fkey"
+            columns: ["resposta_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas_respostas"
             referencedColumns: ["id"]
           },
         ]
@@ -1250,6 +1215,107 @@ export type Database = {
           tipo_nome?: string
           titulo?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      pesquisas_modelos: {
+        Row: {
+          created_at: string
+          criado_por: string
+          descricao: string
+          id: string
+          perguntas: Json
+          titulo: string
+        }
+        Insert: {
+          created_at?: string
+          criado_por?: string
+          descricao?: string
+          id?: string
+          perguntas?: Json
+          titulo?: string
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string
+          descricao?: string
+          id?: string
+          perguntas?: Json
+          titulo?: string
+        }
+        Relationships: []
+      }
+      pesquisas_respostas: {
+        Row: {
+          created_at: string
+          id: string
+          modelo_id: string
+          respostas: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          modelo_id: string
+          respostas?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          modelo_id?: string
+          respostas?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pesquisas_respostas_modelo_id_fkey"
+            columns: ["modelo_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas_modelos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pesquisas_satisfacao: {
+        Row: {
+          created_at: string
+          email: string
+          empresa: string
+          id: string
+          nome_pessoa: string
+          nota_atendimento: number
+          nota_orientacoes: number | null
+          nota_prazos: number | null
+          nota_qualidade: number | null
+          nota_recomendacao: number | null
+          sugestao: string
+          unidade: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string
+          empresa?: string
+          id?: string
+          nome_pessoa?: string
+          nota_atendimento: number
+          nota_orientacoes?: number | null
+          nota_prazos?: number | null
+          nota_qualidade?: number | null
+          nota_recomendacao?: number | null
+          sugestao?: string
+          unidade?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          empresa?: string
+          id?: string
+          nome_pessoa?: string
+          nota_atendimento?: number
+          nota_orientacoes?: number | null
+          nota_prazos?: number | null
+          nota_qualidade?: number | null
+          nota_recomendacao?: number | null
+          sugestao?: string
+          unidade?: string
         }
         Relationships: []
       }
@@ -2184,6 +2250,7 @@ export type Database = {
           id: string
           importado_em: string
           nome: string
+          origem: string
           responsavel: string
           status: string
           tipo: string
@@ -2202,6 +2269,7 @@ export type Database = {
           id: string
           importado_em?: string
           nome?: string
+          origem?: string
           responsavel?: string
           status?: string
           tipo?: string
@@ -2220,6 +2288,7 @@ export type Database = {
           id?: string
           importado_em?: string
           nome?: string
+          origem?: string
           responsavel?: string
           status?: string
           tipo?: string
@@ -2520,6 +2589,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      is_super_deleter: { Args: never; Returns: boolean }
       mudar_ativo_tipo_reuniao: {
         Args: { ativo?: boolean; email_caller: string; id: string }
         Returns: {
@@ -2571,6 +2641,10 @@ export type Database = {
         Returns: undefined
       }
       setor_id_por_nome: { Args: { nome: string }; Returns: string }
+      setor_renomear_em_tudo: {
+        Args: { p_antigo: string; p_novo: string }
+        Returns: undefined
+      }
       usuario_id_por_email: { Args: { email: string }; Returns: string }
     }
     Enums: {
