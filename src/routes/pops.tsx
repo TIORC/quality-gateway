@@ -223,6 +223,7 @@ const COR_REVISAO = "bg-[#EEF2FF] text-[#4F46E5]";
 const COR_NEUTRA = "bg-[#F1F5F9] text-[#475569]";
 const COR_DATA_REVISAO = "bg-[#ECFDF5] text-[#047857]";
 const COR_DATA_PUBLICACAO = "bg-[#FFF7ED] text-[#C2410C]";
+const COR_QUEM_VISUALIZA = "bg-[#9D174D] text-white";
 
 function paginasCompactas(paginaAtual: number, totalPaginas: number): (number | "…")[] {
   if (totalPaginas <= 7) {
@@ -404,6 +405,11 @@ function PopCard({
 }: PopCardProps) {
   const responsaveis = nomesDosSetores(pop.setoresResponsaveis ?? [], setores);
   const podeCorrigirData = ehLiderancaDaQualidade(getSession());
+  const quemVisualiza =
+    (pop.visualizadores ?? []).length === 0 ||
+    (setores.length > 0 && setores.every((setor) => (pop.visualizadores ?? []).includes(setor.id)))
+      ? "Todos os setores"
+      : nomesDosSetores(pop.visualizadores, setores).join(", ");
   const [corrigindoData, setCorrigindoData] = useState<CampoDataPop | null>(null);
   const etapasHistorico: EtapaHistorico[] = [
     {
@@ -467,6 +473,9 @@ function PopCard({
               {nome}
             </Tag>
           ))}
+          <Tag cor={COR_QUEM_VISUALIZA} rotulo="Quem visualiza">
+            {quemVisualiza}
+          </Tag>
         </div>
         <PopDataDialog
           aberto={corrigindoData !== null}
@@ -477,11 +486,8 @@ function PopCard({
         />
       </div>
 
-      <aside className="lg:w-64 flex shrink-0 flex-col rounded-xl border border-[#E9EEF5] bg-[#F8FAFC]">
-        <div className="flex items-center justify-between border-b border-[#E9EEF5] px-4 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
-            Controles
-          </p>
+      <aside className="flex shrink-0 items-center gap-2 lg:w-64">
+        <div className="flex shrink-0 items-center justify-end">
           {podeAdicionar || podeModificar || podeExcluir || podeCorrigirData ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -531,30 +537,7 @@ function PopCard({
           ) : null}
         </div>
 
-        <div className="flex-1 space-y-2.5 px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1 text-[11px] text-[#94A3B8]">
-              <History className="h-3 w-3" /> Revisão vigente
-            </span>
-            <span className="text-[13px] font-semibold text-[#1F2937]">
-              {rotuloRevisao(pop.revisao)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1 text-[11px] text-[#94A3B8]">
-              <Eye className="h-3 w-3" /> Quem visualiza
-            </span>
-            <span className="text-right text-[12.5px] font-semibold text-[#1F2937]">
-              {(pop.visualizadores ?? []).length === 0 ||
-              (setores.length > 0 &&
-                setores.every((setor) => (pop.visualizadores ?? []).includes(setor.id)))
-                ? "Todos os setores"
-                : nomesDosSetores(pop.visualizadores, setores).join(", ")}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 border-t border-[#E9EEF5] px-4 py-2.5">
+        <div className="flex flex-1 items-center gap-4">
           {/* Contadores reais do banco: 0 enquanto ninguém favoritou/comentou. */}
           <button
             type="button"
