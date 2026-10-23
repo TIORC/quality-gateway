@@ -20,12 +20,6 @@ import {
   type PerguntaModelo,
   type RespostaModelo,
 } from "@/lib/pesquisas-modelos";
-import {
-  mediaGeral,
-  mediaPorPergunta,
-  PERGUNTAS_NOTA,
-  type PesquisaSatisfacao,
-} from "@/lib/pesquisas-satisfacao";
 import { esc } from "@/lib/projetos-pdf";
 
 type Valor = number | string | string[];
@@ -43,7 +37,6 @@ export interface FiltrosRelatorio {
 }
 
 export interface DadosRelatorio extends FiltrosRelatorio {
-  pesquisas: PesquisaSatisfacao[];
   notasNps: number[];
 }
 
@@ -201,38 +194,6 @@ function resumoNps(apuracao: ApuracaoNps): string {
     <p class="muted">Cálculo: (promotores − detratores) ÷ total × 100</p>`;
 }
 
-function secaoSatisfacao(pesquisas: PesquisaSatisfacao[]): string {
-  if (!pesquisas.length)
-    return '<p class="muted">Nenhuma resposta do formulário de satisfação recebida ainda.</p>';
-
-  const medias = mediaPorPergunta(pesquisas);
-  const geral = mediaGeral(pesquisas);
-  const barras = medias
-    .map((m) => barra(m.rotulo, m.media, 10, corDaNota(m.media), m.media.toLocaleString("pt-BR")))
-    .join("");
-
-  const linhas = pesquisas
-    .map((p) => {
-      const notas = PERGUNTAS_NOTA.map((pergunta) => {
-        const nota = p[pergunta.chave];
-        return `<td>${nota === null ? "—" : `<b style="color:${corDaNota(nota)}">${nota}</b>`}</td>`;
-      }).join("");
-      return `<tr><td>${esc(formatarDataHora(p.criadoEm))}</td><td>${esc(p.empresa)}</td><td>${esc(p.nomePessoa)}</td><td>${esc(p.unidade || "—")}</td>${notas}<td>${esc(p.sugestao || "—")}</td></tr>`;
-    })
-    .join("");
-
-  const cabecalhoNotas = PERGUNTAS_NOTA.map(
-    (pergunta, indice) => `<th>${indice + 1}. ${esc(pergunta.rotulo)}</th>`,
-  ).join("");
-
-  return `<div class="cartao">
-      <div class="chips"><span class="chip" style="background:#2563EB">${pesquisas.length} ${pesquisas.length === 1 ? "resposta" : "respostas"}</span><span class="chip" style="background:${corDaNota(geral)}">Média geral ${esc(geral.toLocaleString("pt-BR"))}</span></div>
-      <h4>Média por pergunta</h4>${barras}
-      <h4>Respostas recebidas</h4>
-      <table><thead><tr><th>Data</th><th>Empresa</th><th>Respondido por</th><th>Unidade</th>${cabecalhoNotas}<th>Sugestão</th></tr></thead><tbody>${linhas}</tbody></table>
-    </div>`;
-}
-
 function secaoNpsGeral(notas: number[]): string {
   const apuracao = apurarNps(notas);
   return `<div class="cartao"><div class="duas">
@@ -380,7 +341,7 @@ function rodape(dataGeracao: string): string {
   return `<div class="rodape">Gestão da Qualidade · Pesquisas de Satisfação · gerado em ${esc(dataGeracao)}</div>`;
 }
 
-/** Relatório completo: formulário de satisfação, NPS geral e todas as pesquisas criadas. */
+/** Relatório completo: NPS geral e todas as pesquisas criadas. */
 export function htmlRelatorioCompleto(
   dados: DadosRelatorio,
   criadas: PesquisaComRespostas[],
@@ -391,11 +352,10 @@ export function htmlRelatorioCompleto(
       <h1>Pesquisas de Satisfação</h1>
       <p>Relatório completo · gerado em ${esc(geradoEm)}</p>
       ${linhasDosFiltros(dados)}
-      <p>${criadas.length} ${criadas.length === 1 ? "pesquisa criada" : "pesquisas criadas"} · ${dados.pesquisas.length} ${dados.pesquisas.length === 1 ? "resposta" : "respostas"} do formulário de satisfação · ${dados.notasNps.length} ${dados.notasNps.length === 1 ? "nota NPS" : "notas NPS"}</p>
+      <p>${criadas.length} ${criadas.length === 1 ? "pesquisa criada" : "pesquisas criadas"} · ${dados.notasNps.length} ${dados.notasNps.length === 1 ? "nota NPS" : "notas NPS"}</p>
     </div>
-    <section class="secao"><h2>1. Formulário de satisfação</h2>${secaoSatisfacao(dados.pesquisas)}</section>
-    <section class="secao"><h2>2. NPS geral (todas as perguntas NPS)</h2>${secaoNpsGeral(dados.notasNps)}</section>
-    <section class="secao"><h2>3. Pesquisas criadas (${criadas.length})</h2>${
+    <section class="secao"><h2>1. NPS geral (todas as perguntas NPS)</h2>${secaoNpsGeral(dados.notasNps)}</section>
+    <section class="secao"><h2>2. Pesquisas criadas (${criadas.length})</h2>${
       criadas.length
         ? criadas.map((c) => secaoPesquisa(c)).join("")
         : '<p class="muted">Nenhuma pesquisa criada.</p>'
