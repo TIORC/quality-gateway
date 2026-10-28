@@ -78,7 +78,6 @@ export function chaveNomeDo(perguntas: PerguntaModelo[]): string | undefined {
   )?.id;
 }
 
-
 /** Lista os modelos, do mais recente para o mais antigo. */
 export async function listarModelosPesquisa(): Promise<ModeloPesquisa[]> {
   const { data, error } = await exigirCloud()
@@ -206,6 +205,54 @@ export async function registrarRespostaModelo(
     .from("pesquisas_respostas")
     .insert({ modelo_id: modeloId, respostas: respostas as unknown as Json });
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Apaga o valor de uma pergunta nas respostas de um modelo. Sem `ids`, vale para
+ * todas as respostas (usado ao excluir a pergunta); com `ids`, só para essas linhas.
+ * As demais respostas da mesma pessoa/empresa ficam intactas.
+ */
+export async function removerRespostasDaPergunta(
+  modeloId: string,
+  perguntaId: string,
+  ids?: string[],
+): Promise<void> {
+  const cliente = exigirCloud();
+  const { data, error } = await cliente
+    .from("pesquisas_respostas")
+    .select("id, respostas")
+    .eq("modelo_id", modeloId);
+  if (error) throw new Error(error.message);
+
+  const alvos = (data ?? []).filter(
+    (row) =>
+      (!ids || ids.includes(row.id)) &&
+      Object.prototype.hasOwnProperty.call(row.respostas ?? {}, perguntaId),
+  );
+  const atualizacoes = alvos.map((row) => {
+    const { [perguntaId]: _removida, ...restante } = row.respostas as unknown as RespostaPesquisa;
+    return cliente
+      .from("pesquisas_respostas")
+      .update({ respostas: restante as unknown as Json })
+      .eq("id", row.id);
+  });
+  const resultados = await Promise.all(atualizacoes);
+  const falha = resultados.find((r) => r.error);
+  if (falha?.error) throw new Error(falha.error.message);
+}
+
+/** Remove uma pergunta do modelo e apaga o valor dela em todas as respostas. */
+export async function excluirPerguntaDaPesquisa(
+  modelo: ModeloPesquisa,
+  perguntaId: string,
+): Promise<void> {
+  // Primeiro tira a pergunta do modelo: se falhar aqui, nada foi apagado das respostas.
+  await atualizarModeloPesquisa(modelo.id, {
+    titulo: modelo.titulo,
+    descricao: modelo.descricao,
+    perguntas: modelo.perguntas.filter((p) => p.id !== perguntaId),
+  });
+  await removerRespostasDaPergunta(modelo.id, perguntaId);
 }
 
 /** Link público de uma pesquisa. Abre o formulário com as perguntas dela. */

@@ -14,6 +14,7 @@ import { GraficoNpsPredio } from "@/components/pesquisas/grafico-nps-predio";
 import { apurarNps, formatarNps, GRUPOS_NPS, grupoDaNota, type GrupoNps } from "@/lib/nps";
 import {
   chaveEmpresaDo,
+  chaveNomeDo,
   type ModeloPesquisa,
   type PerguntaModelo,
   type RespostaModelo,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/pesquisas-modelos";
 
 const COR_BARRA = "#2563EB";
+const ID_GRADIENTE_BARRA = "gradiente-barra-pesquisa";
 const ROTULO_OUTRO = "Outro";
 
 interface GraficosPerguntasProps {
@@ -38,21 +40,25 @@ export function GraficosPerguntas({ modelo, respostas }: GraficosPerguntasProps)
   const valores = useMemo(() => respostas.map((r) => r.respostas), [respostas]);
   // Pergunta que traz a razão social de quem respondeu.
   const chaveEmpresa = chaveEmpresaDo(modelo.perguntas);
+  // Pergunta com o nome de quem respondeu: não aparece nos gráficos (a busca é pela razão social).
+  const chaveNome = chaveNomeDo(modelo.perguntas);
 
   return (
     <div>
       <h3 className="mb-4 text-sm font-semibold text-[#0F172A]">Gráficos por pergunta</h3>
 
-      <div className="grid gap-4">
-        {modelo.perguntas.map((pergunta, indice) => (
-          <CartaoPergunta
-            key={pergunta.id}
-            numero={indice + 1}
-            pergunta={pergunta}
-            respostas={valores}
-            chaveEmpresa={chaveEmpresa}
-          />
-        ))}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
+        {modelo.perguntas
+          .filter((pergunta) => pergunta.id !== chaveNome)
+          .map((pergunta, indice) => (
+            <CartaoPergunta
+              key={pergunta.id}
+              numero={indice + 1}
+              pergunta={pergunta}
+              respostas={valores}
+              chaveEmpresa={chaveEmpresa}
+            />
+          ))}
       </div>
     </div>
   );
@@ -87,7 +93,7 @@ function CartaoPergunta({
   return (
     <div className="rounded-lg border border-[#E2E8F0] p-4">
       <h3 className="text-sm font-semibold text-[#0F172A]">
-        {numero}. {pergunta.texto}
+        {numero}. {pergunta.texto.replace(/^\s*\d+\s*[-.)]\s*/, "")}
       </h3>
       {pergunta.subtitulo && <p className="mt-1 text-xs text-[#64748B]">{pergunta.subtitulo}</p>}
       <p className="mb-3 text-xs text-[#64748B]">
@@ -305,6 +311,14 @@ function RespostasTexto({ valores }: { valores: (number | string | string[])[] }
 function GraficoBarras({ dados }: { dados: { rotulo: string; total: number }[] }) {
   return (
     <div style={{ width: "100%", height: 240 }}>
+      <svg width="0" height="0" aria-hidden className="absolute">
+        <defs>
+          <linearGradient id={ID_GRADIENTE_BARRA} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3B82F6" />
+            <stop offset="100%" stopColor="#1D4ED8" />
+          </linearGradient>
+        </defs>
+      </svg>
       <ResponsiveContainer>
         <BarChart data={dados} margin={{ top: 16, right: 8, left: 0, bottom: 4 }}>
           <CartesianGrid vertical={false} stroke="#E2E8F0" />
@@ -316,7 +330,7 @@ function GraficoBarras({ dados }: { dados: { rotulo: string; total: number }[] }
           />
           <Bar
             dataKey="total"
-            fill={COR_BARRA}
+            fill={`url(#${ID_GRADIENTE_BARRA})`}
             radius={[4, 4, 0, 0]}
             activeBar={<BarraDestacada />}
           >

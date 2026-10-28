@@ -1,14 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Check,
-  ChevronDown,
-  Copy,
-  FileText,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
+import { Check, ChevronDown, Copy, FileText, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -26,6 +17,7 @@ import { GraficoNpsVelocimetro } from "@/components/pesquisas/grafico-nps-veloci
 import { GraficosPerguntas } from "@/components/pesquisas/graficos-perguntas";
 import { RespostasPesquisa } from "@/components/pesquisas/respostas-pesquisa";
 import { PanelShell } from "@/components/panel-shell";
+import { ExclusaoDadosDialog } from "@/components/pesquisas/exclusao-dados-dialog";
 import { getSession } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,10 +73,13 @@ function PesquisasDeSatisfacao() {
   // Pesquisa aguardando confirmação de exclusão, e se a exclusão está em andamento.
   const [modeloParaExcluir, setModeloParaExcluir] = useState<ModeloPesquisa | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [exclusaoAberta, setExclusaoAberta] = useState(false);
   // Notas NPS de todas as pesquisas, com a razão social de quem respondeu.
   const [registrosNps, setRegistrosNps] = useState<RegistroNps[]>([]);
   // Respostas de cada pesquisa criada, indexadas pelo id da pesquisa.
-  const [respostasPorModelo, setRespostasPorModelo] = useState<Record<string, RespostaModelo[]>>({});
+  const [respostasPorModelo, setRespostasPorModelo] = useState<Record<string, RespostaModelo[]>>(
+    {},
+  );
   // Razão social escolhida no filtro ("" = todas).
   const [empresaFiltro, setEmpresaFiltro] = useState("");
   // Pessoa escolhida no filtro ("" = todas).
@@ -116,7 +111,9 @@ function PesquisasDeSatisfacao() {
   const carregarRespostas = useCallback(async (lista: ModeloPesquisa[]) => {
     try {
       const partes = await Promise.all(
-        lista.map(async (modelo) => [modelo.id, await listarRespostasDetalhadas(modelo.id)] as const),
+        lista.map(
+          async (modelo) => [modelo.id, await listarRespostasDetalhadas(modelo.id)] as const,
+        ),
       );
       setRespostasPorModelo(Object.fromEntries(partes));
     } catch (erro) {
@@ -266,8 +263,8 @@ function PesquisasDeSatisfacao() {
           <h1 className="text-2xl font-semibold text-[#0F172A]">Pesquisas de Satisfação</h1>
           <p className="mt-1 text-sm text-[#64748B]">
             {totalRespostas} {totalRespostas === 1 ? "resposta" : "respostas"} recebidas
-            {empresaFiltro ? ` de ${empresaFiltro}` : ""}. Notas
-            de 1 (abaixo do esperado) a 10 (excelente).
+            {empresaFiltro ? ` de ${empresaFiltro}` : ""}. Notas de 1 (abaixo do esperado) a 10
+            (excelente).
           </p>
         </div>
         <div className="flex gap-2">
@@ -297,6 +294,18 @@ function PesquisasDeSatisfacao() {
             </Button>
           )}
         </div>
+        {podeGerenciar && (
+          <ExclusaoDadosDialog
+            aberto={exclusaoAberta}
+            onAbertoChange={setExclusaoAberta}
+            modelos={modelos}
+            respostasPorModelo={respostasPorModelo}
+            onAlterado={() => {
+              void carregarModelos();
+              void carregarRespostas(modelos);
+            }}
+          />
+        )}
         {podeGerenciar && (
           <CriarPesquisaDialog
             aberto={criandoPesquisa}
@@ -343,6 +352,15 @@ function PesquisasDeSatisfacao() {
             ))}
           </SelectContent>
         </Select>
+        {podeGerenciar && (
+          <Button
+            className="bg-[#DC2626] text-white hover:bg-[#B91C1C]"
+            onClick={() => setExclusaoAberta(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Exclusão de Dados
+          </Button>
+        )}
         {(empresaFiltro || pessoaFiltro) && (
           <Button
             variant="ghost"
@@ -436,11 +454,14 @@ function PesquisasDeSatisfacao() {
                     </div>
                   </div>
                   {aberto && (
-                    <div className="mt-4 grid gap-6">
+                    <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-6">
                       <GraficosPerguntas modelo={modelo} respostas={respostasDaPesquisa(modelo)} />
                       <div>
                         <h3 className="mb-3 text-sm font-semibold text-[#0F172A]">Respostas</h3>
-                        <RespostasPesquisa modelo={modelo} respostas={respostasDaPesquisa(modelo)} />
+                        <RespostasPesquisa
+                          modelo={modelo}
+                          respostas={respostasDaPesquisa(modelo)}
+                        />
                       </div>
                     </div>
                   )}
