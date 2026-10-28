@@ -434,6 +434,21 @@ export async function importarTarefas(
   return { lidas: tarefas.length, novas, atualizadas, ignoradas, duplicadasNoArquivo, mesPredominante };
 }
 
+/**
+ * Apaga tarefas importadas. Com `mes` (AAAA-MM), apaga só as com vencimento nesse mês;
+ * sem `mes`, apaga todas. Não mexe em indicadores nem em apurações.
+ */
+export async function zerarTarefas(mes?: string): Promise<void> {
+  let filtrada = clienteLivre().from(TABELA).delete().not("id", "is", null);
+  if (mes) {
+    const [ano, numeroMes] = mes.split("-").map(Number);
+    const proximo = new Date(Date.UTC(ano!, numeroMes!, 1)).toISOString().slice(0, 10);
+    filtrada = filtrada.gte("vencimento", `${mes}-01`).lt("vencimento", proximo);
+  }
+  const { error } = await filtrada;
+  if (error) throw traduzErro(error);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Métricas                                                                    */
 /* -------------------------------------------------------------------------- */

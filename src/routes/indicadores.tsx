@@ -9,6 +9,7 @@ import {
   Library,
   Network,
   Plus,
+  Trash2,
   TrainFront,
   Upload,
   Users,
@@ -28,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { DetalheIndicadorDrawer } from "@/components/indicador-detalhe-drawer";
 import { Pill, SeloAtraso, StatusApuracaoBadge, VariacaoIndicador } from "@/components/indicador-badges";
 import {
@@ -84,6 +86,7 @@ import {
   tarefasDoIndicador,
   tarefasEmCache,
   unificarSetor,
+  zerarTarefas,
   type ChaveIndicador,
   type MetricasTarefas,
   type ResultadoImportacao,
@@ -396,6 +399,9 @@ function Indicadores() {
   const [aba, setAba] = useState("visao-geral");
   const [secao, setSecao] = useState<SecaoIndicadores>("por-setor");
   const [tarefas, setTarefas] = useState<TarefaGestta[]>([]);
+  /** Zerar tarefas: "mes" apaga o mês escolhido; "tudo" apaga todas. `null` = sem confirmação aberta. */
+  const [zerarAlvo, setZerarAlvo] = useState<"mes" | "tudo" | null>(null);
+  const [zerando, setZerando] = useState(false);
   const [colaboradorFiltro, setColaboradorFiltro] = useState("todos");
   /** Período de exibição (cards, gráficos, resumo e histórico). */
   const [periodo, setPeriodo] = useState<FiltroPeriodo>({ modo: "ultimos12" });
@@ -512,6 +518,26 @@ function Indicadores() {
       const fim = mesReferenciaDe(ate);
       setPeriodo({ modo: "intervalo", ...normalizarIntervalo(inicio, fim) });
       setPopoverIntervalo(false);
+    }
+  }
+
+  /** Apaga as tarefas do mês escolhido ou todas, conforme `zerarAlvo`, e recarrega a lista. */
+  async function confirmarZerar() {
+    if (!zerarAlvo) return;
+    setZerando(true);
+    try {
+      await zerarTarefas(zerarAlvo === "mes" ? mesEscolhido : undefined);
+      setTarefas(await carregarTarefas());
+      toast.success(
+        zerarAlvo === "mes"
+          ? `Tarefas de ${rotuloMesLongo(mesEscolhido)} apagadas.`
+          : "Todas as tarefas importadas foram apagadas.",
+      );
+      setZerarAlvo(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível apagar as tarefas.");
+    } finally {
+      setZerando(false);
     }
   }
 
@@ -839,7 +865,43 @@ function Indicadores() {
             <Download className="h-4 w-4" />
             Exportar snapshot
           </Button>
+          {podeGerenciar && secao === "por-setor" ? (
+            <>
+              <Button
+                className="bg-rose-600 text-white hover:bg-rose-700"
+                disabled={zerando}
+                onClick={() => setZerarAlvo("mes")}
+              >
+                <Trash2 className="h-4 w-4" />
+                Zerar Mês
+              </Button>
+              <Button
+                className="bg-rose-600 text-white hover:bg-rose-700"
+                disabled={zerando}
+                onClick={() => setZerarAlvo("tudo")}
+              >
+                <Trash2 className="h-4 w-4" />
+                Zerar Tudo
+              </Button>
+            </>
+          ) : null}
         </div>
+        <ConfirmarDialog
+          open={zerarAlvo !== null}
+          onOpenChange={(aberto) => {
+            if (!aberto && !zerando) setZerarAlvo(null);
+          }}
+          tom="danger"
+          titulo={zerarAlvo === "mes" ? `Zerar ${rotuloMesLongo(mesEscolhido)}?` : "Zerar todas as tarefas?"}
+          descricao={
+            zerarAlvo === "mes"
+              ? `Todas as tarefas com vencimento em ${rotuloMesLongo(mesEscolhido)} serão apagadas do sistema. Essa ação não pode ser desfeita.`
+              : "Todas as tarefas importadas do Gestta serão apagadas do sistema. Indicadores e apurações são mantidos. Essa ação não pode ser desfeita."
+          }
+          textoConfirmar={zerarAlvo === "mes" ? "Zerar mês" : "Zerar tudo"}
+          carregando={zerando}
+          onConfirmar={() => void confirmarZerar()}
+        />
         <CardsTarefas metricas={metricasTarefas} tarefas={tarefasFiltradas} mes={mesEscolhido} />
         {secao === "por-celula" ? (
           <p className="mt-6 rounded-xl border border-[#D9E0EA] bg-white px-6 py-10 text-center text-sm text-[#64748B]">
