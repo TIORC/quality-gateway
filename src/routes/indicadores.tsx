@@ -124,7 +124,6 @@ function cardsDeTarefas(m: MetricasTarefas): {
     { chave: "foraDoPrazo", label: "% concluídas fora do prazo", valor: p(m.foraDoPrazo), cor: "#D97706", rodape: `${m.foraDoPrazo} tarefas` },
     { chave: "impedimento", label: "% em impedimento", valor: p(m.impedimento), cor: "#D97706", rodape: `${m.impedimento} tarefas` },
     { chave: "abertasEmAtraso", label: "% abertas em atraso", valor: p(m.abertasEmAtraso), cor: "#E11D48", rodape: `${m.abertasEmAtraso} tarefas` },
-    { chave: "antecipadas", label: "% antecipadas", valor: p(m.antecipadas), cor: "#059669", rodape: `${m.antecipadas} tarefas` },
     {
       chave: "concluidasNoMes",
       label: "Concluídas no mês (todas competências)",
@@ -321,7 +320,7 @@ function TabelaMetricas({
       </p>
     );
   }
-  const cab = ["Total", "% concl.", "% no prazo", "% fora", "% imped.", "% atraso", "% antec.", "Concl. no mês", "Acum. ant."];
+  const cab = ["Total", "% concl.", "% no prazo", "% fora", "% imped.", "% atraso", "Concl. no mês", "Acum. ant."];
   return (
     <div className="mt-6 overflow-x-auto rounded-xl border border-[#D9E0EA] bg-white">
       <table className="w-full text-sm">
@@ -344,7 +343,6 @@ function TabelaMetricas({
                 pct(m.foraDoPrazo, m.total),
                 pct(m.impedimento, m.total),
                 pct(m.abertasEmAtraso, m.total),
-                pct(m.antecipadas, m.total),
                 String(m.concluidasNoMes),
                 String(m.acumuladasAnteriores),
               ].map((v, i) => (

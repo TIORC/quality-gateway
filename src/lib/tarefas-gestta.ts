@@ -5,8 +5,8 @@
  * Regras (mês escolhido = mês do Vencimento da tarefa):
  *  - Total de tarefas: tarefas com vencimento no mês.
  *  - % concluídas: status CONCLUIDO ÷ total.
- *  - No prazo / antecipadas / fora do prazo (excludentes, somam % concluídas):
- *    conclusão == vencimento / conclusão < vencimento / conclusão > vencimento.
+ *  - No prazo / fora do prazo (excludentes, somam % concluídas):
+ *    conclusão <= vencimento (inclui as antecipadas) / conclusão > vencimento.
  *  - % em impedimento: status IMPEDIMENTO ÷ total.
  *  - % abertas em atraso: ABERTO com vencimento anterior a hoje ÷ total.
  *  - Concluídas no mês: concluídas com data de conclusão no mês (qualquer vencimento).
@@ -458,7 +458,6 @@ export interface MetricasTarefas {
   concluidas: number;
   noPrazo: number;
   foraDoPrazo: number;
-  antecipadas: number;
   impedimento: number;
   abertasEmAtraso: number;
   concluidasNoMes: number;
@@ -502,7 +501,6 @@ export function calcularMetricas(
     concluidas: 0,
     noPrazo: 0,
     foraDoPrazo: 0,
-    antecipadas: 0,
     impedimento: 0,
     abertasEmAtraso: 0,
     concluidasNoMes: 0,
@@ -520,8 +518,7 @@ export function calcularMetricas(
     if (concluida) {
       m.concluidas += 1;
       if (t.dataConclusao) {
-        if (t.dataConclusao < t.vencimento) m.antecipadas += 1;
-        else if (t.dataConclusao > t.vencimento) m.foraDoPrazo += 1;
+        if (t.dataConclusao > t.vencimento) m.foraDoPrazo += 1;
         else m.noPrazo += 1;
       }
     } else if (t.status === "IMPEDIMENTO") {
@@ -540,7 +537,6 @@ export type ChaveIndicador =
   | "foraDoPrazo"
   | "impedimento"
   | "abertasEmAtraso"
-  | "antecipadas"
   | "concluidasNoMes"
   | "acumuladasAnteriores";
 
@@ -564,11 +560,9 @@ export function tarefasDoIndicador(
       case "concluidas":
         return concluida;
       case "noPrazo":
-        return concluida && !!t.dataConclusao && t.dataConclusao === t.vencimento;
+        return concluida && !!t.dataConclusao && t.dataConclusao <= t.vencimento;
       case "foraDoPrazo":
         return concluida && !!t.dataConclusao && t.dataConclusao > t.vencimento;
-      case "antecipadas":
-        return concluida && !!t.dataConclusao && t.dataConclusao < t.vencimento;
       case "impedimento":
         return t.status === "IMPEDIMENTO";
       case "abertasEmAtraso":
