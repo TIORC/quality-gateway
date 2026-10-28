@@ -10,8 +10,8 @@
  *  - % em impedimento: status IMPEDIMENTO ÷ total.
  *  - % abertas em atraso: ABERTO com vencimento anterior a hoje ÷ total.
  *  - Concluídas no mês: concluídas com data de conclusão no mês (qualquer vencimento).
- *  - Acumuladas: concluídas com vencimento em mês anterior ao mês (até o mês).
- *    As concluídas no mês após o vencimento também contam em "fora do prazo".
+ *  - Acumuladas: linhas do relatório de atrasadas (origem "acumulada") cuja Competência
+ *    é o mês escolhido, sem filtrar por status. Cada importação substitui o relatório anterior.
  */
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
 import { clienteLivre } from "@/lib/supabase-livro";
@@ -42,6 +42,7 @@ export interface ResultadoImportacao {
   ignoradas: number; // já existiam, sem nenhuma mudança
   duplicadasNoArquivo: number;
   mesPredominante: string; // YYYY-MM do vencimento
+  mesCompetencia: string; // YYYY-MM da coluna Competência (relatório de acumuladas)
 }
 
 const TABELA = "tarefas_gestta";
@@ -152,6 +153,7 @@ const COLUNAS_ATRASADAS: Record<string, keyof TarefaGestta> = {
   "tarefa - responsavel": "responsavel",
   "tarefa - status": "status",
   "tarefa - gera multa?": "feitoComMulta",
+  competencia: "competencia",
   // Relatório de tarefas concluídas (mesmo leitor)
   "tarefa - concluido por": "responsavel",
   "tarefa - data de conclusao (completa)": "dataConclusao",
@@ -163,6 +165,12 @@ function statusAtrasada(v: string): string {
   if (s.startsWith("abert")) return "ABERTO";
   if (s.startsWith("conclu")) return "CONCLUIDO";
   return s.toUpperCase();
+}
+
+/** Competência do relatório: no Excel costuma ser uma data (01/09/2026, mostrada como "set/26"). */
+function competenciaDoRelatorio(v: unknown): string {
+  if (typeof v === "number") return paraData(v)?.slice(0, 7) ?? "";
+  return textoCelula(v);
 }
 
 /** Lê os relatórios "Tarefa - ..." (atrasadas: abertas/impedimentos; concluídas de outros meses). */
@@ -194,13 +202,18 @@ export async function lerPlanilhaAtrasadas(
     return i === undefined ? null : linha[i];
   };
   const porId = new Map<string, TarefaGestta>();
+  const contagem = new Map<string, number>();
   let duplicadasNoArquivo = 0;
   for (const linha of linhas.slice(1)) {
     const id = textoCelula(pega(linha, "id")).replace(/^"+|"+$/g, "");
     if (!id) continue;
-    if (porId.has(id)) duplicadasNoArquivo += 1;
-    porId.set(id, {
-      id,
+    const n = (contagem.get(id) ?? 0) + 1;
+    contagem.set(id, n);
+    if (n > 1) duplicadasNoArquivo += 1;
+    // Acumuladas: repetições entram como linhas próprias (chave Id + "#n").
+    const chave = origem === "acumulada" && n > 1 ? `${id}#${n}` : id;
+    porId.set(chave, {
+      id: chave,
       nome: textoCelula(pega(linha, "nome")),
       tipo: "",
       status: statusAtrasada(textoCelula(pega(linha, "status"))),
@@ -209,7 +222,7 @@ export async function lerPlanilhaAtrasadas(
       responsavel: textoCelula(pega(linha, "responsavel")),
       vencimento: paraData(pega(linha, "vencimento")),
       dataConclusao: paraData(pega(linha, "dataConclusao")),
-      competencia: "",
+      competencia: competenciaDoRelatorio(pega(linha, "competencia")),
       cnpjCpf: "",
       dataLegal: null,
       feitoAtrasado: "",
@@ -368,13 +381,25 @@ export async function importarTarefas(
       else if (candidatos.length > 1) t.responsavel = "";
     }
   }
+  // Relatório de acumuladas é uma foto do momento: substitui as acumuladas anteriores.
+  const substituirAcumuladas = tarefas.length > 0 && tarefas.every((t) => t.origem === "acumulada");
   const gravar: TarefaGestta[] = [];
   let novas = 0;
   let atualizadas = 0;
   let ignoradas = 0;
   for (const t of tarefas) {
     const atual = existentes.get(t.id);
-    if (!atual) {
+    // A planilha principal não mexe em tarefas acumuladas: elas só mudam pelo relatório de acumuladas.
+    if (atual?.origem === "acumulada" && t.origem === "gestta") {
+      ignoradas += 1;
+      continue;
+    }
+    if (substituirAcumuladas) {
+      // Grava todas as linhas do relatório, inclusive a tarefa que já existia como gestta.
+      if (atual) atualizadas += 1;
+      else novas += 1;
+      gravar.push(t);
+    } else if (!atual) {
       novas += 1;
       gravar.push(t);
     } else if (!apenasNovas && mudou(atual, t)) {
@@ -385,8 +410,12 @@ export async function importarTarefas(
     }
   }
 
-  aoProgredir?.(0, gravar.length);
   const cliente = clienteLivre();
+  if (substituirAcumuladas) {
+    const { error: erroApagar } = await cliente.from(TABELA).delete().eq("origem", "acumulada");
+    if (erroApagar) throw traduzErro(erroApagar);
+  }
+  aoProgredir?.(0, gravar.length);
   const agora = new Date().toISOString();
   for (let i = 0; i < gravar.length; i += TAMANHO_PAGINA) {
     const lote = gravar.slice(i, i + TAMANHO_PAGINA).map((t) => ({
@@ -425,13 +454,17 @@ export async function importarTarefas(
     aoProgredir?.(Math.min(i + TAMANHO_PAGINA, gravar.length), gravar.length);
   }
 
+  // Relatório de acumuladas: a coluna Competência define o mês da tela.
+  const mesCompetencia = substituirAcumuladas
+    ? mesDaCompetencia(tarefas.find((t) => t.competencia)?.competencia ?? "")
+    : "";
   const contagemMes = new Map<string, number>();
   for (const t of tarefas) {
     const m = t.vencimento?.slice(0, 7);
     if (m) contagemMes.set(m, (contagemMes.get(m) ?? 0) + 1);
   }
   const mesPredominante = [...contagemMes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
-  return { lidas: tarefas.length, novas, atualizadas, ignoradas, duplicadasNoArquivo, mesPredominante };
+  return { lidas: tarefas.length, novas, atualizadas, ignoradas, duplicadasNoArquivo, mesPredominante, mesCompetencia };
 }
 
 /**
@@ -479,9 +512,9 @@ function ehAcumuladaConcluida(t: TarefaGestta, mes: string): boolean {
   return t.vencimento.slice(0, 7) < mes && t.dataConclusao.slice(0, 7) <= mes;
 }
 
-/** Acumulada (relatório de atrasadas): qualquer status, vencimento em mês anterior ao escolhido. */
-function ehAcumuladaDoMes(t: TarefaGestta, mes: string): boolean {
-  return t.origem === "acumulada" && !!t.vencimento && t.vencimento.slice(0, 7) < mes;
+/** Acumulada (relatório de atrasadas): de qualquer status e vencimento, da competência do relatório. */
+function ehAcumulada(t: TarefaGestta, mes: string): boolean {
+  return t.origem === "acumulada" && mesDaCompetencia(t.competencia) === mes;
 }
 
 /** Complementar: concluída no mês escolhido, com vencimento em mês anterior. */
@@ -489,6 +522,29 @@ function ehComplementarDoMes(t: TarefaGestta, mes: string): boolean {
   if (t.origem !== "complementar" || t.status !== "CONCLUIDO" || !t.dataConclusao || !t.vencimento)
     return false;
   return t.dataConclusao.slice(0, 7) === mes && t.vencimento.slice(0, 7) < mes;
+}
+
+const MESES_COMPETENCIA = [
+  "janeiro", "fevereiro", "marco", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/**
+ * Competência escrita no relatório → YYYY-MM. Aceita "Setembro", "set/26", "set/2026".
+ * Sem ano na planilha: usa o ano atual, ou o anterior se o mês ainda não chegou.
+ */
+export function mesDaCompetencia(texto: string, hoje: string = hojeIso()): string {
+  const iso = /^(\d{4})-(\d{2})/.exec(texto.trim());
+  if (iso) return `${iso[1]}-${iso[2]}`;
+  const [mes = "", ano = ""] = semAcento(texto).split(/[\s/-]+/).filter(Boolean);
+  // Pelas três primeiras letras: "set" e "setembro" são o mesmo mês.
+  const numero = MESES_COMPETENCIA.findIndex((nome) => mes.length >= 3 && mes.slice(0, 3) === nome.slice(0, 3)) + 1;
+  if (numero === 0) return "";
+  const [anoHoje, mesHoje] = hoje.split("-").map(Number);
+  let anoNumero = numero > mesHoje! ? anoHoje! - 1 : anoHoje!;
+  if (/^\d{2}$/.test(ano)) anoNumero = 2000 + Number(ano);
+  else if (/^\d{4}$/.test(ano)) anoNumero = Number(ano);
+  return `${anoNumero}-${String(numero).padStart(2, "0")}`;
 }
 
 export function calcularMetricas(
@@ -511,7 +567,7 @@ export function calcularMetricas(
     // Cada origem alimenta só os seus cards: complementar → concluídas no mês;
     // acumulada → acumuladas; Gestta → os demais.
     if (ehComplementarDoMes(t, mes)) m.concluidasNoMes += 1;
-    if (ehAcumuladaDoMes(t, mes)) m.acumuladasAnteriores += 1;
+    if (ehAcumulada(t, mes)) m.acumuladasAnteriores += 1;
     if (t.origem !== "gestta") continue;
     if (!t.vencimento || t.vencimento.slice(0, 7) !== mes) continue;
     m.total += 1;
@@ -551,7 +607,7 @@ export function tarefasDoIndicador(
     const concluida = t.status === "CONCLUIDO";
     const mesConclusao = concluida && t.dataConclusao ? t.dataConclusao.slice(0, 7) : "";
     if (chave === "concluidasNoMes") return ehComplementarDoMes(t, mes);
-    if (chave === "acumuladasAnteriores") return ehAcumuladaDoMes(t, mes);
+    if (chave === "acumuladasAnteriores") return ehAcumulada(t, mes);
     if (t.origem !== "gestta") return false;
     if (!t.vencimento || t.vencimento.slice(0, 7) !== mes) return false;
     switch (chave) {

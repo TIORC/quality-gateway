@@ -133,7 +133,7 @@ function cardsDeTarefas(m: MetricasTarefas): {
     },
     {
       chave: "acumuladasAnteriores",
-      label: "Acumuladas concluídas no(s) mês(es) anterior(es)",
+      label: "Tarefas Acumuladas",
       valor: String(m.acumuladasAnteriores),
       cor: "#1F2937",
       rodape: "vencimento em meses anteriores",
@@ -986,10 +986,13 @@ function Indicadores() {
               controle={controleImport[2]}
               aoMudarArquivo={marcarArquivo[2]}
               titulo="Tarefas acumuladas (abertas / atrasadas / impedimentos)"
-              descricao="Envie o Relatório de tarefas atrasadas (.xlsx, tarefas abertas e em impedimento). Só entram tarefas com Id novo; as que já existem são ignoradas."
+              descricao="Envie o Relatório de tarefas atrasadas (.xlsx, tarefas abertas e em impedimento). Substitui as acumuladas anteriores pelo arquivo enviado: todas as linhas entram, inclusive Ids repetidos, e as tarefas que já estavam no Total saem dele."
               atrasadas
               totalImportadas={tarefas.length}
-              aoConcluir={(_, lista) => setTarefas(lista)}
+              aoConcluir={(r, lista) => {
+                setTarefas(lista);
+                if (r.mesCompetencia) setMesEscolhido(r.mesCompetencia);
+              }}
             />
             <div className="flex justify-end">
               <Button
