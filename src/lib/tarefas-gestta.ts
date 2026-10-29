@@ -9,7 +9,8 @@
  *    conclusão <= vencimento (inclui as antecipadas) / conclusão > vencimento.
  *  - % em impedimento: status IMPEDIMENTO ÷ total.
  *  - % abertas em atraso: ABERTO com vencimento anterior a hoje ÷ total.
- *  - Concluídas no mês: concluídas com data de conclusão no mês (qualquer vencimento).
+ *  - Concluídas no mês: linhas da planilha complementar com data de conclusão no mês
+ *    (qualquer vencimento; todas as linhas contam, inclusive Ids repetidos).
  *  - Acumuladas: linhas do relatório de atrasadas (origem "acumulada") cuja Competência
  *    é o mês escolhido, sem filtrar por status. Cada importação substitui o relatório anterior.
  */
@@ -210,8 +211,11 @@ export async function lerPlanilhaAtrasadas(
     const n = (contagem.get(id) ?? 0) + 1;
     contagem.set(id, n);
     if (n > 1) duplicadasNoArquivo += 1;
-    // Acumuladas: repetições entram como linhas próprias (chave Id + "#n").
-    const chave = origem === "acumulada" && n > 1 ? `${id}#${n}` : id;
+    // Repetições entram como linhas próprias (chave Id + "#n"). Concluídas complementares usam
+    // o prefixo "c:" para não colidir com a mesma tarefa já gravada pela planilha do Gestta.
+    // Acumuladas usam "a:" pelo mesmo motivo: a leitura é independente das demais planilhas.
+    const base = origem === "complementar" ? `c:${id}` : `a:${id}`;
+    const chave = n > 1 ? `${base}#${n}` : base;
     porId.set(chave, {
       id: chave,
       nome: textoCelula(pega(linha, "nome")),
@@ -346,21 +350,9 @@ export async function carregarTarefas(): Promise<TarefaGestta[]> {
   return todas;
 }
 
-const mudou = (a: TarefaGestta, b: TarefaGestta) =>
-  a.status !== b.status ||
-  a.dataConclusao !== b.dataConclusao ||
-  a.vencimento !== b.vencimento ||
-  a.departamento !== b.departamento ||
-  a.responsavel !== b.responsavel ||
-  a.cnpjCpf !== b.cnpjCpf ||
-  a.dataLegal !== b.dataLegal ||
-  a.feitoAtrasado !== b.feitoAtrasado ||
-  a.feitoComMulta !== b.feitoComMulta ||
-  a.baixado !== b.baixado;
-
 /**
  * Grava as tarefas sem duplicar: o Id é a chave. Tarefas novas são inseridas;
- * as que já existem só são regravadas se algo mudou (status, conclusão etc.).
+ * as que já existem são sempre regravadas (status, conclusão etc.).
  */
 export async function importarTarefas(
   tarefas: TarefaGestta[],
@@ -383,6 +375,9 @@ export async function importarTarefas(
   }
   // Relatório de acumuladas é uma foto do momento: substitui as acumuladas anteriores.
   const substituirAcumuladas = tarefas.length > 0 && tarefas.every((t) => t.origem === "acumulada");
+  // Complementares são uma foto do período: cada importação substitui o que já havia nas datas
+  // de conclusão cobertas pelo arquivo e grava todas as linhas (repetidas ou não).
+  const substituirComplementares = tarefas.length > 0 && tarefas.every((t) => t.origem === "complementar");
   const gravar: TarefaGestta[] = [];
   let novas = 0;
   let atualizadas = 0;
@@ -394,15 +389,15 @@ export async function importarTarefas(
       ignoradas += 1;
       continue;
     }
-    if (substituirAcumuladas) {
-      // Grava todas as linhas do relatório, inclusive a tarefa que já existia como gestta.
-      if (atual) atualizadas += 1;
-      else novas += 1;
+    if (substituirComplementares || substituirAcumuladas) {
+      // Relatórios substitutivos: o que havia é apagado antes, então toda linha é nova.
+      novas += 1;
       gravar.push(t);
     } else if (!atual) {
       novas += 1;
       gravar.push(t);
-    } else if (!apenasNovas && mudou(atual, t)) {
+    } else if (!apenasNovas) {
+      // Planilha do Gestta: regrava as tarefas que já existiam, mesmo sem mudança.
       atualizadas += 1;
       gravar.push(t);
     } else {
@@ -414,6 +409,18 @@ export async function importarTarefas(
   if (substituirAcumuladas) {
     const { error: erroApagar } = await cliente.from(TABELA).delete().eq("origem", "acumulada");
     if (erroApagar) throw traduzErro(erroApagar);
+  }
+  if (substituirComplementares) {
+    const datas = tarefas.map((t) => t.dataConclusao).filter((d): d is string => !!d).sort();
+    if (datas.length > 0) {
+      const { error: erroPeriodo } = await cliente
+        .from(TABELA)
+        .delete()
+        .eq("origem", "complementar")
+        .gte("data_conclusao", datas[0]!)
+        .lte("data_conclusao", datas[datas.length - 1]!);
+      if (erroPeriodo) throw traduzErro(erroPeriodo);
+    }
   }
   aoProgredir?.(0, gravar.length);
   const agora = new Date().toISOString();
@@ -519,9 +526,8 @@ function ehAcumulada(t: TarefaGestta, mes: string): boolean {
 
 /** Complementar: concluída no mês escolhido, com vencimento em mês anterior. */
 function ehComplementarDoMes(t: TarefaGestta, mes: string): boolean {
-  if (t.origem !== "complementar" || t.status !== "CONCLUIDO" || !t.dataConclusao || !t.vencimento)
-    return false;
-  return t.dataConclusao.slice(0, 7) === mes && t.vencimento.slice(0, 7) < mes;
+  if (t.origem !== "complementar" || t.status !== "CONCLUIDO" || !t.dataConclusao) return false;
+  return t.dataConclusao.slice(0, 7) === mes;
 }
 
 const MESES_COMPETENCIA = [

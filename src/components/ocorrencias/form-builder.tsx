@@ -8,6 +8,9 @@ import {
   ChevronUp,
   Circle,
   CircleDot,
+  Building2,
+  CircleDollarSign,
+  Star,
   Copy,
   Eye,
   EyeOff,
@@ -52,6 +55,9 @@ const ICONE_TIPO_PERGUNTA: Record<TipoCampo, typeof Plus> = {
   assinatura: PenLine,
   responsavel: UserRound,
   checkbox: Check,
+  moeda: CircleDollarSign,
+  escala: Star,
+  setores: Building2,
 };
 
 /** Tipos que têm lista de opções. */
@@ -185,7 +191,7 @@ export function FormBuilder({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="w-full space-y-4">
       {/* Barra de telas */}
       {usaTelas && telas ? (
         <div className="flex flex-wrap items-center gap-2">

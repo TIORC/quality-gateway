@@ -18,8 +18,6 @@ export interface LojaOcorrencias {
   inserirOcorrencia(linha: Linha): Promise<Linha>;
   atualizarOcorrencia(id: string, patch: Linha): Promise<void>;
   listarOcorrencias(): Promise<Ocorrencia[]>;
-  /** Números já usados (o solicitante só enxerga as próprias ocorrências). */
-  numerosExistentes?(): Promise<string[]>;
   registrarHistorico(linha: Linha): Promise<void>;
   /** Falha silenciosa: notificação nunca bloqueia a tratativa. */
   notificar(linhas: Linha[]): Promise<void>;
@@ -28,16 +26,8 @@ export interface LojaOcorrencias {
 
 export const lojaSupabase: LojaOcorrencias = {
   async inserirOcorrencia(linha) {
-    // Sem `returning`: o solicitante não lê a tabela-base, só a view.
-    const id = crypto.randomUUID();
-    const { error } = await cloud().from("ocorrencias").insert({ ...linha, id });
+    const { data, error } = await cloud().from("ocorrencias").insert(linha).select("*").single();
     if (error) throw traduzErro(error);
-    const { data, error: erroLeitura } = await cloud()
-      .from("ocorrencias_visiveis")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (erroLeitura) throw traduzErro(erroLeitura);
     return data as Linha;
   },
 
@@ -47,12 +37,6 @@ export const lojaSupabase: LojaOcorrencias = {
   },
 
   listarOcorrencias,
-
-  async numerosExistentes() {
-    const { data, error } = await cloud().rpc("ocorrencia_numeros");
-    if (error) throw traduzErro(error);
-    return (data ?? []) as string[];
-  },
 
   async registrarHistorico(linha) {
     const { error } = await cloud().from("ocorrencia_historico").insert(linha);

@@ -12,6 +12,10 @@ import { getSession, type UserSession } from "@/lib/auth";
 import { traduzErro } from "@/lib/organizacao";
 import {
   ACOES_ETAPA_LABELS,
+  ETAPA_RETORNO_CLIENTE,
+  CHAVE_CIENCIAS,
+  cienciasDe,
+  setoresSemCiencia,
   PROCEDENCIA_LABELS,
   SETOR_RESPONSAVEL_OCORRENCIAS,
   calcularPrazoEtapa,
@@ -159,7 +163,7 @@ export async function detectarAtrasos(
   let registrados = 0;
   try {
     const { data } = await cloud()
-      .from("ocorrencia_historico_visivel")
+      .from("ocorrencia_historico")
       .select("ocorrencia_id, macro, acao")
       .in(
         "ocorrencia_id",
@@ -185,14 +189,26 @@ export async function detectarAtrasos(
         anexos: [],
       });
       await notificar(
-        [
-          {
-            email: o.abertaPorEmail,
-            nome: o.abertaPorNome,
-            titulo: `Ocorrência ${o.numero} está atrasada`,
-            mensagem: `${o.titulo} · etapa ${o.subetapaAtualNome || o.macroAtual} com prazo estourado.`,
-          },
-        ],
+        o.macroAtual === "avaliacao_eficacia"
+          ? // Prazo de eficácia vencido: chama quem conduz a etapa (a Qualidade vê em "Atrasadas").
+            o.responsavelEmail
+            ? [
+                {
+                  email: o.responsavelEmail,
+                  nome: o.responsavelNome,
+                  titulo: `Ocorrência ${o.numero}: avaliar eficácia`,
+                  mensagem: `${o.titulo} · o prazo de eficácia venceu. Houve reincidência?`,
+                },
+              ]
+            : []
+          : [
+              {
+                email: o.abertaPorEmail,
+                nome: o.abertaPorNome,
+                titulo: `Ocorrência ${o.numero} está atrasada`,
+                mensagem: `${o.titulo} · etapa ${o.subetapaAtualNome || o.macroAtual} com prazo estourado.`,
+              },
+            ],
         autor,
       ).catch(() => undefined);
       registrados += 1;
@@ -220,9 +236,7 @@ export async function abrirOcorrencia(
   sessao: UserSession | null,
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<Ocorrencia> {
-  const existentes = loja.numerosExistentes
-    ? (await loja.numerosExistentes()).map((numero) => ({ numero }) as Ocorrencia)
-    : await loja.listarOcorrencias().catch(() => []);
+  const existentes = await loja.listarOcorrencias().catch(() => []);
   const numero = proximoNumero(existentes);
   const autor = autorDe(sessao);
   const macro: MacroEtapa = "abertura";
@@ -240,6 +254,7 @@ export async function abrirOcorrencia(
     subetapa_atual_nome: nomeEtapaDoTipo(input.tipo, macro),
     status: "em_andamento",
     procedencia: "pendente",
+    eficacia_dias: input.tipo.eficaciaDias ?? 30,
     aberta_por_id: str(autor["autor_id"]),
     aberta_por_nome: str(autor["autor_nome"]),
     aberta_por_email: str(autor["autor_email"]),
@@ -348,7 +363,13 @@ async function entrarEm(
   anexos: AnexoOcorrencia[],
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
-  const prazo = sub ? calcularPrazoEtapa(sub.prazoDias) : calcularPrazoEtapa(30); // etapa sem subetapa: 30 dias padrão
+  // Avaliação de eficácia: o prazo é a data definida no fechamento (30/60/90 dias do tipo).
+  const prazo =
+    macro === "avaliacao_eficacia" && o.eficaciaPrevistaEm
+      ? o.eficaciaPrevistaEm
+      : sub
+        ? calcularPrazoEtapa(sub.prazoDias)
+        : calcularPrazoEtapa(30); // etapa sem subetapa: 30 dias padrão
   // Regra do portal: o setor responsável por toda ocorrência é a Qualidade.
   // Subetapa sem responsável, sem nome ou com responsável do tipo setor
   // assume automaticamente a Qualidade (pessoa/cargo explícitos são mantidos,
@@ -484,6 +505,84 @@ export async function agirNaOcorrencia(
   const proxima = idx >= 0 ? ordenadas[idx + 1] : undefined;
   const anterior = idx > 0 ? ordenadas[idx - 1] : undefined;
 
+  if (
+    macroAtual === "avaliacao_eficacia" &&
+    o.status !== "encerrada" &&
+    (payload.acao === "aprovar" || payload.acao === "reprovar")
+  ) {
+    throw new Error("Nesta etapa a decisão é registrada em “Avaliar eficácia”.");
+  }
+
+  // Comunicação: só avança quando todos os setores envolvidos marcaram ciência.
+  if (
+    payload.acao === "aprovar" &&
+    macroAtual === "comunicacao" &&
+    proxima?.macro !== "comunicacao"
+  ) {
+    const pendentes = setoresSemCiencia(o);
+    if (pendentes.length > 0) {
+      throw new Error(`Aguardando ciência dos setores: ${pendentes.join(", ")}.`);
+    }
+  }
+
+  // Retorno ao cliente: etapa obrigatória; aprovar exige o registro do que foi retornado.
+  if (
+    payload.acao === "aprovar" &&
+    macroAtual === ETAPA_RETORNO_CLIENTE &&
+    proxima?.macro !== ETAPA_RETORNO_CLIENTE
+  ) {
+    if (!comentario) {
+      throw new Error("Registre o retorno dado ao cliente (campo de comentário) para avançar.");
+    }
+    const respostas = {
+      ...o.respostas,
+      __retorno_cliente: {
+        texto: comentario,
+        em: new Date().toISOString(),
+        por: str(autor["autor_nome"]),
+      },
+    };
+    await loja.atualizarOcorrencia(o.id, { respostas });
+    o = { ...o, respostas };
+  }
+
+  // Fechamento: o parecer final é obrigatório e define a data da avaliação de eficácia.
+  const saindoDoFechamento =
+    payload.acao === "aprovar" && macroAtual === "fechamento" && proxima?.macro !== "fechamento";
+  if (saindoDoFechamento) {
+    if (!comentario) {
+      throw new Error("Informe o parecer final (campo de comentário) para fechar a ocorrência.");
+    }
+    const agora = new Date();
+    const previsto =
+      o.eficaciaDias > 0
+        ? new Date(agora.getTime() + o.eficaciaDias * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+    await loja.atualizarOcorrencia(o.id, {
+      parecer_final: comentario,
+      parecer_em: agora.toISOString(),
+      eficacia_prevista_em: previsto,
+    });
+    o = {
+      ...o,
+      parecerFinal: comentario,
+      parecerEm: agora.toISOString(),
+      eficaciaPrevistaEm: previsto,
+    };
+    await notificar(
+      [
+        {
+          email: o.abertaPorEmail,
+          nome: o.abertaPorNome,
+          titulo: `Parecer final da ocorrência ${o.numero}`,
+          mensagem: `${o.titulo} · ${comentario}`,
+        },
+      ],
+      autor,
+      loja,
+    ).catch(() => undefined);
+  }
+
   if (payload.acao === "aprovar") {
     if (proxima) {
       await entrarEm(
@@ -492,7 +591,7 @@ export async function agirNaOcorrencia(
         proxima.macro,
         proxima.subetapa,
         autor,
-        "Aprovação",
+        saindoDoFechamento ? "Fechamento com parecer final" : "Aprovação",
         comentario,
         anexos,
         loja,
@@ -599,6 +698,17 @@ export async function moverPara(
   comentario = "",
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
+  // O retorno ao cliente não pode ser pulado: só avança além dele depois de registrado.
+  const ordem = etapas.map((e) => e.macro);
+  const iRetorno = ordem.indexOf(ETAPA_RETORNO_CLIENTE);
+  if (
+    iRetorno >= 0 &&
+    ordem.indexOf(macro) > iRetorno &&
+    !o.respostas["__retorno_cliente"] &&
+    o.macroAtual !== macro
+  ) {
+    throw new Error("O retorno ao cliente é obrigatório e ainda não foi registrado.");
+  }
   const sub = subetapaDe(etapas, macro, subetapaId);
   await entrarEm(
     o,
@@ -630,15 +740,22 @@ export async function comentarOcorrencia(
     comentario: texto,
     anexos,
   });
+  // Solicitante e responsável da etapa recebem o aviso (menos quem comentou).
+  const destinos = [
+    { email: o.abertaPorEmail, nome: o.abertaPorNome },
+    { email: o.responsavelEmail, nome: o.responsavelNome },
+  ].filter(
+    (d, i, lista) =>
+      d.email &&
+      d.email.toLowerCase() !== str(autor["autor_email"]).toLowerCase() &&
+      lista.findIndex((x) => x.email.toLowerCase() === d.email.toLowerCase()) === i,
+  );
   await notificar(
-    [
-      {
-        email: o.abertaPorEmail,
-        nome: o.abertaPorNome,
-        titulo: `Novo comentário na ocorrência ${o.numero}`,
-        mensagem: texto || "Anexo adicionado.",
-      },
-    ],
+    destinos.map((d) => ({
+      ...d,
+      titulo: `Novo comentário na ocorrência ${o.numero}`,
+      mensagem: texto || "Anexo adicionado.",
+    })),
     autor,
   ).catch(() => undefined);
 }
@@ -697,12 +814,24 @@ export async function decidirProcedencia(
 export interface AvaliacaoInput {
   eficaz: boolean;
   observacao: string;
-  prazoDias: number;
+}
+
+/** Etapa de plano de ação do tipo (por nome); sem ela, volta para a Apuração. */
+function etapaDoPlanoDeAcao(etapas: MacroFluxo[]): MacroFluxo | undefined {
+  const plano = etapas.find((e) =>
+    e.nome
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .includes("plano de acao"),
+  );
+  return plano ?? etapas.find((e) => e.macro === "apuracao") ?? etapas[0];
 }
 
 /**
- * Registra a avaliação de eficácia. Ineficaz → reabre automaticamente na
- * etapa de Apuração (conta como reincidência) e avisa os envolvidos.
+ * Registra a avaliação de eficácia (houve reincidência?). Eficaz → encerra de
+ * vez. Ineficaz → abre um novo ciclo, voltando para a etapa de plano de ação
+ * (ou Apuração, se o tipo não tiver essa etapa), e avisa os envolvidos.
  */
 export async function avaliarEficacia(
   o: Ocorrencia,
@@ -712,11 +841,10 @@ export async function avaliarEficacia(
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
   const autor = autorDe(sessao);
-  const verificacaoEm = calcularPrazoEtapa(input.prazoDias);
   await loja.atualizarOcorrencia(o.id, {
     avaliacao: {
-      prazoDias: input.prazoDias,
-      verificacaoEm,
+      prazoDias: o.eficaciaDias,
+      verificacaoEm: new Date().toISOString(),
       eficaz: input.eficaz,
       observacao: input.observacao,
     },
@@ -730,31 +858,45 @@ export async function avaliarEficacia(
       macro: "avaliacao_eficacia",
       subetapa: "",
       de: "",
-      para: input.eficaz ? "Mantida encerrada" : "Reaberta",
+      para: input.eficaz ? "Encerrada" : `Novo ciclo (${o.reaberturas + 2})`,
       comentario: input.observacao,
       anexos: [],
     },
     loja,
   );
 
-  if (input.eficaz) return;
+  if (input.eficaz) {
+    if (o.status !== "encerrada") {
+      await encerrar(o, etapas, autor, input.observacao || "Eficácia confirmada.", loja);
+    }
+    return;
+  }
 
-  // Reabertura automática: volta para Apuração (nova rodada de tratativa).
+  // Novo ciclo: reincidência volta para o plano de ação (e exige novo retorno ao cliente).
+  const { __retorno_cliente: _retorno, ...respostasCiclo } = o.respostas;
+  void _retorno;
   await loja.atualizarOcorrencia(o.id, {
+    respostas: respostasCiclo,
     status: "reaberta",
     reaberturas: o.reaberturas + 1,
     encerrada_em: null,
+    eficacia_prevista_em: null,
   });
-  const base: Ocorrencia = { ...o, reaberturas: o.reaberturas + 1, status: "reaberta" };
-  const apuracao = etapas.find((e) => e.macro === "apuracao");
+  const base: Ocorrencia = {
+    ...o,
+    reaberturas: o.reaberturas + 1,
+    status: "reaberta",
+    eficaciaPrevistaEm: null,
+  };
+  const destino = etapaDoPlanoDeAcao(etapas);
   await entrarEm(
     base,
     etapas,
-    "apuracao",
-    apuracao?.subetapas[0] ?? null,
+    destino?.macro ?? "apuracao",
+    destino?.subetapas[0] ?? null,
     autor,
-    "Reabertura por ineficácia",
-    input.observacao || "Ação não resolveu o problema.",
+    `Novo ciclo ${o.reaberturas + 2} (reincidência)`,
+    input.observacao || "A ação não resolveu o problema.",
     [],
     loja,
   );
@@ -815,3 +957,45 @@ export async function excluirOcorrencia(o: Ocorrencia): Promise<void> {
 
 /** Utilitário exportado para o Form Builder gerar ids de campos. */
 export { idCurto };
+
+/* -------------------------------------------------------------------------- */
+/* Ciência dos setores envolvidos                                              */
+/* -------------------------------------------------------------------------- */
+
+/** O setor envolvido marca ciência da comunicação (a Qualidade pode marcar por ele). */
+export async function registrarCiencia(
+  o: Ocorrencia,
+  setor: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const autor = autorDe(sessao);
+  if (cienciasDe(o)[setor]) return;
+  const respostas: Respostas = {
+    ...o.respostas,
+    [CHAVE_CIENCIAS]: {
+      ...cienciasDe(o),
+      [setor]: {
+        setor,
+        por: str(autor["autor_nome"]),
+        email: str(autor["autor_email"]),
+        em: new Date().toISOString(),
+      },
+    },
+  };
+  await loja.atualizarOcorrencia(o.id, { respostas });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Ciência do setor",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: setor,
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
+}

@@ -7,7 +7,6 @@
  * leitura tolera a migration ainda não aplicada (`tabelaAusente`).
  */
 import { exigirCloud } from "@/integrations/supabase/client";
-import { criarClienteOcorrencias } from "@/lib/ocorrencias-token";
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
 import type {
   AnexoOcorrencia,
@@ -38,20 +37,8 @@ interface CloudLivre {
 }
 
 /** Cliente sem tipagem de tabelas (o schema do módulo ainda não está em types.ts). */
-let _clienteOcorrencias: CloudLivre | undefined;
 export function cloud(): CloudLivre {
-  // Tabelas usam o cliente com o token do usuário (RLS por papel); o storage
-  // segue no cliente padrão do app.
-  const base = exigirCloud();
-  if (!_clienteOcorrencias) {
-    const c = criarClienteOcorrencias() as unknown as Pick<CloudLivre, "from" | "rpc">;
-    _clienteOcorrencias = {
-      from: (t) => c.from(t),
-      rpc: (n, a) => c.rpc(n, a),
-      storage: base.storage,
-    };
-  }
-  return _clienteOcorrencias;
+  return exigirCloud() as unknown as CloudLivre;
 }
 
 export type Linha = Record<string, unknown>;
@@ -89,6 +76,8 @@ export function tipoDoRow(row: Linha): TipoOcorrencia {
     icone: str(row["icone"], "AlertTriangle"),
     setorPadrao: str(row["setor_padrao"], "Qualidade"),
     etapas: etapasDoRow(row),
+    eficaciaDias: num(row["eficacia_dias"], 30),
+    retornoCliente: Boolean(row["exige_retorno_cliente"]),
     ativo: row["ativo"] === undefined ? true : Boolean(row["ativo"]),
     ordem: num(row["ordem"]),
   };
@@ -123,6 +112,8 @@ export async function salvarTipo(
     // setor Qualidade — ignora qualquer outro setor informado.
     setor_padrao: "Qualidade",
     etapas: tipo.etapas ?? [],
+    eficacia_dias: tipo.eficaciaDias ?? 30,
+    exige_retorno_cliente: tipo.retornoCliente ?? false,
     ativo: tipo.ativo ?? true,
     ordem: tipo.ordem ?? 0,
   };
@@ -365,6 +356,13 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
           observacao: str(avaliacaoRaw["observacao"]),
         }
       : null,
+    eficaciaDias: num(row["eficacia_dias"], 30),
+    parecerFinal: str(row["parecer_final"]),
+    parecerEm: typeof row["parecer_em"] === "string" ? (row["parecer_em"] as string) : null,
+    eficaciaPrevistaEm:
+      typeof row["eficacia_prevista_em"] === "string"
+        ? (row["eficacia_prevista_em"] as string)
+        : null,
     reaberturas: num(row["reaberturas"]),
     encerradaEm: typeof row["encerrada_em"] === "string" ? (row["encerrada_em"] as string) : null,
     createdAt: str(row["created_at"]),
@@ -375,7 +373,7 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
 export async function listarOcorrencias(): Promise<Ocorrencia[]> {
   try {
     const { data, error } = await cloud()
-      .from("ocorrencias_visiveis")
+      .from("ocorrencias")
       .select("*")
       .order("created_at", { ascending: false });
     if (error) {
@@ -424,7 +422,7 @@ export function eventoDoRow(row: Linha): EventoOcorrencia {
 export async function listarHistorico(ocorrenciaId: string): Promise<EventoOcorrencia[]> {
   try {
     const { data, error } = await cloud()
-      .from("ocorrencia_historico_visivel")
+      .from("ocorrencia_historico")
       .select("*")
       .eq("ocorrencia_id", ocorrenciaId)
       .order("created_at", { ascending: true });

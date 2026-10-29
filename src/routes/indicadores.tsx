@@ -92,6 +92,15 @@ import {
   type ResultadoImportacao,
   type TarefaGestta,
 } from "@/lib/tarefas-gestta";
+import {
+  atendimentosDoMes,
+  carregarAtendimentos,
+  importarAtendimentos,
+  lerPlanilhaAtendimentos,
+  mesDoNomeDoArquivo,
+  totalAtendimentos,
+  type AtendimentoDepartamento,
+} from "@/lib/atendimentos";
 
 export const Route = createFileRoute("/indicadores")({
   head: () => ({
@@ -209,6 +218,53 @@ function formatarData(iso: string | null) {
   if (!iso) return "—";
   const [a, m, d] = iso.split("-");
   return `${d}/${m}/${a}`;
+}
+
+function DetalheAtendimentosSheet({
+  aberto,
+  linhas,
+  mes,
+  onFechar,
+}: {
+  aberto: boolean;
+  linhas: AtendimentoDepartamento[];
+  mes: string;
+  onFechar: () => void;
+}) {
+  const total = linhas.reduce((soma, l) => soma + l.total, 0);
+  return (
+    <Sheet open={aberto} onOpenChange={(o) => (o ? undefined : onFechar())}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>Atendimentos Realizados</SheetTitle>
+          <SheetDescription>
+            {total} atendimento(s) em {mes.split("-").reverse().join("/")}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-md border border-[#CBD5E1]">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 bg-[#E2E8F0] text-[#1F2937] dark:bg-[#1E293B] dark:text-white">
+              <tr>
+                <th className="border border-[#CBD5E1] px-3 py-2 text-left font-semibold">Departamento</th>
+                <th className="border border-[#CBD5E1] px-3 py-2 text-right font-semibold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l) => (
+                <tr key={l.departamento} className="odd:bg-transparent even:bg-[#94A3B8]/10">
+                  <td className="border border-[#CBD5E1]/60 px-3 py-1.5">{l.departamento}</td>
+                  <td className="border border-[#CBD5E1]/60 px-3 py-1.5 text-right">{l.total}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {linhas.length === 0 ? (
+            <p className="py-10 text-center text-sm text-[#64748B]">Nenhum atendimento importado neste mês.</p>
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 }
 
 function DetalheTarefasSheet({
@@ -397,6 +453,8 @@ function Indicadores() {
   const [aba, setAba] = useState("visao-geral");
   const [secao, setSecao] = useState<SecaoIndicadores>("por-setor");
   const [tarefas, setTarefas] = useState<TarefaGestta[]>([]);
+  const [atendimentos, setAtendimentos] = useState<AtendimentoDepartamento[]>([]);
+  const [atendimentosAberto, setAtendimentosAberto] = useState(false);
   /** Zerar tarefas: "mes" apaga o mês escolhido; "tudo" apaga todas. `null` = sem confirmação aberta. */
   const [zerarAlvo, setZerarAlvo] = useState<"mes" | "tudo" | null>(null);
   const [zerando, setZerando] = useState(false);
@@ -544,6 +602,24 @@ function Indicadores() {
     setIntervaloCal({ from: undefined });
     setPeriodo({ modo: "ultimos12" });
   }
+
+  useEffect(() => {
+    carregarAtendimentos()
+      .then(setAtendimentos)
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar os atendimentos."));
+  }, []);
+
+  /** Setores do card de atendimentos: null = sem filtro; undefined = sem dado por setor (card oculto). */
+  const setoresAtendimentos: string[] | null | undefined =
+    escopo === "proprio"
+      ? undefined
+      : escopo === "setor"
+        ? setoresDoEscopo.split("|").filter(Boolean)
+        : secao === "por-colaborador" && colaboradorFiltro !== "todos"
+          ? undefined
+          : secao === "por-setor" && setorFiltro !== "todos"
+            ? [setorFiltro]
+            : null;
 
   useEffect(() => {
     const abrir = (lista: TarefaGestta[]) => {
@@ -901,6 +977,35 @@ function Indicadores() {
           onConfirmar={() => void confirmarZerar()}
         />
         <CardsTarefas metricas={metricasTarefas} tarefas={tarefasFiltradas} mes={mesEscolhido} />
+        {setoresAtendimentos !== undefined ? (
+          <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => setAtendimentosAberto(true)}
+              className="block cursor-pointer rounded-xl text-left transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+            >
+              <SummaryCard
+                label="Atendimentos Realizados"
+                value={String(totalAtendimentos(atendimentos, mesEscolhido, setoresAtendimentos))}
+                valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937] dark:text-white"
+                accent="#1F2937"
+                footer={
+                  setoresAtendimentos === null
+                    ? "total de atendimentos no mês"
+                    : `atendimentos do setor no mês`
+                }
+              />
+            </button>
+          </section>
+        ) : null}
+        {setoresAtendimentos !== undefined ? (
+          <DetalheAtendimentosSheet
+            aberto={atendimentosAberto}
+            linhas={atendimentosDoMes(atendimentos, mesEscolhido, setoresAtendimentos)}
+            mes={mesEscolhido}
+            onFechar={() => setAtendimentosAberto(false)}
+          />
+        ) : null}
         {secao === "por-celula" ? (
           <p className="mt-6 rounded-xl border border-[#D9E0EA] bg-white px-6 py-10 text-center text-sm text-[#64748B]">
             As células ainda não foram definidas. Quando você cadastrar quem faz parte de cada célula, os
@@ -976,7 +1081,7 @@ function Indicadores() {
               controle={controleImport[1]}
               aoMudarArquivo={marcarArquivo[1]}
               titulo="Tarefas complementares (concluídas de meses anteriores)"
-              descricao="Envie o relatório de tarefas concluídas de outros meses (.xlsx). Só entram tarefas com Id novo; as que já existem são ignoradas."
+              descricao="Envie o relatório de tarefas concluídas do mês (.xlsx). Todas as linhas contam pela data de conclusão, mesmo com Id repetido; reimportar substitui o período do arquivo."
               atrasadas
               origemRelatorio="complementar"
               totalImportadas={tarefas.length}
@@ -992,6 +1097,14 @@ function Indicadores() {
               aoConcluir={(r, lista) => {
                 setTarefas(lista);
                 if (r.mesCompetencia) setMesEscolhido(r.mesCompetencia);
+              }}
+            />
+            <ImportadorAtendimentos
+              mesPadrao={mesEscolhido}
+              totalLinhas={atendimentos.length}
+              aoConcluir={(lista, mes) => {
+                setAtendimentos(lista);
+                setMesEscolhido(mes);
               }}
             />
             <div className="flex justify-end">
@@ -1378,6 +1491,91 @@ function OcorrenciasIndicadores() {
 }
 
 
+
+/** Importa a aba "Por Departamento" do relatório de atendimentos (substitui o mês do arquivo). */
+function ImportadorAtendimentos({
+  mesPadrao,
+  totalLinhas,
+  aoConcluir,
+}: {
+  mesPadrao: string;
+  totalLinhas: number;
+  aoConcluir: (lista: AtendimentoDepartamento[], mes: string) => void;
+}) {
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [resumo, setResumo] = useState("");
+  const entradaRef = useRef<HTMLInputElement>(null);
+
+  async function importar() {
+    if (!arquivo || importando) return;
+    setImportando(true);
+    setResumo("");
+    try {
+      const { linhas } = await lerPlanilhaAtendimentos(arquivo);
+      if (linhas.length === 0) throw new Error("Nenhum departamento encontrado na planilha.");
+      // O mês vem da coluna Competência; sem ela, das datas do nome do arquivo ou do mês da tela.
+      const mesPlanilha = mesDoNomeDoArquivo(arquivo.name) || mesPadrao;
+      const comMes = linhas.map((l) => ({ ...l, mes: l.mes || mesPlanilha }));
+      await importarAtendimentos(comMes);
+      const meses = [...new Set(comMes.map((l) => l.mes))].sort();
+      const total = comMes.reduce((soma, l) => soma + l.total, 0);
+      setResumo(`${total} atendimentos em ${meses.map(rotuloMesLongo).join(", ")}.`);
+      const mes = meses[meses.length - 1]!;
+      aoConcluir(await carregarAtendimentos(), mes);
+      setArquivo(null);
+      toast.success("Atendimentos importados.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao importar a planilha.");
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-[#D9E0EA] bg-white p-6">
+      <h3 className="text-base font-semibold text-[#1F2937]">Atendimentos realizados</h3>
+      <p className="mt-1 text-sm text-[#64748B]">
+        Envie o Indicador de Atendimento (.xlsx). Lê a aba &quot;Por Departamento&quot; (colunas Departamento e
+        Total); o mês vem da coluna Competência, e reimportar um mês substitui os números dele.
+      </p>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => entradaRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            entradaRef.current?.click();
+          }
+        }}
+        className="mt-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-6 py-10 text-center text-sm text-[#475569] hover:bg-[#F1F5F9]"
+      >
+        <Upload className="pointer-events-none h-6 w-6 text-[#94A3B8]" />
+        <span className="pointer-events-none">
+          {arquivo ? arquivo.name : "Clique para escolher o arquivo"}
+        </span>
+        <input
+          ref={entradaRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="sr-only"
+          tabIndex={-1}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <Button disabled={!arquivo || importando} onClick={() => void importar()}>
+          <Upload className="h-4 w-4" />
+          {importando ? "Importando..." : "Importar atendimentos"}
+        </Button>
+        <span className="text-sm text-[#64748B]">{totalLinhas} linhas já importadas</span>
+      </div>
+      {resumo ? <p className="mt-4 text-sm text-[#475569]">{resumo}</p> : null}
+    </section>
+  );
+}
 
 function ImportadorTarefas({
   titulo,

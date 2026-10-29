@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  CheckCircle2,
   ClipboardCheck,
   ClipboardList,
   List,
   Pencil,
   Plus,
   Settings2,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -70,6 +72,11 @@ import {
   alinharFluxoAoTipo,
   ehTipoNaoConformidade,
   etapasDoTipo,
+  PRAZOS_EFICACIA,
+  ETAPA_RETORNO_CLIENTE,
+  CHAVE_SETORES_ENVOLVIDOS,
+  setoresDoFormulario,
+  setoresEnvolvidosDe,
   iconeTipoOcorrencia,
   idCurto,
   nomeEtapaDoTipo,
@@ -81,7 +88,7 @@ import {
   type TipoOcorrencia,
 } from "@/lib/ocorrencias";
 import { getSession } from "@/lib/auth";
-import { normalizarSetor } from "@/lib/niveis-acesso";
+import { NIVEL_LIDER_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
 import { ehUsuarioDaQualidade } from "@/lib/permissoes";
 import { podeConfigurarOcorrencias, veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
@@ -96,10 +103,7 @@ export const Route = createFileRoute("/ocorrencias")({
 const ABAS = [
   { valor: "abertura", rotulo: "Abertura de Ocorrência" },
   { valor: "todas", rotulo: "Todas as Ocorrências" },
-  { valor: "andamento", rotulo: "Em andamento" },
   { valor: "abri", rotulo: "Que eu abri" },
-  { valor: "setor", rotulo: "Do setor Qualidade" },
-  { valor: "encerradas", rotulo: "Encerradas" },
 ] as const;
 
 function Ocorrencias() {
@@ -117,6 +121,8 @@ function Ocorrencias() {
   // Aba ativa; depois de abrir uma ocorrência, a tela vai para "Que eu abri".
   const [abaAtiva, setAbaAtiva] = useState<string>("abertura");
   const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
+  // Aviso de ocorrência registrada (fica na tela até ser dispensado).
+  const [avisoCriada, setAvisoCriada] = useState<Ocorrencia | null>(null);
 
   const tipos = useAsync(listarTipos, [refreshToken]);
   const ocorrencias = useAsync(listarOcorrencias, [refreshToken]);
@@ -159,11 +165,8 @@ function Ocorrencias() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ocorrencias.loading, refreshToken]);
 
-  // "Do setor Qualidade" é uma visão da Qualidade: fora do setor, a aba fica oculta.
   const abasVisiveis = ABAS.filter(
-    (aba) =>
-      (aba.valor !== "setor" || ehUsuarioDaQualidade(session)) &&
-      (aba.valor !== "todas" || veTodasAsOcorrencias(session)),
+    (aba) => aba.valor !== "todas" || veTodasAsOcorrencias(session),
   );
 
   const filtrar = (aba: (typeof ABAS)[number]["valor"], o: Ocorrencia): boolean => {
@@ -178,22 +181,24 @@ function Ocorrencias() {
         (!!o.responsavelId && o.responsavelId === colaboradorId));
     if (aba === "abertura") return false;
     if (aba === "todas") return true;
-    const visivel = vêTudo || propria || encarregado;
+    // Setor envolvido (marcado no formulário) acompanha para dar ciência.
+    const meuSetor = normalizarSetor(session?.setor);
+    const setorEnvolvido =
+      o.status !== "encerrada" &&
+      !!meuSetor &&
+      setoresEnvolvidosDe(o).some((s) => normalizarSetor(s) === meuSetor);
+    // Líder de setor também vê as ocorrências abertas por pessoas dos setores que lidera.
+    const lidera = new Set(
+      [session?.setor, ...(session?.setoresLiderados ?? [])]
+        .map((x) => normalizarSetor(x))
+        .filter(Boolean),
+    );
+    const doSetorLiderado =
+      session?.nivelAcesso === NIVEL_LIDER_SETOR && lidera.has(normalizarSetor(o.abertaPorSetor));
+    const visivel = vêTudo || propria || encarregado || setorEnvolvido || doSetorLiderado;
     if (!visivel) return false;
-    if (aba === "abri") return propria;
-    if (aba === "setor") {
-      // Do setor Qualidade: aberta por alguém da Qualidade ou que envolve a Qualidade.
-      if (o.status === "encerrada") return false;
-      const daQualidade = (valor: unknown) =>
-        normalizarSetor(typeof valor === "string" ? valor : "") === "qualidade";
-      return (
-        daQualidade(o.abertaPorSetor) ||
-        daQualidade(o.respostas["area_envolvida"]) ||
-        daQualidade(o.respostas["setor"])
-      );
-    }
-    if (aba === "encerradas") return o.status === "encerrada";
-    return o.status !== "encerrada";
+    // Quem abriu, é responsável ou é setor envolvido acompanha por esta aba.
+    return propria || encarregado || setorEnvolvido || doSetorLiderado;
   };
 
   const abrirNovaOcorrencia = (tipoId: string | null = null) => {
@@ -253,6 +258,28 @@ function Ocorrencias() {
           </div>
         </div>
 
+        {avisoCriada && (
+          <div
+            role="status"
+            className="mb-4 flex items-start gap-3 rounded-xl border border-[#047857] bg-[#059669] p-4 text-white shadow-sm"
+          >
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-white" />
+            <p className="flex-1 text-[14px] leading-relaxed">
+              Sua ocorrência <strong>{avisoCriada.titulo || avisoCriada.numero}</strong>{" "}
+              <span className="font-mono text-[12px] opacity-80">({avisoCriada.numero})</span> foi
+              registrada. Acompanhe na aba ao lado e aguarde a resolutiva do setor da Qualidade!
+            </p>
+            <button
+              type="button"
+              aria-label="Fechar aviso"
+              onClick={() => setAvisoCriada(null)}
+              className="rounded-md p-1 text-white/80 transition hover:bg-white/15 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         {modo === "lista" ? (
           <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
             <TabsList className="flex-wrap">
@@ -289,7 +316,7 @@ function Ocorrencias() {
                           setCartaoSelecionado(null);
                           setAbaAtiva("abri");
                           recarregar();
-                          setOcorrenciaSelecionada(o);
+                          setAvisoCriada(o);
                         }}
                       />
                     )}
@@ -320,7 +347,7 @@ function Ocorrencias() {
           setAbrirAberto(false);
           setAbaAtiva("abri");
           recarregar();
-          setOcorrenciaSelecionada(o);
+          setAvisoCriada(o);
         }}
       />
 
@@ -389,7 +416,7 @@ function ListaOcorrencias({
 
   return (
     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {ocorrencias.map((o) => {
+      {ocorrencias.map((o, indice) => {
         const tipo = tipos.find((t) => t.id === o.tipoId);
         const Icone = iconeTipoOcorrencia(tipo?.icone);
         const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
@@ -400,21 +427,24 @@ function ListaOcorrencias({
             key={o.id}
             type="button"
             onClick={() => onDetalhar(o)}
-            className="group flex flex-col rounded-xl border border-[#E9EEF5] bg-white p-4 text-left shadow-sm transition hover:border-[#D9E0EA] hover:bg-[#F8FAFC]"
+            className="ocorrencia-card-entrada group flex flex-col rounded-xl border border-black/10 p-4 text-left text-white shadow-sm transition hover:brightness-110"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${o.tipoCor} 88%, black)`,
+              animationDelay: `${Math.min(indice, 11) * 80}ms`,
+            }}
           >
             <div className="flex items-start justify-between gap-2">
               <span
-                className="inline-flex max-w-[70%] items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
-                style={{ backgroundColor: o.tipoCor }}
+                className="inline-flex max-w-[70%] items-center gap-1.5 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-medium text-white"
                 title={o.tipoNome}
               >
                 <Icone className="h-3 w-3 shrink-0" />
                 <span className="truncate">{o.tipoNome}</span>
               </span>
-              <span className="shrink-0 font-mono text-[11px] text-[#94A3B8]">{o.numero}</span>
+              <span className="shrink-0 font-mono text-[11px] text-white/70">{o.numero}</span>
             </div>
 
-            <p className="mt-3 line-clamp-2 text-[14px] font-semibold leading-snug text-[#1F2937]">
+            <p className="mt-3 line-clamp-2 text-[14px] font-semibold leading-snug text-white">
               {o.titulo || "—"}
             </p>
 
@@ -450,27 +480,24 @@ function ListaOcorrencias({
               ) : null}
             </div>
 
-            <div className="mt-3 flex-1 space-y-1 text-[12px] text-[#64748B]">
+            <div className="mt-3 flex-1 space-y-1 text-[12px] text-white/90">
               <p>
-                <span className="text-[#94A3B8]">Responsável:</span> {o.responsavelNome || "—"}
+                <span className="text-white/60">Responsável:</span> {o.responsavelNome || "—"}
               </p>
               <p>
-                <span className="text-[#94A3B8]">Abertura:</span>{" "}
+                <span className="text-white/60">Abertura:</span>{" "}
                 {FormatadorSla.formatarData(o.createdAt)}
               </p>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-t border-[#EEF2F7] pt-3">
-              <FormatadorSla.Icone sla={sla} />
-              <span
-                className="text-[12px] font-medium"
-                style={{
-                  color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
-                }}
-              >
+            <div className="mt-3 flex items-center gap-2 border-t border-white/20 pt-3">
+              <span className="rounded-full bg-white p-1">
+                <FormatadorSla.Icone sla={sla} />
+              </span>
+              <span className="text-[12px] font-medium text-white">
                 {sla.label}
               </span>
-              <span className="ml-auto text-[11px] font-semibold text-[#1E3A8A] opacity-0 transition group-hover:opacity-100">
+              <span className="ml-auto text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
                 Detalhar →
               </span>
             </div>
@@ -763,7 +790,10 @@ function AbrirOcorrenciaDialog({
           formularioVersao: versoes.formularioVersao,
           fluxoVersao: versoes.fluxoVersao,
           titulo,
-          respostas: respostasLimpas,
+          respostas: {
+            ...respostasLimpas,
+            [CHAVE_SETORES_ENVOLVIDOS]: setoresDoFormulario(versoes.campos, respostasLimpas),
+          },
         },
         session,
       );
@@ -1323,6 +1353,8 @@ function TipoDialog({
   const [etapas, setEtapas] = useState<EtapaTipo[]>(() =>
     etapasDoTipo(tipo).map((e) => ({ ...e })),
   );
+  const [eficaciaDias, setEficaciaDias] = useState(tipo?.eficaciaDias ?? 30);
+  const [retornoCliente, setRetornoCliente] = useState(tipo?.retornoCliente ?? false);
   const [ativo, setAtivo] = useState(tipo?.ativo ?? true);
   const [ordem, setOrdem] = useState(tipo?.ordem ?? 0);
   const [salvando, setSalvando] = useState(false);
@@ -1349,11 +1381,23 @@ function TipoDialog({
       toast.error("Informe o nome do tipo.");
       return;
     }
-    const etapasSalvas = etapas.map((e) => ({
+    let etapasSalvas = etapas.map((e) => ({
       ...e,
       nome: e.nome.trim() || "Etapa",
       slaDias: Math.max(1, Number(e.slaDias) || 5),
     }));
+    // Retorno ao cliente: etapa obrigatória antes do fechamento (criada/removida pela opção).
+    etapasSalvas = etapasSalvas.filter((e) => e.id !== ETAPA_RETORNO_CLIENTE);
+    if (retornoCliente) {
+      const pos = etapasSalvas.findIndex((e) => e.id === "fechamento");
+      const retorno: EtapaTipo = {
+        id: ETAPA_RETORNO_CLIENTE,
+        nome: "Retorno ao cliente",
+        slaDias: 5,
+      };
+      const idx = pos < 0 ? etapasSalvas.length : pos;
+      etapasSalvas = [...etapasSalvas.slice(0, idx), retorno, ...etapasSalvas.slice(idx)];
+    }
     setSalvando(true);
     try {
       await salvarTipo({
@@ -1364,6 +1408,8 @@ function TipoDialog({
         icone,
         setorPadrao: setorPadrao || "Qualidade",
         etapas: etapasSalvas,
+        eficaciaDias,
+        retornoCliente,
         ativo,
         ordem,
       });
@@ -1503,6 +1549,41 @@ function TipoDialog({
               </Button>
             </div>
           </Campo>
+
+          <Campo rotulo="Avaliação de eficácia após o fechamento">
+            <Select value={String(eficaciaDias)} onValueChange={(v) => setEficaciaDias(Number(v))}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRAZOS_EFICACIA.map((d) => (
+                  <SelectItem key={d} value={String(d)}>
+                    {d} dias
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[12px] text-[#64748B]">
+              Passado esse prazo, a Qualidade avalia se houve reincidência. Se houve, a ocorrência
+              volta para o plano de ação em um novo ciclo.
+            </p>
+          </Campo>
+
+          <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#334155]">
+            <input
+              type="checkbox"
+              checked={retornoCliente}
+              onChange={(e) => setRetornoCliente(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[#1E3A8A]"
+            />
+            <span>
+              Exige retorno ao cliente
+              <span className="block text-[12px] text-[#64748B]">
+                Cria a etapa obrigatória “Retorno ao cliente” antes do fechamento. Ela não pode ser
+                pulada e exige o registro do que foi retornado.
+              </span>
+            </span>
+          </label>
 
           <div className="flex items-center gap-6 text-[13px] text-[#334155]">
             <label className="flex cursor-pointer items-center gap-2">

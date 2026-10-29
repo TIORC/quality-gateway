@@ -53,6 +53,7 @@ import {
   excluirOcorrencia,
   moverPara,
   urlAssinada,
+  registrarCiencia,
 } from "@/lib/ocorrencias-crud";
 import { listarHistorico, listarOcorrencias } from "@/lib/ocorrencias-base";
 import {
@@ -65,6 +66,8 @@ import {
   veVisaoCompleta,
 } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
+import { normalizarSetor } from "@/lib/niveis-acesso";
+import { cienciasDe, setoresEnvolvidosDe } from "@/lib/ocorrencias";
 import {
   ACOES_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
@@ -135,7 +138,6 @@ function DetalheCorpo({
 
   // Avaliação de eficácia (diálogo da Qualidade).
   const [avaliacaoAberta, setAvaliacaoAberta] = useState(false);
-  const [prazoDias, setPrazoDias] = useState(30);
   const [eficaz, setEficaz] = useState(true);
   const [observacao, setObservacao] = useState("");
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
@@ -172,7 +174,17 @@ function DetalheCorpo({
   const visao = veVisaoCompleta(session, o) ? "completa" : "simplificada";
   const ehSolicitante = papelNaOcorrencia(session, o) === "solicitante";
   const subEtapa = subetapaDe(etapas, o.macroAtual, o.subetapaAtualId);
-  const acoes = o.status === "encerrada" ? [] : (subEtapa?.acoes ?? []);
+  // Na avaliação de eficácia a decisão é o botão "Avaliar eficácia" (eficaz encerra; ineficaz abre novo ciclo).
+  const acoes =
+    o.status === "encerrada"
+      ? []
+      : (subEtapa?.acoes ?? []).filter(
+          (a) => !(o.macroAtual === "avaliacao_eficacia" && (a === "aprovar" || a === "reprovar")),
+        );
+  const noFechamento = o.macroAtual === "fechamento";
+  const setoresEnvolvidos = setoresEnvolvidosDe(o);
+  const ciencias = cienciasDe(o);
+  const meuSetor = normalizarSetor(session?.setor);
   const pode = podeAgir(session, o);
   const gerencia = podeGerenciar(session);
   const verInternos = podeVerInternos(session, o);
@@ -258,7 +270,7 @@ function DetalheCorpo({
       await avaliarEficacia(
         o,
         etapas,
-        { eficaz, observacao: observacao.trim(), prazoDias },
+        { eficaz, observacao: observacao.trim() },
         session,
       );
       toast.success(eficaz ? "Eficácia confirmada." : "Ocorrência reaberta por ineficácia.");
@@ -268,6 +280,16 @@ function DetalheCorpo({
       toast.error(traduzErro(e).message);
     } finally {
       setSalvandoAvaliacao(false);
+    }
+  }
+
+  async function darCiencia(setor: string) {
+    try {
+      await registrarCiencia(o, setor, session);
+      toast.success(`Ciência registrada: ${setor}.`);
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
     }
   }
 
@@ -344,7 +366,7 @@ function DetalheCorpo({
           )}
           {o.reaberturas > 0 && (
             <span className="rounded-full bg-[#FDECEE] px-2.5 py-0.5 text-[11px] font-semibold text-[#991A1A]">
-              Reaberta {o.reaberturas}×
+              Ciclo {o.reaberturas + 1}
             </span>
           )}
         </DialogTitle>
@@ -366,7 +388,7 @@ function DetalheCorpo({
                 Dados da abertura
               </h3>
               <dl className="mt-2 grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-2">
-                {ehTipoNaoConformidade({ nome: o.tipoNome }) ? (
+                {ehTipoNaoConformidade({ nome: o.tipoNome }) && formulario.length === 0 ? (
                   <>
                     <div>
                       <dt className="text-[11px] text-[#94A3B8]">Origem</dt>
@@ -416,7 +438,12 @@ function DetalheCorpo({
                   formulario.map((c) => (
                     <div key={c.id}>
                       <dt className="text-[11px] text-[#94A3B8]">{c.label}</dt>
-                      <dd className="text-[#334155]">{textoResposta(o.respostas[c.id])}</dd>
+                      <dd className="text-[#334155]">{c.tipo === "moeda" && typeof o.respostas[c.id] === "number"
+                          ? (o.respostas[c.id] as number).toLocaleString("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            })
+                          : textoResposta(o.respostas[c.id])}</dd>
                     </div>
                   ))
                 ) : (
@@ -489,7 +516,13 @@ function DetalheCorpo({
               </h3>
               <Textarea
                 className="mt-2 min-h-[60px]"
-                placeholder="Observação da ação (opcional)…"
+                placeholder={
+                  noFechamento
+                    ? "Parecer final (obrigatório para fechar a ocorrência)…"
+                    : o.macroAtual === "retorno_cliente"
+                      ? "Registre o retorno dado ao cliente (obrigatório)…"
+                    : "Observação da ação (opcional)…"
+                }
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
               />
@@ -588,8 +621,7 @@ function DetalheCorpo({
                     onClick={() => {
                       setEficaz(true);
                       setObservacao("");
-                      setPrazoDias(30);
-                      setAvaliacaoAberta(true);
+                                      setAvaliacaoAberta(true);
                     }}
                   >
                     <CheckCircle2 className="h-4 w-4" />
@@ -613,6 +645,65 @@ function DetalheCorpo({
                   </span>
                   {o.avaliacao.observacao && <p className="mt-0.5">{o.avaliacao.observacao}</p>}
                 </div>
+              )}
+            </section>
+          )}
+
+          {setoresEnvolvidos.length > 0 &&
+            (verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor)) && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Ciência dos setores envolvidos
+                </h3>
+                <ul className="mt-2 space-y-2">
+                  {setoresEnvolvidos.map((setor) => {
+                    const c = ciencias[setor];
+                    const podeMarcar =
+                      !c &&
+                      o.status !== "encerrada" &&
+                      (gerencia || normalizarSetor(setor) === meuSetor);
+                    return (
+                      <li
+                        key={setor}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[13px]"
+                      >
+                        <span className="font-medium text-[#1F2937]">{setor}</span>
+                        {c ? (
+                          <span className="text-[12px] text-[#065F46]">
+                            Ciente · {c.por || "—"} · {formatarDataHoraBrasilia(c.em)}
+                          </span>
+                        ) : podeMarcar ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void darCiencia(setor)}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            Marcar ciência
+                          </Button>
+                        ) : (
+                          <span className="text-[12px] text-[#92400E]">Aguardando ciência</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+
+          {o.parecerFinal && (
+            <section className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15803D]">
+                Parecer final
+                {o.parecerEm ? ` · ${formatarPrazo(o.parecerEm)}` : ""}
+              </h3>
+              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[#14532D]">{o.parecerFinal}</p>
+              {o.eficaciaPrevistaEm && o.status !== "encerrada" && (
+                <p className="mt-2 text-[12px] text-[#166534]">
+                  Avaliação de eficácia prevista para {formatarPrazo(o.eficaciaPrevistaEm)} (
+                  {o.eficaciaDias} dias após o fechamento).
+                </p>
               )}
             </section>
           )}
@@ -740,8 +831,8 @@ function DetalheCorpo({
             <DialogTitle>Avaliar eficácia</DialogTitle>
             <DialogDescription>
               {eficaz
-                ? "Confirmar que a ação resolveu o problema e manter a ocorrência encerrada."
-                : "Ineficaz reabre a ocorrência automaticamente em Apuração (conta como reincidência)."}
+                ? "Não houve reincidência: a ocorrência é encerrada."
+                : "Houve reincidência: a ocorrência volta para o plano de ação e abre um novo ciclo."}
             </DialogDescription>
           </DialogHeader>
 
@@ -767,20 +858,6 @@ function DetalheCorpo({
                 <AlertTriangle className="h-4 w-4" />
                 Ineficaz
               </Button>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-[13px]">Verificação após</Label>
-              <Select value={String(prazoDias)} onValueChange={(v) => setPrazoDias(Number(v))}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30 dias</SelectItem>
-                  <SelectItem value="60">60 dias</SelectItem>
-                  <SelectItem value="90">90 dias</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="space-y-1.5">
@@ -833,7 +910,16 @@ function iconeEvento(acao: string): LucideIcon {
 
 /** Eventos que o solicitante (visão simplificada) pode acompanhar. */
 function eventoVisivelParaSolicitante(acao: string): boolean {
-  const visiveis = ["criação", "encerramento", "atraso", "reabert", "escalad", "julgamento"];
+  const visiveis = [
+    "criação",
+    "comentário",
+    "parecer",
+    "encerramento",
+    "atraso",
+    "reabert",
+    "escalad",
+    "julgamento",
+  ];
   const normalizada = acao.toLowerCase();
   return visiveis.some((v) => normalizada.includes(v));
 }

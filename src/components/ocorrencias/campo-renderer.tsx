@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import type { CampoFormulario, Respostas } from "@/lib/ocorrencias";
 import { TIPO_CAMPO_LABELS } from "@/lib/ocorrencias";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 
 export interface CampoRenderProps {
   campo: CampoFormulario;
@@ -66,6 +67,10 @@ export function validarCampos(
         erros[campo.id] = `Máximo: ${campo.max}`;
         continue;
       }
+    }
+    if (campo.tipo === "moeda" && Number.isNaN(Number(v))) {
+      erros[campo.id] = "Informe um valor.";
+      continue;
     }
     if (campo.tipo === "texto" && campo.regex) {
       try {
@@ -173,6 +178,41 @@ function CampoAssinatura({
   );
 }
 
+/** Setores envolvidos: aceita mais de um departamento do catálogo organizacional. */
+function CampoSetores({
+  valor, onChange, desabilitado,
+}: { valor: unknown; onChange: (v: unknown) => void; desabilitado?: boolean }) {
+  const { setores } = useCatalogoOrganizacional();
+  const selecionados = Array.isArray(valor) ? (valor as string[]) : [];
+  if (setores.length === 0) {
+    return <p className="text-[12px] text-[#94A3B8]">Nenhum setor cadastrado.</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {setores.map((setor) => {
+        const marcado = selecionados.includes(setor);
+        return (
+          <button
+            key={setor}
+            type="button"
+            disabled={desabilitado}
+            onClick={() =>
+              onChange(marcado ? selecionados.filter((s) => s !== setor) : [...selecionados, setor])
+            }
+            className={`rounded-full border px-3 py-1 text-[12px] font-medium transition disabled:opacity-60 ${
+              marcado
+                ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+                : "border-[#D9E0EA] bg-white text-[#334155] hover:bg-[#F1F5F9]"
+            }`}
+          >
+            {setor}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Campo                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -219,6 +259,48 @@ export function CampoFormularioRender(props: CampoRenderProps) {
           placeholder={campo.placeholder}
           disabled={desabilitado}
         />
+      )}
+
+      {campo.tipo === "moeda" && (
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#64748B]">
+            R$
+          </span>
+          <Input
+            type="number"
+            step="0.01"
+            min={0}
+            className="pl-9"
+            value={valor === undefined || valor === null || valor === "" ? "" : String(valor)}
+            onChange={(e) => set(e.target.value === "" ? null : Number(e.target.value))}
+            placeholder={campo.placeholder || "0,00"}
+            disabled={desabilitado}
+          />
+        </div>
+      )}
+
+      {campo.tipo === "escala" && (
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              disabled={desabilitado}
+              onClick={() => set(valor === n ? null : n)}
+              className={`h-9 w-9 rounded-lg border text-[13px] font-semibold transition disabled:opacity-60 ${
+                valor === n
+                  ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+                  : "border-[#D9E0EA] bg-white text-[#334155] hover:bg-[#F1F5F9]"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {campo.tipo === "setores" && (
+        <CampoSetores valor={valor} onChange={set} desabilitado={desabilitado} />
       )}
 
       {campo.tipo === "data" && (

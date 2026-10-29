@@ -54,7 +54,10 @@ export const MACRO_ETAPAS = [
 export type MacroEtapa = string;
 
 /** Ids das etapas padrão, com regra própria no fluxo. */
-export const ETAPAS_FIXAS: readonly string[] = MACRO_ETAPAS;
+/** Etapa obrigatória de retorno ao cliente (criada pelo tipo que a exige). */
+export const ETAPA_RETORNO_CLIENTE = "retorno_cliente";
+
+export const ETAPAS_FIXAS: readonly string[] = [...MACRO_ETAPAS, ETAPA_RETORNO_CLIENTE];
 
 /** Nomes padrão (fallback para ids sem configuração). */
 export const MACRO_ETAPA_LABELS: Record<string, string> = {
@@ -120,6 +123,9 @@ export const TIPOS_CAMPO = [
   "assinatura",
   "responsavel",
   "checkbox",
+  "moeda",
+  "escala",
+  "setores",
 ] as const;
 
 export type TipoCampo = (typeof TIPOS_CAMPO)[number];
@@ -136,6 +142,9 @@ export const TIPO_CAMPO_LABELS: Record<TipoCampo, string> = {
   assinatura: "Assinatura",
   responsavel: "Setor/Responsável",
   checkbox: "Confirmação (sim/não)",
+  moeda: "Valor em reais",
+  escala: "Escala de 1 a 5",
+  setores: "Setores envolvidos",
 };
 
 /** Máximo de telas no formulário de abertura. */
@@ -290,9 +299,15 @@ export interface TipoOcorrencia {
   setorPadrao: string;
   /** Etapas do tipo, na ordem da linha do metrô. */
   etapas: EtapaTipo[];
+  /** Dias após o fechamento para avaliar a eficácia (30, 60 ou 90). */
+  eficaciaDias: number;
+  /** Exige a etapa obrigatória de retorno ao cliente (não pode ser pulada). */
+  retornoCliente: boolean;
   ativo: boolean;
   ordem: number;
 }
+
+export const PRAZOS_EFICACIA = [30, 60, 90] as const;
 
 /**
  * O tipo "Não Conformidade" tem formulário de abertura fixo (área envolvida,
@@ -342,6 +357,13 @@ export interface Ocorrencia {
   prazoEtapa: string | null;
   etapaEntrouEm: string;
   avaliacao: AvaliacaoEficacia | null;
+  /** Prazo de eficácia do tipo, copiado na abertura. */
+  eficaciaDias: number;
+  /** Parecer final registrado no fechamento. */
+  parecerFinal: string;
+  parecerEm: string | null;
+  /** Data prevista da avaliação de eficácia (fechamento + eficaciaDias). */
+  eficaciaPrevistaEm: string | null;
   reaberturas: number;
   encerradaEm: string | null;
   createdAt: string;
@@ -513,4 +535,45 @@ export function progressoOcorrencia(
     (x) => x.macro === o.macroAtual && x.subetapa.id === o.subetapaAtualId,
   );
   return Math.round(((idx < 0 ? 0 : idx) / total) * 100);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Setores envolvidos e ciência                                                */
+/* -------------------------------------------------------------------------- */
+
+export const CHAVE_SETORES_ENVOLVIDOS = "__setores_envolvidos";
+export const CHAVE_CIENCIAS = "__ciencias";
+
+export interface CienciaSetor {
+  setor: string;
+  por: string;
+  email: string;
+  em: string;
+}
+
+/** Setores marcados nos campos "Setores envolvidos" do formulário de abertura. */
+export function setoresDoFormulario(campos: CampoFormulario[], respostas: Respostas): string[] {
+  const setores = new Set<string>();
+  for (const c of campos) {
+    if (c.tipo !== "setores") continue;
+    const v = respostas[c.id];
+    if (Array.isArray(v)) for (const s of v) if (typeof s === "string" && s) setores.add(s);
+  }
+  return [...setores];
+}
+
+export function setoresEnvolvidosDe(o: Pick<Ocorrencia, "respostas">): string[] {
+  const v = o.respostas[CHAVE_SETORES_ENVOLVIDOS];
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+}
+
+export function cienciasDe(o: Pick<Ocorrencia, "respostas">): Record<string, CienciaSetor> {
+  const v = o.respostas[CHAVE_CIENCIAS];
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, CienciaSetor>) : {};
+}
+
+/** Setores envolvidos que ainda não marcaram ciência. */
+export function setoresSemCiencia(o: Pick<Ocorrencia, "respostas">): string[] {
+  const feitas = cienciasDe(o);
+  return setoresEnvolvidosDe(o).filter((s) => !feitas[s]);
 }
