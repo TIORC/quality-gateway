@@ -1,9 +1,11 @@
 /**
  * Ocorrências — domínio, constantes e helpers.
  *
- * Macro-etapas fixas (a "linha do metrô"): Abertura → Apuração → Julgamento →
- * Comunicação → Fechamento → Avaliação de Eficácia. Dentro de cada macro-etapa
- * o tipo de ocorrência pode ter subetapas próprias (fluxo customizado).
+ * Etapas (a "linha do metrô") são configuradas por tipo de ocorrência em
+ * "Configurar": nome, SLA e etapas extras. As etapas padrão (Abertura,
+ * Apuração, Julgamento, Comunicação, Fechamento, Avaliação de Eficácia) mantêm
+ * ids fixos, porque as regras de Apuração, Julgamento e Eficácia dependem
+ * deles. Dentro de cada etapa o tipo pode ter subetapas próprias (fluxo).
  */
 import {
   AlertTriangle,
@@ -48,9 +50,14 @@ export const MACRO_ETAPAS = [
   "avaliacao_eficacia",
 ] as const;
 
-export type MacroEtapa = (typeof MACRO_ETAPAS)[number];
+/** Id de uma etapa do tipo (padrão ou criada no Configurar). */
+export type MacroEtapa = string;
 
-export const MACRO_ETAPA_LABELS: Record<MacroEtapa, string> = {
+/** Ids das etapas padrão, com regra própria no fluxo. */
+export const ETAPAS_FIXAS: readonly string[] = MACRO_ETAPAS;
+
+/** Nomes padrão (fallback para ids sem configuração). */
+export const MACRO_ETAPA_LABELS: Record<string, string> = {
   abertura: "Abertura",
   apuracao: "Apuração",
   julgamento: "Julgamento",
@@ -59,7 +66,7 @@ export const MACRO_ETAPA_LABELS: Record<MacroEtapa, string> = {
   avaliacao_eficacia: "Avaliação de Eficácia",
 };
 
-export const MACRO_ETAPA_DESCRICAO: Record<MacroEtapa, string> = {
+export const MACRO_ETAPA_DESCRICAO: Partial<Record<MacroEtapa, string>> = {
   abertura: "Registro inicial da ocorrência via formulário.",
   apuracao: "Investigação, coleta de evidências e causa raiz (5 Porquês, Ishikawa).",
   julgamento: "Decisão sobre procedência, gravidade e responsabilização.",
@@ -188,11 +195,9 @@ export interface SubetapaFluxo {
 
 export interface MacroFluxo {
   macro: MacroEtapa;
+  /** Nome exibido da etapa (vem do tipo no momento da publicação). */
+  nome: string;
   subetapas: SubetapaFluxo[];
-}
-
-export function fluxoVazio(): MacroFluxo[] {
-  return MACRO_ETAPAS.map((macro) => ({ macro, subetapas: [] }));
 }
 
 /**
@@ -203,35 +208,78 @@ export function fluxoVazio(): MacroFluxo[] {
  */
 export const SETOR_RESPONSAVEL_OCORRENCIAS = "Qualidade";
 
+/** Etapa configurada no tipo: id, nome e SLA em dias. */
+export interface EtapaTipo {
+  id: string;
+  nome: string;
+  slaDias: number;
+}
+
+/** Etapas padrão da linha do metrô, com SLA inicial de 5 dias. */
+export function etapasPadrao(): EtapaTipo[] {
+  return MACRO_ETAPAS.map((id) => ({ id, nome: MACRO_ETAPA_LABELS[id] ?? id, slaDias: 5 }));
+}
+
+/** Etapas do tipo na ordem configurada (sem configuração: as padrão). */
+export function etapasDoTipo(tipo: { etapas?: EtapaTipo[] } | null | undefined): EtapaTipo[] {
+  return tipo?.etapas?.length ? tipo.etapas : etapasPadrao();
+}
+
+export function nomeEtapaDoTipo(tipo: { etapas?: EtapaTipo[] } | null | undefined, id: string) {
+  return etapasDoTipo(tipo).find((e) => e.id === id)?.nome ?? MACRO_ETAPA_LABELS[id] ?? id;
+}
+
+export function nomeEtapaDoFluxo(etapas: MacroFluxo[], id: string): string {
+  return etapas.find((e) => e.macro === id)?.nome ?? MACRO_ETAPA_LABELS[id] ?? id;
+}
+
+export function slaDaEtapa(tipo: { etapas?: EtapaTipo[] }, id: string): number | undefined {
+  return etapasDoTipo(tipo).find((e) => e.id === id)?.slaDias;
+}
+
+export function fluxoVazio(etapas: EtapaTipo[] = etapasPadrao()): MacroFluxo[] {
+  return etapas.map((e) => ({ macro: e.id, nome: e.nome, subetapas: [] }));
+}
+
+/** Subetapa automática de uma etapa: sob a Qualidade, com o SLA da etapa. */
+function subetapaPadrao(e: EtapaTipo): SubetapaFluxo {
+  return {
+    id: `${e.id}-padrao`,
+    nome: e.nome,
+    responsavel: { tipo: "setor", id: "", nome: SETOR_RESPONSAVEL_OCORRENCIAS },
+    prazoDias: e.slaDias,
+    acoes: e.id === "abertura" ? ["aprovar"] : ["aprovar", "reprovar", "solicitar_info"],
+    campos: [],
+    notificar: true,
+    reprovarPara: "voltar",
+  };
+}
+
 export function fluxoDefault(tipo: TipoOcorrencia): MacroFluxo[] {
-  // Fluxo mínimo: 1 subetapa por macro-etapa sob responsabilidade da
-  // Qualidade (regra do portal: toda ocorrência é da Qualidade),
-  // herdando o SLA configurado no tipo.
-  return MACRO_ETAPAS.map((macro) => ({
-    macro,
-    subetapas: [
-      {
-        id: `${macro}-padrao`,
-        nome: MACRO_ETAPA_LABELS[macro],
-        responsavel: { tipo: "setor" as const, id: "", nome: SETOR_RESPONSAVEL_OCORRENCIAS },
-        prazoDias: tipo.slaDias[macro] ?? 5,
-        acoes:
-          macro === "abertura"
-            ? (["aprovar"] as AcaoEtapa[])
-            : (["aprovar", "reprovar", "solicitar_info"] as AcaoEtapa[]),
-        campos: [],
-        notificar: true,
-        reprovarPara: "voltar" as const,
-      },
-    ],
-  }));
+  // Fluxo mínimo: 1 subetapa por etapa sob responsabilidade da Qualidade
+  // (regra do portal: toda ocorrência é da Qualidade), herdando o SLA do tipo.
+  return etapasDoTipo(tipo).map((e) => ({ macro: e.id, nome: e.nome, subetapas: [subetapaPadrao(e)] }));
+}
+
+/**
+ * Alinha um fluxo publicado às etapas atuais do tipo: nomes e SLA vêm do
+ * tipo; subetapas personalizadas são mantidas; a automática acompanha o SLA.
+ */
+export function alinharFluxoAoTipo(tipo: TipoOcorrencia, fluxo: MacroFluxo[]): MacroFluxo[] {
+  return etapasDoTipo(tipo).map((e) => {
+    const existente = fluxo.find((f) => f.macro === e.id);
+    const subetapas = existente
+      ? existente.subetapas.map((s) =>
+          s.id === `${e.id}-padrao` ? { ...s, nome: e.nome, prazoDias: e.slaDias } : s,
+        )
+      : [subetapaPadrao(e)];
+    return { macro: e.id, nome: e.nome, subetapas };
+  });
 }
 
 /* -------------------------------------------------------------------------- */
 /* Tipos de ocorrência e ocorrência                                            */
 /* -------------------------------------------------------------------------- */
-
-export type SlaPorEtapas = Record<MacroEtapa, number>;
 
 export interface TipoOcorrencia {
   id: string;
@@ -240,7 +288,8 @@ export interface TipoOcorrencia {
   cor: string;
   icone: string;
   setorPadrao: string;
-  slaDias: Partial<SlaPorEtapas>;
+  /** Etapas do tipo, na ordem da linha do metrô. */
+  etapas: EtapaTipo[];
   ativo: boolean;
   ordem: number;
 }

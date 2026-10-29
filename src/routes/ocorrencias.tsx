@@ -1,5 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClipboardCheck, ClipboardList, List, Pencil, Plus, Settings2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ClipboardCheck,
+  ClipboardList,
+  List,
+  Pencil,
+  Plus,
+  Settings2,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -55,14 +64,17 @@ import {
   type VersoesPublicadas,
 } from "@/lib/ocorrencias-crud";
 import {
+  ETAPAS_FIXAS,
   ICONES_OCORRENCIA,
-  MACRO_ETAPAS,
-  MACRO_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
+  alinharFluxoAoTipo,
   ehTipoNaoConformidade,
+  etapasDoTipo,
   iconeTipoOcorrencia,
+  idCurto,
+  nomeEtapaDoTipo,
   type CampoFormulario,
-  type MacroEtapa,
+  type EtapaTipo,
   type MacroFluxo,
   type Ocorrencia,
   type Respostas,
@@ -82,6 +94,8 @@ export const Route = createFileRoute("/ocorrencias")({
 });
 
 const ABAS = [
+  { valor: "abertura", rotulo: "Abertura de Ocorrência" },
+  { valor: "todas", rotulo: "Todas as Ocorrências" },
   { valor: "andamento", rotulo: "Em andamento" },
   { valor: "abri", rotulo: "Que eu abri" },
   { valor: "setor", rotulo: "Do setor Qualidade" },
@@ -97,6 +111,11 @@ function Ocorrencias() {
   const [modo, setModo] = useState<"lista" | "configurar">("lista");
   const [refreshToken, setRefreshToken] = useState(0);
   const [abrirAberto, setAbrirAberto] = useState(false);
+  const [tipoInicialId, setTipoInicialId] = useState<string | null>(null);
+  // Cartão expandido na aba de abertura ("nao-conformidade" ou "reclamacao").
+  const [cartaoSelecionado, setCartaoSelecionado] = useState<string | null>(null);
+  // Aba ativa; depois de abrir uma ocorrência, a tela vai para "Que eu abri".
+  const [abaAtiva, setAbaAtiva] = useState<string>("abertura");
   const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
 
   const tipos = useAsync(listarTipos, [refreshToken]);
@@ -141,7 +160,11 @@ function Ocorrencias() {
   }, [ocorrencias.loading, refreshToken]);
 
   // "Do setor Qualidade" é uma visão da Qualidade: fora do setor, a aba fica oculta.
-  const abasVisiveis = ABAS.filter((aba) => aba.valor !== "setor" || ehUsuarioDaQualidade(session));
+  const abasVisiveis = ABAS.filter(
+    (aba) =>
+      (aba.valor !== "setor" || ehUsuarioDaQualidade(session)) &&
+      (aba.valor !== "todas" || veTodasAsOcorrencias(session)),
+  );
 
   const filtrar = (aba: (typeof ABAS)[number]["valor"], o: Ocorrencia): boolean => {
     const email = (session?.email ?? "").trim().toLowerCase();
@@ -153,6 +176,8 @@ function Ocorrencias() {
       o.status !== "encerrada" &&
       ((!!o.responsavelEmail && o.responsavelEmail.toLowerCase() === email) ||
         (!!o.responsavelId && o.responsavelId === colaboradorId));
+    if (aba === "abertura") return false;
+    if (aba === "todas") return true;
     const visivel = vêTudo || propria || encarregado;
     if (!visivel) return false;
     if (aba === "abri") return propria;
@@ -169,6 +194,11 @@ function Ocorrencias() {
     }
     if (aba === "encerradas") return o.status === "encerrada";
     return o.status !== "encerrada";
+  };
+
+  const abrirNovaOcorrencia = (tipoId: string | null = null) => {
+    setTipoInicialId(tipoId);
+    setAbrirAberto(true);
   };
 
   const porAba = (aba: string) =>
@@ -220,24 +250,22 @@ function Ocorrencias() {
                 </button>
               </div>
             )}
-            <Button className="shrink-0" onClick={() => setAbrirAberto(true)}>
-              <Plus className="h-4 w-4" />
-              Abrir ocorrência
-            </Button>
           </div>
         </div>
 
         {modo === "lista" ? (
-          <Tabs defaultValue="andamento">
+          <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
             <TabsList className="flex-wrap">
               {abasVisiveis.map((aba) => {
                 const total = porAba(aba.valor).length;
                 return (
                   <TabsTrigger key={aba.valor} value={aba.valor} className="gap-1.5">
                     {aba.rotulo}
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
-                      {total}
-                    </span>
+                    {aba.valor !== "abertura" && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
+                        {total}
+                      </span>
+                    )}
                   </TabsTrigger>
                 );
               })}
@@ -245,13 +273,36 @@ function Ocorrencias() {
 
             {abasVisiveis.map((aba) => (
               <TabsContent key={aba.valor} value={aba.valor}>
-                <ListaOcorrencias
-                  ocorrencias={porAba(aba.valor)}
-                  tipos={tipos.data ?? []}
-                  carregando={carregando}
-                  onAbrir={() => setAbrirAberto(true)}
-                  onDetalhar={(o) => setOcorrenciaSelecionada(o)}
-                />
+                {aba.valor === "abertura" ? (
+                  <AberturaOcorrencia
+                    tipos={tipos.data ?? []}
+                    selecionado={cartaoSelecionado}
+                    onSelecionar={setCartaoSelecionado}
+                    renderFormulario={(tipoId) => (
+                      <AbrirOcorrenciaDialog
+                        variante="tela"
+                        aberto
+                        tipos={tipos.data ?? []}
+                        tipoInicialId={tipoId}
+                        onFechar={() => setCartaoSelecionado(null)}
+                        onCriado={(o) => {
+                          setCartaoSelecionado(null);
+                          setAbaAtiva("abri");
+                          recarregar();
+                          setOcorrenciaSelecionada(o);
+                        }}
+                      />
+                    )}
+                  />
+                ) : (
+                  <ListaOcorrencias
+                    ocorrencias={porAba(aba.valor)}
+                    tipos={tipos.data ?? []}
+                    carregando={carregando}
+                    onAbrir={() => abrirNovaOcorrencia()}
+                    onDetalhar={(o) => setOcorrenciaSelecionada(o)}
+                  />
+                )}
               </TabsContent>
             ))}
           </Tabs>
@@ -263,9 +314,11 @@ function Ocorrencias() {
       <AbrirOcorrenciaDialog
         aberto={abrirAberto}
         tipos={tipos.data ?? []}
+        tipoInicialId={tipoInicialId}
         onFechar={() => setAbrirAberto(false)}
         onCriado={(o) => {
           setAbrirAberto(false);
+          setAbaAtiva("abri");
           recarregar();
           setOcorrenciaSelecionada(o);
         }}
@@ -373,7 +426,7 @@ function ListaOcorrencias({
                   color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
                 }}
               >
-                {MACRO_ETAPA_LABELS[o.macroAtual]}
+                {nomeEtapaDoTipo(tipo, o.macroAtual)}
               </span>
               {origemAuditoria ? (
                 <span
@@ -429,6 +482,109 @@ function ListaOcorrencias({
 }
 
 /* -------------------------------------------------------------------------- */
+/* Abertura de ocorrência (primeira aba)                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Cada cartão expande na própria aba e mostra o formulário configurado para o tipo. */
+function AberturaOcorrencia({
+  tipos,
+  selecionado,
+  onSelecionar,
+  renderFormulario,
+}: {
+  tipos: TipoOcorrencia[];
+  selecionado: string | null;
+  onSelecionar: (chave: string | null) => void;
+  renderFormulario: (tipoId: string | null) => ReactNode;
+}) {
+  // Um cartão por tipo ativo cadastrado em "Configurar", na ordem definida lá.
+  const cartoes = tipos
+    .filter((t) => t.ativo)
+    .sort((a, b) => a.ordem - b.ordem)
+    .map((t) => ({
+      chave: t.id,
+      rotulo: t.nome,
+      descricao: t.descricao || "Sem descrição",
+      icone: iconeTipoOcorrencia(t.icone),
+      cor: t.cor,
+      tipoId: t.id,
+    }));
+  const visiveis = cartoes.filter((c) => !selecionado || c.chave === selecionado);
+
+  return (
+    <div className="mt-6">
+      {selecionado && (
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => onSelecionar(null)}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#D9E0EA] bg-white px-4 py-2 text-sm font-semibold text-[#1F2937] transition hover:bg-[#F1F5F9]"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Voltar
+          </button>
+        </div>
+      )}
+
+      <motion.div layout className="grid gap-6 md:grid-cols-2">
+        <AnimatePresence initial={false}>
+          {visiveis.map((c) => {
+            const aberto = selecionado === c.chave;
+            const Icone = c.icone;
+            return (
+              <motion.div
+                key={c.chave}
+                layout
+                role={aberto ? undefined : "button"}
+                tabIndex={aberto ? undefined : 0}
+                onClick={aberto ? undefined : () => onSelecionar(c.chave)}
+                onKeyDown={
+                  aberto
+                    ? undefined
+                    : (evento) => {
+                        if (evento.key === "Enter" || evento.key === " ") onSelecionar(c.chave);
+                      }
+                }
+                whileHover={aberto ? {} : { scale: 1.03 }}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className={`relative flex flex-col overflow-hidden rounded-2xl p-6 text-left text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E3A8A] ${
+                  aberto ? "min-h-[60vh] md:col-span-2" : "cursor-pointer hover:shadow-lg"
+                }`}
+                style={{ backgroundColor: c.cor }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex size-10 items-center justify-center rounded-lg bg-white/15">
+                    <Icone className="size-5" aria-hidden />
+                  </span>
+                  <h2 className="text-xl font-bold">{c.rotulo}</h2>
+                </div>
+                <p className="mt-4 text-sm font-medium opacity-90">
+                  {c.descricao}
+                </p>
+
+                {aberto && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1, ease: "easeOut" }}
+                    className="mt-6 cursor-default rounded-xl bg-white p-5 text-[#1F2937]"
+                  >
+                    {renderFormulario(c.tipoId)}
+                  </motion.div>
+                )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Abertura                                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -444,11 +600,21 @@ function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 interface AbrirOcorrenciaDialogProps {
   aberto: boolean;
   tipos: TipoOcorrencia[];
+  tipoInicialId: string | null;
   onFechar: () => void;
   onCriado: (o: Ocorrencia) => void;
+  /** "tela": formulário embutido no cartão expandido, sem diálogo. */
+  variante?: "dialog" | "tela";
 }
 
-function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorrenciaDialogProps) {
+function AbrirOcorrenciaDialog({
+  aberto,
+  tipos,
+  tipoInicialId,
+  onFechar,
+  onCriado,
+  variante = "dialog",
+}: AbrirOcorrenciaDialogProps) {
   const sessaoCtx = usePanelSession();
   const session = getSession() ?? sessaoCtx;
   const catalogo = useCatalogoOrganizacional();
@@ -472,7 +638,9 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
       setNc(ESTADO_NC_VAZIO);
       setNcErros({});
       setVersoes(null);
+      if (tipoInicialId) void escolherTipo(tipoInicialId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto]);
 
   const tipo = tipos.find((t) => t.id === tipoId);
@@ -608,17 +776,20 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
     }
   }
 
-  return (
-    <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Abrir ocorrência</DialogTitle>
-          <DialogDescription>
-            {etapa === "tipo"
-              ? "Escolha o tipo de ocorrência para carregar o formulário correspondente."
-              : "Preencha o formulário do tipo escolhido."}
-          </DialogDescription>
-        </DialogHeader>
+  // Na tela cheia não há contexto do Radix Dialog: título e descrição viram tags comuns.
+  const Titulo = variante === "tela" ? "h2" : DialogTitle;
+  const Descricao = variante === "tela" ? "p" : DialogDescription;
+
+  const conteudo = (
+    <>
+      <DialogHeader>
+        <Titulo>Abrir ocorrência</Titulo>
+        <Descricao>
+          {etapa === "tipo"
+            ? "Escolha o tipo de ocorrência para carregar o formulário correspondente."
+            : "Preencha o formulário do tipo escolhido."}
+        </Descricao>
+      </DialogHeader>
 
         <div className="max-h-[65vh] overflow-y-auto pr-2">
           {etapa === "tipo" ? (
@@ -780,7 +951,14 @@ function AbrirOcorrenciaDialog({ aberto, tipos, onFechar, onCriado }: AbrirOcorr
             </Button>
           ) : null}
         </DialogFooter>
-      </DialogContent>
+    </>
+  );
+
+  if (variante === "tela") return <div>{conteudo}</div>;
+
+  return (
+    <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
+      <DialogContent className="max-w-2xl">{conteudo}</DialogContent>
     </Dialog>
   );
 }
@@ -910,13 +1088,13 @@ function TiposTab({
                   <span className="rounded-full bg-white px-2 py-0.5 ring-1 ring-[#E9EEF5]">
                     {t.setorPadrao}
                   </span>
-                  {MACRO_ETAPAS.map((m) => (
+                  {etapasDoTipo(t).map((e) => (
                     <span
-                      key={m}
+                      key={e.id}
                       className="rounded-full bg-white px-2 py-0.5 ring-1 ring-[#E9EEF5]"
-                      title={`SLA ${MACRO_ETAPA_LABELS[m]}`}
+                      title={`SLA ${e.nome}`}
                     >
-                      {t.slaDias[m] ?? "-"}d
+                      {e.slaDias}d
                     </span>
                   ))}
                 </div>
@@ -1049,7 +1227,7 @@ function FluxoTab({
     carregarUltimasVersoes(tipoId)
       .then((v) => {
         if (ativo) {
-          setEtapas(v.etapas);
+          setEtapas(tipo ? alinharFluxoAoTipo(tipo, v.etapas) : v.etapas);
           setVersao(v.fluxoVersao);
         }
       })
@@ -1057,6 +1235,7 @@ function FluxoTab({
     return () => {
       ativo = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipoId]);
 
   async function publicar() {
@@ -1069,7 +1248,7 @@ function FluxoTab({
       });
       toast.success("Fluxo publicado em nova versão.");
       const v = await carregarUltimasVersoes(tipo.id);
-      setEtapas(v.etapas);
+      setEtapas(alinharFluxoAoTipo(tipo, v.etapas));
       setVersao(v.fluxoVersao);
     } catch (e) {
       toast.error(traduzErro(e).message);
@@ -1141,22 +1320,40 @@ function TipoDialog({
   const [icone, setIcone] = useState(tipo?.icone ?? "AlertTriangle");
   // Regra do portal: todo tipo é do setor Qualidade (campo travado).
   const setorPadrao = "Qualidade";
-  const [slaDias, setSlaDias] = useState<Partial<Record<MacroEtapa, number>>>(() => {
-    const base: Partial<Record<MacroEtapa, number>> = {};
-    for (const m of MACRO_ETAPAS) base[m] = tipo?.slaDias?.[m] ?? 5;
-    return base;
-  });
+  const [etapas, setEtapas] = useState<EtapaTipo[]>(() =>
+    etapasDoTipo(tipo).map((e) => ({ ...e })),
+  );
   const [ativo, setAtivo] = useState(tipo?.ativo ?? true);
   const [ordem, setOrdem] = useState(tipo?.ordem ?? 0);
   const [salvando, setSalvando] = useState(false);
+
+  function atualizarEtapa(id: string, patch: Partial<EtapaTipo>) {
+    setEtapas((atual) => atual.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  function removerEtapa(id: string) {
+    setEtapas((atual) => atual.filter((e) => e.id !== id));
+  }
+
+  function adicionarEtapa() {
+    const nova: EtapaTipo = { id: `etapa-${idCurto()}`, nome: "Nova etapa", slaDias: 5 };
+    setEtapas((atual) => {
+      // A Avaliação de Eficácia continua sendo a última etapa da linha.
+      const pos = atual.findIndex((e) => e.id === "avaliacao_eficacia");
+      return pos < 0 ? [...atual, nova] : [...atual.slice(0, pos), nova, ...atual.slice(pos)];
+    });
+  }
 
   async function salvar() {
     if (!nome.trim()) {
       toast.error("Informe o nome do tipo.");
       return;
     }
-    const sla: Partial<Record<MacroEtapa, number>> = {};
-    for (const m of MACRO_ETAPAS) sla[m] = Math.max(1, Number(slaDias[m]) || 5);
+    const etapasSalvas = etapas.map((e) => ({
+      ...e,
+      nome: e.nome.trim() || "Etapa",
+      slaDias: Math.max(1, Number(e.slaDias) || 5),
+    }));
     setSalvando(true);
     try {
       await salvarTipo({
@@ -1166,7 +1363,7 @@ function TipoDialog({
         cor,
         icone,
         setorPadrao: setorPadrao || "Qualidade",
-        slaDias: sla,
+        etapas: etapasSalvas,
         ativo,
         ordem,
       });
@@ -1268,21 +1465,42 @@ function TipoDialog({
             </Campo>
           </div>
 
-          <Campo rotulo="SLA (em dias por macro-etapa)">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {MACRO_ETAPAS.map((m) => (
-                <div key={m} className="space-y-1">
-                  <Label className="text-[11px] text-[#64748B]">{MACRO_ETAPA_LABELS[m]}</Label>
+          <Campo rotulo="Etapas da linha do metrô (nome e SLA em dias)">
+            <div className="space-y-2">
+              {etapas.map((e) => (
+                <div key={e.id} className="flex items-center gap-2">
+                  <Input
+                    value={e.nome}
+                    placeholder="Nome da etapa"
+                    onChange={(ev) => atualizarEtapa(e.id, { nome: ev.target.value })}
+                  />
                   <Input
                     type="number"
                     min={1}
-                    value={slaDias[m] ?? ""}
-                    onChange={(e) =>
-                      setSlaDias((atual) => ({ ...atual, [m]: Number(e.target.value) || 1 }))
+                    className="w-24 shrink-0"
+                    aria-label={`SLA de ${e.nome} em dias`}
+                    value={e.slaDias}
+                    onChange={(ev) =>
+                      atualizarEtapa(e.id, { slaDias: Number(ev.target.value) || 1 })
                     }
                   />
+                  {!ETAPAS_FIXAS.includes(e.id) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Remover etapa ${e.nome}`}
+                      onClick={() => removerEtapa(e.id)}
+                    >
+                      Remover
+                    </Button>
+                  )}
                 </div>
               ))}
+              <Button type="button" variant="outline" size="sm" onClick={adicionarEtapa}>
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar etapa
+              </Button>
             </div>
           </Campo>
 

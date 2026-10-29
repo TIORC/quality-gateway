@@ -67,11 +67,11 @@ import {
 import { traduzErro } from "@/lib/organizacao";
 import {
   ACOES_ETAPA_LABELS,
-  MACRO_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
   STATUS_OCORRENCIA_LABELS,
   ehTipoNaoConformidade,
   formatarPrazo,
+  nomeEtapaDoFluxo,
   ordenarSubetapas,
   subetapaDe,
   textoResposta,
@@ -431,7 +431,7 @@ function DetalheCorpo({
                 <div>
                   <dt className="text-[11px] text-[#94A3B8]">Etapa atual</dt>
                   <dd className="text-[#334155]">
-                    {MACRO_ETAPA_LABELS[o.macroAtual]}
+                    {nomeEtapaDoFluxo(etapas, o.macroAtual)}
                     {o.subetapaAtualNome ? ` › ${o.subetapaAtualNome}` : ""}
                     {o.prazoEtapa ? ` · prazo ${formatarPrazo(o.prazoEtapa)}` : ""}
                   </dd>
@@ -573,7 +573,7 @@ function DetalheCorpo({
                             key={`${macro}::${subetapa.id}`}
                             value={`${macro}::${subetapa.id}`}
                           >
-                            {MACRO_ETAPA_LABELS[macro]} › {subetapa.nome}
+                            {nomeEtapaDoFluxo(etapas, macro)} › {subetapa.nome}
                           </SelectItem>
                         ))
                       )}

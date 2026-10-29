@@ -17,10 +17,9 @@ import {
 } from "lucide-react";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 import {
-  MACRO_ETAPAS,
-  MACRO_ETAPA_LABELS,
   MACRO_ETAPA_DESCRICAO,
   formatarPrazo,
+  nomeEtapaDoFluxo,
   ocorrenciaAtrasada,
   progressoOcorrencia,
   rotuloRelativoPrazo,
@@ -56,12 +55,13 @@ function tempoDecorrido(desdeISO: string): string {
 
 export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinhaProps) {
   const [expandida, setExpandida] = useState<MacroEtapa | null>(null);
-  const idxAtual = MACRO_ETAPAS.indexOf(o.macroAtual);
+  const ids = etapas.map((e) => e.macro);
+  const idxAtual = ids.indexOf(o.macroAtual);
   const atrasada = ocorrenciaAtrasada(o);
   const progresso = progressoOcorrencia(o, etapas);
 
   function estadoDa(macro: MacroEtapa): EstadoEstacao {
-    const idx = MACRO_ETAPAS.indexOf(macro);
+    const idx = ids.indexOf(macro);
     if (o.status === "encerrada") return "concluida";
     if (idx < idxAtual) return "concluida";
     if (idx === idxAtual) return atrasada ? "atrasada" : "em_andamento";
@@ -77,7 +77,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
           <p className="text-[13px] font-semibold text-[#1F2937]">
             {o.status === "encerrada"
               ? "Jornada concluída"
-              : `Estação atual: ${MACRO_ETAPA_LABELS[o.macroAtual]}`}
+              : `Estação atual: ${nomeEtapaDoFluxo(etapas, o.macroAtual)}`}
           </p>
         </div>
         <p className="text-[12px] text-[#64748B]">
@@ -95,7 +95,8 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
 
       {/* Estações da linha */}
       <div className="flex items-center">
-        {MACRO_ETAPAS.map((macro, i) => {
+        {etapas.map((etapa, i) => {
+          const macro = etapa.macro;
           const est = estadoDa(macro);
           const concluida = est === "concluida";
           const emAndamento = est === "em_andamento";
@@ -114,7 +115,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                 type="button"
                 onClick={() => setExpandida(expandidaAqui ? null : macro)}
                 className="group flex w-14 shrink-0 flex-col items-center gap-1.5"
-                title={MACRO_ETAPA_LABELS[macro]}
+                title={etapa.nome}
               >
                 <span
                   className="relative flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white transition group-hover:scale-110"
@@ -142,19 +143,19 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                       : "text-[#94A3B8]"
                   }`}
                 >
-                  {ROTULOS_CURTOS[macro] ?? MACRO_ETAPA_LABELS[macro]}
+                  {ROTULOS_CURTOS[macro] ?? etapa.nome}
                 </span>
               </button>
-              {i < MACRO_ETAPAS.length - 1 && (
+              {i < ids.length - 1 && (
                 <span
                   className="h-0.5 flex-1 rounded-full transition-colors"
                   style={{
                     backgroundColor:
-                      i < MACRO_ETAPAS.indexOf(o.macroAtual) || o.status === "encerrada"
+                      i < idxAtual || o.status === "encerrada"
                         ? atrasada
                           ? "#E11D48"
                           : "#059669"
-                        : i === MACRO_ETAPAS.indexOf(o.macroAtual)
+                        : i === idxAtual
                           ? atrasada
                             ? "#E11D48"
                             : o.tipoCor
@@ -171,7 +172,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
       {expandida && (
         <div className="mt-4 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-4">
           <p className="text-[13px] font-semibold text-[#1F2937]">
-            {MACRO_ETAPA_LABELS[expandida]}
+            {nomeEtapaDoFluxo(etapas, expandida)}
           </p>
           <p className="mt-0.5 text-[12px] text-[#64748B]">{MACRO_ETAPA_DESCRICAO[expandida]}</p>
 

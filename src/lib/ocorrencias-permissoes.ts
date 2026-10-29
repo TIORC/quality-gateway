@@ -11,18 +11,31 @@
  *  - leitor: demais usuários — sem detalhes.
  */
 import type { UserSession } from "@/lib/auth";
+import { NIVEL_GESTOR_QUALIDADE, normalizarSetor } from "@/lib/niveis-acesso";
 import { ehAdministrador, ehUsuarioDaQualidade } from "@/lib/permissoes";
 import type { Ocorrencia } from "@/lib/ocorrencias";
 
 export type PapelOcorrencia =
   "qualidade" | "administrador" | "encarregado" | "solicitante" | "leitor";
 
+/**
+ * Opera as ocorrências (aprovar, reprovar, movimentar, avaliar eficácia): só o
+ * Gestor da Qualidade e o setor da Qualidade. O Desenvolvedor do Sistema e os
+ * administradores acompanham, mas não agem.
+ */
+export function podeOperarOcorrencias(sessao: UserSession | null | undefined): boolean {
+  if (!sessao || ehAdministrador(sessao)) return false;
+  return (
+    sessao.nivelAcesso === NIVEL_GESTOR_QUALIDADE || normalizarSetor(sessao.setor) === "qualidade"
+  );
+}
+
 export function papelNaOcorrencia(
   sessao: UserSession | null | undefined,
   o: Ocorrencia,
 ): PapelOcorrencia {
   if (!sessao) return "leitor";
-  if (ehUsuarioDaQualidade(sessao)) return "qualidade";
+  if (podeOperarOcorrencias(sessao)) return "qualidade";
   if (ehAdministrador(sessao)) return "administrador";
   const email = (sessao.email ?? "").trim().toLowerCase();
   const colaborador = (sessao.colaboradorId ?? "").trim();
@@ -58,7 +71,7 @@ export function podeComentar(sessao: UserSession | null | undefined, o: Ocorrenc
 
 /** Movimentação manual e avaliação de eficácia: só a Qualidade. */
 export function podeGerenciar(sessao: UserSession | null | undefined): boolean {
-  return ehUsuarioDaQualidade(sessao);
+  return podeOperarOcorrencias(sessao);
 }
 
 /** Detalhes internos (respostas de etapa, histórico completo) — não para o solicitante. */
@@ -68,11 +81,12 @@ export function podeVerInternos(sessao: UserSession | null | undefined, o: Ocorr
 }
 
 /**
- * Quem enxerga todas as ocorrências (Qualidade e administradores).
+ * Quem enxerga todas as ocorrências (aba "Todas as Ocorrências"): quem opera,
+ * o Desenvolvedor do Sistema e os administradores, somente para acompanhar.
  * O colaborador comum vê apenas as que abriu (ou em que é responsável).
  */
 export function veTodasAsOcorrencias(sessao: UserSession | null | undefined): boolean {
-  return ehUsuarioDaQualidade(sessao) || ehAdministrador(sessao);
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
 }
 
 /** Pode excluir ocorrências: Qualidade e administradores. */

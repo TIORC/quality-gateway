@@ -7,11 +7,13 @@
  * leitura tolera a migration ainda não aplicada (`tabelaAusente`).
  */
 import { exigirCloud } from "@/integrations/supabase/client";
+import { criarClienteOcorrencias } from "@/lib/ocorrencias-token";
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
 import type {
   AnexoOcorrencia,
   AcaoEtapa,
   CampoFormulario,
+  EtapaTipo,
   EventoOcorrencia,
   FluxoVersao,
   FormularioVersao,
@@ -26,17 +28,30 @@ import type {
   TipoCampo,
   TipoOcorrencia,
 } from "@/lib/ocorrencias";
-import { MACRO_ETAPAS } from "@/lib/ocorrencias";
+import { MACRO_ETAPA_LABELS, etapasPadrao } from "@/lib/ocorrencias";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface CloudLivre {
   from: (tabela: string) => any;
+  rpc: (nome: string, args?: unknown) => any;
   storage: ReturnType<typeof exigirCloud>["storage"];
 }
 
 /** Cliente sem tipagem de tabelas (o schema do módulo ainda não está em types.ts). */
+let _clienteOcorrencias: CloudLivre | undefined;
 export function cloud(): CloudLivre {
-  return exigirCloud() as unknown as CloudLivre;
+  // Tabelas usam o cliente com o token do usuário (RLS por papel); o storage
+  // segue no cliente padrão do app.
+  const base = exigirCloud();
+  if (!_clienteOcorrencias) {
+    const c = criarClienteOcorrencias() as unknown as Pick<CloudLivre, "from" | "rpc">;
+    _clienteOcorrencias = {
+      from: (t) => c.from(t),
+      rpc: (n, a) => c.rpc(n, a),
+      storage: base.storage,
+    };
+  }
+  return _clienteOcorrencias;
 }
 
 export type Linha = Record<string, unknown>;
@@ -48,15 +63,24 @@ export const num = (v: unknown, p = 0): number =>
 /* Tipos de ocorrência                                                         */
 /* -------------------------------------------------------------------------- */
 
-export function tipoDoRow(row: Linha): TipoOcorrencia {
+/** Etapas do tipo: coluna `etapas`; tipos anteriores usam o SLA fixo `sla_dias`. */
+function etapasDoRow(row: Linha): EtapaTipo[] {
+  const raw = Array.isArray(row["etapas"]) ? (row["etapas"] as unknown[]) : [];
+  const doRaw = raw.flatMap((item): EtapaTipo[] => {
+    const o = item as Linha;
+    const id = str(o["id"]);
+    if (!id) return [];
+    return [{ id, nome: str(o["nome"], MACRO_ETAPA_LABELS[id] ?? id), slaDias: num(o["slaDias"], 5) }];
+  });
+  if (doRaw.length) return doRaw;
   const slaRaw = row["sla_dias"];
-  const slaDias: TipoOcorrencia["slaDias"] = {};
-  if (slaRaw && typeof slaRaw === "object") {
-    for (const macro of MACRO_ETAPAS) {
-      const v = (slaRaw as Linha)[macro];
-      if (typeof v === "number" && v > 0) slaDias[macro] = v;
-    }
-  }
+  return etapasPadrao().map((e) => {
+    const v = slaRaw && typeof slaRaw === "object" ? (slaRaw as Linha)[e.id] : undefined;
+    return typeof v === "number" && v > 0 ? { ...e, slaDias: v } : e;
+  });
+}
+
+export function tipoDoRow(row: Linha): TipoOcorrencia {
   return {
     id: str(row["id"]),
     nome: str(row["nome"]),
@@ -64,7 +88,7 @@ export function tipoDoRow(row: Linha): TipoOcorrencia {
     cor: str(row["cor"], "#1E3A8A"),
     icone: str(row["icone"], "AlertTriangle"),
     setorPadrao: str(row["setor_padrao"], "Qualidade"),
-    slaDias,
+    etapas: etapasDoRow(row),
     ativo: row["ativo"] === undefined ? true : Boolean(row["ativo"]),
     ordem: num(row["ordem"]),
   };
@@ -98,7 +122,7 @@ export async function salvarTipo(
     // Regra do portal: todo tipo de ocorrência é de responsabilidade do
     // setor Qualidade — ignora qualquer outro setor informado.
     setor_padrao: "Qualidade",
-    sla_dias: tipo.slaDias ?? {},
+    etapas: tipo.etapas ?? [],
     ativo: tipo.ativo ?? true,
     ordem: tipo.ordem ?? 0,
   };
@@ -159,9 +183,11 @@ export function formularioDoRow(row: Linha): FormularioVersao {
 
 export function fluxoDoRow(row: Linha): FluxoVersao {
   const raw = Array.isArray(row["etapas"]) ? (row["etapas"] as unknown[]) : [];
-  const etapas: MacroFluxo[] = MACRO_ETAPAS.map((macro) => {
-    const item = raw.find((r) => str((r as Linha)?.["macro"]) === macro) as Linha | undefined;
-    const subsRaw = Array.isArray(item?.["subetapas"]) ? (item?.["subetapas"] as unknown[]) : [];
+  const etapas: MacroFluxo[] = raw.flatMap((r): MacroFluxo[] => {
+    const item = r as Linha;
+    const macro = str(item["macro"]);
+    if (!macro) return [];
+    const subsRaw = Array.isArray(item["subetapas"]) ? (item["subetapas"] as unknown[]) : [];
     const subetapas: SubetapaFluxo[] = subsRaw.flatMap((s) => {
       const o = s as Linha;
       const id = str(o["id"]);
@@ -188,7 +214,8 @@ export function fluxoDoRow(row: Linha): FluxoVersao {
         },
       ] satisfies SubetapaFluxo[];
     });
-    return { macro: macro as MacroEtapa, subetapas };
+    const nome: string = str(item["nome"], MACRO_ETAPA_LABELS[macro] ?? macro);
+    return [{ macro: macro as MacroEtapa, nome, subetapas }];
   });
   return {
     id: str(row["id"]),
@@ -268,6 +295,7 @@ export async function publicarFluxo(
   // salvar para que fluxos antigos/com outro setor virem Qualidade.
   const normalizadas: MacroFluxo[] = etapas.map((e) => ({
     macro: e.macro,
+    nome: e.nome,
     subetapas: e.subetapas.map((s) =>
       s.responsavel.tipo === "setor" || !s.responsavel.nome.trim()
         ? { ...s, responsavel: { tipo: "setor", id: "", nome: "Qualidade" } }
@@ -297,9 +325,7 @@ export async function publicarFluxo(
 /* -------------------------------------------------------------------------- */
 
 export function ocorrenciaDoRow(row: Linha): Ocorrencia {
-  const macro = MACRO_ETAPAS.includes(str(row["macro_atual"]) as MacroEtapa)
-    ? (str(row["macro_atual"]) as MacroEtapa)
-    : "abertura";
+  const macro: MacroEtapa = str(row["macro_atual"]) || "abertura";
   const status = str(row["status"], "em_andamento") as StatusOcorrencia;
   const avaliacaoRaw = row["avaliacao"] as Linha | null;
   const respostas =
@@ -349,7 +375,7 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
 export async function listarOcorrencias(): Promise<Ocorrencia[]> {
   try {
     const { data, error } = await cloud()
-      .from("ocorrencias")
+      .from("ocorrencias_visiveis")
       .select("*")
       .order("created_at", { ascending: false });
     if (error) {
@@ -398,7 +424,7 @@ export function eventoDoRow(row: Linha): EventoOcorrencia {
 export async function listarHistorico(ocorrenciaId: string): Promise<EventoOcorrencia[]> {
   try {
     const { data, error } = await cloud()
-      .from("ocorrencia_historico")
+      .from("ocorrencia_historico_visivel")
       .select("*")
       .eq("ocorrencia_id", ocorrenciaId)
       .order("created_at", { ascending: true });

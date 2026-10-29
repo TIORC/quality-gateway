@@ -3,20 +3,26 @@
  *
  * Toda ação grava evento no histórico imutável e notifica pelo sino
  * (`public.notificacoes`, tipos `ocorrencia_*`).
+ *
+ * As operações que mudam dados recebem a `loja` como último parâmetro: em
+ * produção é o Supabase (padrão); no laboratório de simulação é uma loja em
+ * memória, que não grava nada no banco.
  */
 import { getSession, type UserSession } from "@/lib/auth";
 import { traduzErro } from "@/lib/organizacao";
 import {
   ACOES_ETAPA_LABELS,
-  MACRO_ETAPAS,
-  MACRO_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
   SETOR_RESPONSAVEL_OCORRENCIAS,
   calcularPrazoEtapa,
+  fluxoVazio,
   idCurto,
+  nomeEtapaDoFluxo,
+  nomeEtapaDoTipo,
   ocorrenciaAtrasada,
   ordenarSubetapas,
   proximoNumero,
+  slaDaEtapa,
   subetapaDe,
   type AnexoOcorrencia,
   type AcaoEtapa,
@@ -33,11 +39,11 @@ import {
   cloud,
   listarFluxos,
   listarFormularios,
-  listarOcorrencias,
   ocorrenciaDoRow,
   str,
   type EventoLinha,
 } from "@/lib/ocorrencias-base";
+import { lojaSupabase, type LojaOcorrencias } from "@/lib/ocorrencias-loja";
 
 type Rec = Record<string, unknown>;
 
@@ -58,38 +64,31 @@ async function registrarHistorico(
   ocorrenciaId: string,
   autor: Rec,
   evento: Omit<EventoLinha, "ocorrencia_id" | "autor_id" | "autor_nome" | "autor_email">,
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
-  const { error } = await cloud()
-    .from("ocorrencia_historico")
-    .insert({ ocorrencia_id: ocorrenciaId, ...autor, ...evento });
-  if (error) throw traduzErro(error);
+  await loja.registrarHistorico({ ocorrencia_id: ocorrenciaId, ...autor, ...evento });
 }
 
 /** Notificação no sino (falha silenciosa: nunca bloqueia a tratativa). */
 async function notificar(
   itens: { email: string; nome: string; titulo: string; mensagem: string }[],
   autor: Rec,
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
   const validos = itens.filter((i) => i.email.includes("@"));
   if (!validos.length) return;
-  try {
-    await cloud()
-      .from("notificacoes")
-      .insert(
-        validos.map((i) => ({
-          destinatario_email: i.email.toLowerCase(),
-          destinatario_nome: i.nome,
-          titulo: i.titulo,
-          mensagem: i.mensagem,
-          tipo: "ocorrencia_etapa",
-          plano_id: null,
-          autor_nome: autor["autor_nome"],
-          autor_email: autor["autor_email"],
-        })),
-      );
-  } catch {
-    /* sem tabela de notificações: ignora */
-  }
+  await loja.notificar(
+    validos.map((i) => ({
+      destinatario_email: i.email.toLowerCase(),
+      destinatario_nome: i.nome,
+      titulo: i.titulo,
+      mensagem: i.mensagem,
+      tipo: "ocorrencia_etapa",
+      plano_id: null,
+      autor_nome: autor["autor_nome"],
+      autor_email: autor["autor_email"],
+    })),
+  );
 }
 
 function nomeDoEmail(email: string): string {
@@ -98,7 +97,7 @@ function nomeDoEmail(email: string): string {
   return local.replace(/\b\p{Ll}/gu, (c) => c.toUpperCase());
 }
 
-/** Primeira subetapa de uma macro-etapa (ou null = macro sem subetapas). */
+/** Primeira subetapa de uma etapa (ou null = etapa sem subetapas). */
 function primeiraSubetapa(etapas: MacroFluxo[], macro: MacroEtapa): SubetapaFluxo | null {
   const e = etapas.find((x) => x.macro === macro);
   return e?.subetapas[0] ?? null;
@@ -108,7 +107,7 @@ function primeiraSubetapa(etapas: MacroFluxo[], macro: MacroEtapa): SubetapaFlux
 export async function carregarFluxoAtivo(tipoId: string, versao: number): Promise<MacroFluxo[]> {
   const versoes = await listarFluxos(tipoId).catch(() => []);
   const escolhida = versoes.find((f) => f.versao === versao) ?? versoes[versoes.length - 1];
-  return escolhida?.etapas ?? MACRO_ETAPAS.map((macro) => ({ macro, subetapas: [] }));
+  return escolhida?.etapas ?? fluxoVazio();
 }
 
 export async function carregarFormularioAtivo(
@@ -142,7 +141,7 @@ export async function carregarUltimasVersoes(tipoId: string): Promise<VersoesPub
     fluxoVersao: fluxo?.versao ?? 1,
     campos: formulario?.campos ?? [],
     telas: formulario?.telas ?? [],
-    etapas: fluxo?.etapas ?? MACRO_ETAPAS.map((macro) => ({ macro, subetapas: [] })),
+    etapas: fluxo?.etapas ?? fluxoVazio(),
   };
 }
 
@@ -160,7 +159,7 @@ export async function detectarAtrasos(
   let registrados = 0;
   try {
     const { data } = await cloud()
-      .from("ocorrencia_historico")
+      .from("ocorrencia_historico_visivel")
       .select("ocorrencia_id, macro, acao")
       .in(
         "ocorrencia_id",
@@ -191,7 +190,7 @@ export async function detectarAtrasos(
             email: o.abertaPorEmail,
             nome: o.abertaPorNome,
             titulo: `Ocorrência ${o.numero} está atrasada`,
-            mensagem: `${o.titulo} · etapa ${MACRO_ETAPA_LABELS[o.macroAtual]} com prazo estourado.`,
+            mensagem: `${o.titulo} · etapa ${o.subetapaAtualNome || o.macroAtual} com prazo estourado.`,
           },
         ],
         autor,
@@ -219,56 +218,58 @@ export interface AbrirOcorrenciaInput {
 export async function abrirOcorrencia(
   input: AbrirOcorrenciaInput,
   sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<Ocorrencia> {
-  const existentes = await listarOcorrencias().catch(() => []);
+  const existentes = loja.numerosExistentes
+    ? (await loja.numerosExistentes()).map((numero) => ({ numero }) as Ocorrencia)
+    : await loja.listarOcorrencias().catch(() => []);
   const numero = proximoNumero(existentes);
   const autor = autorDe(sessao);
   const macro: MacroEtapa = "abertura";
-  const { data, error } = await cloud()
-    .from("ocorrencias")
-    .insert({
-      numero,
-      titulo: input.titulo.trim(),
-      tipo_id: input.tipo.id,
-      tipo_nome: input.tipo.nome,
-      tipo_cor: input.tipo.cor,
-      formulario_versao: input.formularioVersao,
-      fluxo_versao: input.fluxoVersao,
-      respostas: input.respostas,
-      macro_atual: macro,
-      subetapa_atual_id: "",
-      subetapa_atual_nome: MACRO_ETAPA_LABELS[macro],
-      status: "em_andamento",
-      procedencia: "pendente",
-      aberta_por_id: str(autor["autor_id"]),
-      aberta_por_nome: str(autor["autor_nome"]),
-      aberta_por_email: str(autor["autor_email"]),
-      aberta_por_setor: (sessao ?? getSession())?.setor ?? "",
-      responsavel_id: "",
-      // Regra do portal: toda ocorrência (qualquer tipo) é do setor Qualidade.
-      responsavel_nome: SETOR_RESPONSAVEL_OCORRENCIAS,
-      responsavel_email: "",
-      prazo_etapa: calcularPrazoEtapa(input.tipo.slaDias[macro]),
-      etapa_entrou_em: new Date().toISOString(),
-    })
-    .select("*")
-    .single();
-  if (error) throw traduzErro(error);
-  const o = data as Rec;
-
-  await registrarHistorico(o["id"] as string, autor, {
-    acao: "Criação",
-    macro,
-    subetapa: "",
-    de: "",
-    para: `Aberta como ${numero}`,
-    comentario: "",
-    anexos: [],
+  const o = await loja.inserirOcorrencia({
+    numero,
+    titulo: input.titulo.trim(),
+    tipo_id: input.tipo.id,
+    tipo_nome: input.tipo.nome,
+    tipo_cor: input.tipo.cor,
+    formulario_versao: input.formularioVersao,
+    fluxo_versao: input.fluxoVersao,
+    respostas: input.respostas,
+    macro_atual: macro,
+    subetapa_atual_id: "",
+    subetapa_atual_nome: nomeEtapaDoTipo(input.tipo, macro),
+    status: "em_andamento",
+    procedencia: "pendente",
+    aberta_por_id: str(autor["autor_id"]),
+    aberta_por_nome: str(autor["autor_nome"]),
+    aberta_por_email: str(autor["autor_email"]),
+    aberta_por_setor: (sessao ?? getSession())?.setor ?? "",
+    responsavel_id: "",
+    // Regra do portal: toda ocorrência (qualquer tipo) é do setor Qualidade.
+    responsavel_nome: SETOR_RESPONSAVEL_OCORRENCIAS,
+    responsavel_email: "",
+    prazo_etapa: calcularPrazoEtapa(slaDaEtapa(input.tipo, macro)),
+    etapa_entrou_em: new Date().toISOString(),
   });
+
+  await registrarHistorico(
+    o["id"] as string,
+    autor,
+    {
+      acao: "Criação",
+      macro,
+      subetapa: "",
+      de: "",
+      para: `Aberta como ${numero}`,
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
 
   // Encarregado da primeira etapa do fluxo (se houver) é avisado.
   try {
-    const fluxo = await carregarFluxoAtivo(input.tipo.id, input.fluxoVersao);
+    const fluxo = await loja.carregarFluxo(input.tipo.id, input.fluxoVersao);
     const sub = primeiraSubetapa(fluxo, "apuracao");
     if (sub?.notificar) {
       const email = sub.responsavel.email ?? "";
@@ -277,11 +278,12 @@ export async function abrirOcorrencia(
           {
             email,
             nome: sub.responsavel.nome || nomeDoEmail(email),
-            titulo: `Ocorrência ${numero} entrou em ${MACRO_ETAPA_LABELS["apuracao"]}`,
+            titulo: `Ocorrência ${numero} entrou em ${nomeEtapaDoFluxo(fluxo, "apuracao")}`,
             mensagem: `${input.titulo} · responsável: ${sub.responsavel.nome || "a definir"} · prazo ${sub.prazoDias}d`,
           },
         ],
         autor,
+        loja,
       );
     }
   } catch {
@@ -329,21 +331,24 @@ export async function adicionarAnexosAbertura(
 /* Movimentação                                                                */
 /* -------------------------------------------------------------------------- */
 
-function rotuloEtapa(macro: MacroEtapa, sub: SubetapaFluxo | null): string {
-  return sub ? `${MACRO_ETAPA_LABELS[macro]} › ${sub.nome}` : MACRO_ETAPA_LABELS[macro];
+function rotuloEtapa(etapas: MacroFluxo[], macro: MacroEtapa, sub: SubetapaFluxo | null): string {
+  const nome = nomeEtapaDoFluxo(etapas, macro);
+  return sub ? `${nome} › ${sub.nome}` : nome;
 }
 
 /** Entra na etapa (macro+subetapa), calcula prazo, grava histórico e notifica. */
 async function entrarEm(
   o: Ocorrencia,
+  etapas: MacroFluxo[],
   macro: MacroEtapa,
   sub: SubetapaFluxo | null,
   autor: Rec,
   acaoHistorico: string,
   comentario: string,
   anexos: AnexoOcorrencia[],
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
-  const prazo = sub ? calcularPrazoEtapa(sub.prazoDias) : calcularPrazoEtapa(30); // macro sem subetapa: 30 dias padrão
+  const prazo = sub ? calcularPrazoEtapa(sub.prazoDias) : calcularPrazoEtapa(30); // etapa sem subetapa: 30 dias padrão
   // Regra do portal: o setor responsável por toda ocorrência é a Qualidade.
   // Subetapa sem responsável, sem nome ou com responsável do tipo setor
   // assume automaticamente a Qualidade (pessoa/cargo explícitos são mantidos,
@@ -355,7 +360,7 @@ async function entrarEm(
   const patch: Rec = {
     macro_atual: macro,
     subetapa_atual_id: sub?.id ?? "",
-    subetapa_atual_nome: sub?.nome ?? MACRO_ETAPA_LABELS[macro],
+    subetapa_atual_nome: sub?.nome ?? nomeEtapaDoFluxo(etapas, macro),
     responsavel_id: ehSetorOuVazio ? "" : (sub?.responsavel.id ?? ""),
     responsavel_nome: responsavelNome,
     responsavel_email: ehSetorOuVazio ? "" : (sub?.responsavel.email ?? "").toLowerCase(),
@@ -363,18 +368,22 @@ async function entrarEm(
     etapa_entrou_em: new Date().toISOString(),
     status: "em_andamento",
   };
-  const { error } = await cloud().from("ocorrencias").update(patch).eq("id", o.id);
-  if (error) throw traduzErro(error);
+  await loja.atualizarOcorrencia(o.id, patch);
 
-  await registrarHistorico(o.id, autor, {
-    acao: acaoHistorico,
-    macro,
-    subetapa: sub?.nome ?? "",
-    de: rotuloEtapa(o.macroAtual, null),
-    para: rotuloEtapa(macro, sub),
-    comentario,
-    anexos,
-  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: acaoHistorico,
+      macro,
+      subetapa: sub?.nome ?? "",
+      de: rotuloEtapa(etapas, o.macroAtual, null),
+      para: rotuloEtapa(etapas, macro, sub),
+      comentario,
+      anexos,
+    },
+    loja,
+  );
 
   if (sub?.notificar) {
     const email = sub.responsavel.email ?? "";
@@ -385,34 +394,42 @@ async function entrarEm(
       alvo.map((d) => ({
         email: d.email,
         nome: d.nome,
-        titulo: `Ocorrência ${o.numero} está em ${MACRO_ETAPA_LABELS[macro]}`,
-        mensagem: `${o.titulo} · etapa: ${rotuloEtapa(macro, sub)} · previsão: ${prazo ?? "sem prazo"}`,
+        titulo: `Ocorrência ${o.numero} está em ${nomeEtapaDoFluxo(etapas, macro)}`,
+        mensagem: `${o.titulo} · etapa: ${rotuloEtapa(etapas, macro, sub)} · previsão: ${prazo ?? "sem prazo"}`,
       })),
       autor,
+      loja,
     );
   }
 }
 
 /** Encerra formalmente a ocorrência. */
-async function encerrar(o: Ocorrencia, autor: Rec, motivo: string): Promise<void> {
-  const { error } = await cloud()
-    .from("ocorrencias")
-    .update({
-      status: "encerrada",
-      encerrada_em: new Date().toISOString(),
-      prazo_etapa: null,
-    })
-    .eq("id", o.id);
-  if (error) throw traduzErro(error);
-  await registrarHistorico(o.id, autor, {
-    acao: "Encerramento",
-    macro: o.macroAtual,
-    subetapa: o.subetapaAtualNome,
-    de: rotuloEtapa(o.macroAtual, null),
-    para: "Encerrada",
-    comentario: motivo,
-    anexos: [],
+async function encerrar(
+  o: Ocorrencia,
+  etapas: MacroFluxo[],
+  autor: Rec,
+  motivo: string,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  await loja.atualizarOcorrencia(o.id, {
+    status: "encerrada",
+    encerrada_em: new Date().toISOString(),
+    prazo_etapa: null,
   });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Encerramento",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: rotuloEtapa(etapas, o.macroAtual, null),
+      para: "Encerrada",
+      comentario: motivo,
+      anexos: [],
+    },
+    loja,
+  );
   await notificar(
     [
       {
@@ -423,6 +440,7 @@ async function encerrar(o: Ocorrencia, autor: Rec, motivo: string): Promise<void
       },
     ],
     autor,
+    loja,
   ).catch(() => undefined);
 }
 
@@ -442,6 +460,7 @@ export async function agirNaOcorrencia(
   etapas: MacroFluxo[],
   payload: AcaoPayload,
   sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<Ocorrencia> {
   const autor = autorDe(sessao);
   const comentario = payload.comentario?.trim() ?? "";
@@ -452,11 +471,7 @@ export async function agirNaOcorrencia(
       ...o.respostas,
       [`__etapa_${o.macroAtual}_${o.subetapaAtualId}`]: payload.respostasEtapa,
     };
-    const { error } = await cloud()
-      .from("ocorrencias")
-      .update({ respostas: mescladas })
-      .eq("id", o.id);
-    if (error) throw traduzErro(error);
+    await loja.atualizarOcorrencia(o.id, { respostas: mescladas });
     o = { ...o, respostas: mescladas };
   }
 
@@ -471,45 +486,64 @@ export async function agirNaOcorrencia(
 
   if (payload.acao === "aprovar") {
     if (proxima) {
-      await entrarEm(o, proxima.macro, proxima.subetapa, autor, "Aprovação", comentario, anexos);
+      await entrarEm(
+        o,
+        etapas,
+        proxima.macro,
+        proxima.subetapa,
+        autor,
+        "Aprovação",
+        comentario,
+        anexos,
+        loja,
+      );
     } else {
-      await encerrar(o, autor, comentario || "Fluxo concluído.");
+      await encerrar(o, etapas, autor, comentario || "Fluxo concluído.", loja);
     }
   } else if (payload.acao === "reprovar") {
     if (atual?.reprovarPara === "encerrar") {
-      await encerrar(o, autor, comentario || "Reprovada na etapa.");
+      await encerrar(o, etapas, autor, comentario || "Reprovada na etapa.", loja);
     } else if (anterior) {
       await entrarEm(
         o,
+        etapas,
         anterior.macro,
         anterior.subetapa,
         autor,
         "Reprovação (retorno)",
         comentario,
         anexos,
+        loja,
       );
     } else {
-      // Sem etapa anterior: volta para o solicitante ajustar (macro de abertura).
+      // Sem etapa anterior: volta para o solicitante ajustar (etapa de abertura).
       await entrarEm(
         o,
+        etapas,
         "abertura",
         null,
         autor,
         "Reprovação (retorno ao solicitante)",
         comentario,
         anexos,
+        loja,
       );
     }
   } else if (payload.acao === "solicitar_info") {
-    await registrarHistorico(o.id, autor, {
-      acao: ACOES_ETAPA_LABELS[payload.acao],
-      macro: macroAtual,
-      subetapa: atual?.nome ?? "",
-      de: "",
-      para: o.abertaPorNome || "solicitante",
-      comentario,
-      anexos,
-    });
+    await registrarHistorico(
+      o.id,
+      autor,
+      {
+        acao: ACOES_ETAPA_LABELS[payload.acao],
+        macro: macroAtual,
+        subetapa: atual?.nome ?? "",
+        de: "",
+        para: o.abertaPorNome || "solicitante",
+        comentario,
+        anexos,
+      },
+      loja,
+    );
     await notificar(
       [
         {
@@ -520,17 +554,23 @@ export async function agirNaOcorrencia(
         },
       ],
       autor,
+      loja,
     ).catch(() => undefined);
   } else if (payload.acao === "escalar") {
-    await registrarHistorico(o.id, autor, {
-      acao: "Escalado para a Qualidade",
-      macro: macroAtual,
-      subetapa: atual?.nome ?? "",
-      de: "",
-      para: "Qualidade",
-      comentario,
-      anexos,
-    });
+    await registrarHistorico(
+      o.id,
+      autor,
+      {
+        acao: "Escalado para a Qualidade",
+        macro: macroAtual,
+        subetapa: atual?.nome ?? "",
+        de: "",
+        para: "Qualidade",
+        comentario,
+        anexos,
+      },
+      loja,
+    );
     await notificar(
       [
         {
@@ -541,10 +581,11 @@ export async function agirNaOcorrencia(
         },
       ],
       autor,
+      loja,
     ).catch(() => undefined);
   }
 
-  const lista = await listarOcorrencias();
+  const lista = await loja.listarOcorrencias();
   return lista.find((x) => x.id === o.id) ?? o;
 }
 
@@ -556,9 +597,20 @@ export async function moverPara(
   subetapaId: string,
   sessao: UserSession | null,
   comentario = "",
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
   const sub = subetapaDe(etapas, macro, subetapaId);
-  await entrarEm(o, macro, sub, autorDe(sessao), "Movimentação manual", comentario, []);
+  await entrarEm(
+    o,
+    etapas,
+    macro,
+    sub,
+    autorDe(sessao),
+    "Movimentação manual",
+    comentario,
+    [],
+    loja,
+  );
 }
 
 /** Comentário/anexo na ocorrência (timeline do histórico). */
@@ -604,20 +656,25 @@ export async function decidirProcedencia(
   procedencia: Exclude<ProcedenciaOcorrencia, "pendente">,
   comentario: string,
   sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
   const autor = autorDe(sessao);
-  const { error } = await cloud().from("ocorrencias").update({ procedencia }).eq("id", o.id);
-  if (error) throw traduzErro(error);
+  await loja.atualizarOcorrencia(o.id, { procedencia });
 
-  await registrarHistorico(o.id, autor, {
-    acao: "Julgamento: " + PROCEDENCIA_LABELS[procedencia],
-    macro: "julgamento",
-    subetapa: o.subetapaAtualNome,
-    de: "",
-    para: PROCEDENCIA_LABELS[procedencia],
-    comentario,
-    anexos: [],
-  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Julgamento: " + PROCEDENCIA_LABELS[procedencia],
+      macro: "julgamento",
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: PROCEDENCIA_LABELS[procedencia],
+      comentario,
+      anexos: [],
+    },
+    loja,
+  );
 
   await notificar(
     [
@@ -629,6 +686,7 @@ export async function decidirProcedencia(
       },
     ],
     autor,
+    loja,
   ).catch(() => undefined);
 }
 
@@ -644,61 +702,61 @@ export interface AvaliacaoInput {
 
 /**
  * Registra a avaliação de eficácia. Ineficaz → reabre automaticamente na
- * macro-etapa de Apuração (conta como reincidência) e avisa os envolvidos.
+ * etapa de Apuração (conta como reincidência) e avisa os envolvidos.
  */
 export async function avaliarEficacia(
   o: Ocorrencia,
   etapas: MacroFluxo[],
   input: AvaliacaoInput,
   sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
   const autor = autorDe(sessao);
   const verificacaoEm = calcularPrazoEtapa(input.prazoDias);
-  const { error } = await cloud()
-    .from("ocorrencias")
-    .update({
-      avaliacao: {
-        prazoDias: input.prazoDias,
-        verificacaoEm,
-        eficaz: input.eficaz,
-        observacao: input.observacao,
-      },
-    })
-    .eq("id", o.id);
-  if (error) throw traduzErro(error);
-
-  await registrarHistorico(o.id, autor, {
-    acao: input.eficaz ? "Avaliação de eficácia: eficaz" : "Avaliação de eficácia: INEFICAZ",
-    macro: "avaliacao_eficacia",
-    subetapa: "",
-    de: "",
-    para: input.eficaz ? "Mantida encerrada" : "Reaberta",
-    comentario: input.observacao,
-    anexos: [],
+  await loja.atualizarOcorrencia(o.id, {
+    avaliacao: {
+      prazoDias: input.prazoDias,
+      verificacaoEm,
+      eficaz: input.eficaz,
+      observacao: input.observacao,
+    },
   });
+
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: input.eficaz ? "Avaliação de eficácia: eficaz" : "Avaliação de eficácia: INEFICAZ",
+      macro: "avaliacao_eficacia",
+      subetapa: "",
+      de: "",
+      para: input.eficaz ? "Mantida encerrada" : "Reaberta",
+      comentario: input.observacao,
+      anexos: [],
+    },
+    loja,
+  );
 
   if (input.eficaz) return;
 
   // Reabertura automática: volta para Apuração (nova rodada de tratativa).
-  const { error: erroReabrir } = await cloud()
-    .from("ocorrencias")
-    .update({
-      status: "reaberta",
-      reaberturas: o.reaberturas + 1,
-      encerrada_em: null,
-    })
-    .eq("id", o.id);
-  if (erroReabrir) throw traduzErro(erroReabrir);
+  await loja.atualizarOcorrencia(o.id, {
+    status: "reaberta",
+    reaberturas: o.reaberturas + 1,
+    encerrada_em: null,
+  });
   const base: Ocorrencia = { ...o, reaberturas: o.reaberturas + 1, status: "reaberta" };
   const apuracao = etapas.find((e) => e.macro === "apuracao");
   await entrarEm(
     base,
+    etapas,
     "apuracao",
     apuracao?.subetapas[0] ?? null,
     autor,
     "Reabertura por ineficácia",
     input.observacao || "Ação não resolveu o problema.",
     [],
+    loja,
   );
 }
 

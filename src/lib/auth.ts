@@ -1,4 +1,5 @@
 import { NIVEL_DESENVOLVEDOR_SISTEMA, roleDoNivel } from "@/lib/niveis-acesso";
+import { limparTokenOcorrencias, obterTokenOcorrencias } from "@/lib/ocorrencias-token";
 import { acessoDosGrupos, nomesDosGrupos } from "@/lib/grupos-permissoes";
 /**
  * Autenticação do painel administrativo.
@@ -424,6 +425,8 @@ export async function login(
 
     const sessaoFinal = await aplicarGruposNaSessao(client, sessionBase);
     persistirSession(sessaoFinal);
+    // Token de identidade para a RLS das ocorrências (não bloqueia o login).
+    await obterTokenOcorrencias(emailNormalizado, senha);
     return { ok: true, session: sessaoFinal };
   } catch {
     return {
@@ -436,6 +439,7 @@ export async function login(
 export function logout(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(SESSION_KEY);
+  limparTokenOcorrencias();
 }
 
 /**

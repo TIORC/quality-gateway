@@ -25,8 +25,6 @@ import { FormBuilder } from "@/components/ocorrencias/form-builder";
 import {
   ACOES_ETAPA,
   ACOES_ETAPA_LABELS,
-  MACRO_ETAPAS,
-  MACRO_ETAPA_LABELS,
   MACRO_ETAPA_DESCRICAO,
   type AcaoEtapa,
   type CampoFormulario,
@@ -115,9 +113,9 @@ export function FlowBuilder({
 
   return (
     <div className="space-y-5">
-      {MACRO_ETAPAS.map((macro) => {
-        const e = etapas.find((x) => x.macro === macro);
-        const subs = e?.subetapas ?? [];
+      {etapas.map((e, indice) => {
+        const macro = e.macro;
+        const subs = e.subetapas;
         return (
           <div key={macro} className="rounded-xl border border-[#D9E0EA] bg-white p-3">
             <div className="flex items-center justify-between">
@@ -126,11 +124,9 @@ export function FlowBuilder({
                   className="flex h-7 w-7 items-center justify-center rounded-full text-white"
                   style={{ backgroundColor: "#1E3A8A" }}
                 >
-                  <span className="text-[13px] font-bold">{MACRO_ETAPAS.indexOf(macro) + 1}</span>
+                  <span className="text-[13px] font-bold">{indice + 1}</span>
                 </span>
-                <p className="text-[13px] font-semibold text-[#1F2937]">
-                  {MACRO_ETAPA_LABELS[macro]}
-                </p>
+                <p className="text-[13px] font-semibold text-[#1F2937]">{e.nome}</p>
               </div>
               <Button
                 type="button"
@@ -142,7 +138,9 @@ export function FlowBuilder({
                 Subetapa
               </Button>
             </div>
-            <p className="mt-1 text-[11px] text-[#94A3B8]">{MACRO_ETAPA_DESCRICAO[macro]}</p>
+            {MACRO_ETAPA_DESCRICAO[macro] && (
+              <p className="mt-1 text-[11px] text-[#94A3B8]">{MACRO_ETAPA_DESCRICAO[macro]}</p>
+            )}
             {subs.length === 0 ? (
               <p className="mt-2 text-[12px] text-[#CBD5E1]">
                 Macro-etapa tratada como etapa única (fluxo mínimo).
