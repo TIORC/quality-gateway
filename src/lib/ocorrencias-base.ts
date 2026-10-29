@@ -329,6 +329,9 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
     tipoNome: str(row["tipo_nome"]),
     tipoCor: str(row["tipo_cor"], "#1E3A8A"),
     procedencia: (str(row["procedencia"], "pendente") as Ocorrencia["procedencia"]) || "pendente",
+    prioridade: (["baixa", "media", "alta"].includes(str(row["prioridade"]))
+      ? str(row["prioridade"])
+      : "a_definir") as Ocorrencia["prioridade"],
     formularioVersao: num(row["formulario_versao"], 1),
     fluxoVersao: num(row["fluxo_versao"], 1),
     respostas,

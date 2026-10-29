@@ -61,6 +61,7 @@ import {
 import {
   abrirOcorrencia,
   adicionarAnexosAbertura,
+  anexarArquivosDosCampos,
   carregarUltimasVersoes,
   detectarAtrasos,
   type VersoesPublicadas,
@@ -69,6 +70,7 @@ import {
   ETAPAS_FIXAS,
   ICONES_OCORRENCIA,
   PROCEDENCIA_LABELS,
+  PRIORIDADE_LABELS,
   alinharFluxoAoTipo,
   ehTipoNaoConformidade,
   etapasDoTipo,
@@ -414,96 +416,173 @@ function ListaOcorrencias({
     );
   }
 
+  const COLUNAS = "grid grid-cols-[90px_minmax(200px,2fr)_100px_minmax(120px,1fr)_90px_minmax(220px,1.6fr)_minmax(130px,1fr)] items-center gap-4";
   return (
-    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {ocorrencias.map((o, indice) => {
-        const tipo = tipos.find((t) => t.id === o.tipoId);
-        const Icone = iconeTipoOcorrencia(tipo?.icone);
-        const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
-        const origemAuditoria =
-          typeof o.respostas["origem_nc"] === "string" ? (o.respostas["origem_nc"] as string) : "";
-        return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onDetalhar(o)}
-            className="ocorrencia-card-entrada group flex flex-col rounded-xl border border-black/10 p-4 text-left text-white shadow-sm transition hover:brightness-110"
-            style={{
-              backgroundColor: `color-mix(in srgb, ${o.tipoCor} 88%, black)`,
-              animationDelay: `${Math.min(indice, 11) * 80}ms`,
-            }}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <span
-                className="inline-flex max-w-[70%] items-center gap-1.5 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-medium text-white"
-                title={o.tipoNome}
-              >
-                <Icone className="h-3 w-3 shrink-0" />
-                <span className="truncate">{o.tipoNome}</span>
-              </span>
-              <span className="shrink-0 font-mono text-[11px] text-white/70">{o.numero}</span>
-            </div>
-
-            <p className="mt-3 line-clamp-2 text-[14px] font-semibold leading-snug text-white">
-              {o.titulo || "—"}
-            </p>
-
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+    <div className="mt-4 overflow-x-auto">
+      <div className="min-w-[1000px]">
+        <div
+          className={`${COLUNAS} px-4 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748B]`}
+        >
+          <span>Código</span>
+          <span>Assunto</span>
+          <span>Aberta em</span>
+          <span>Responsável</span>
+          <span>Prioridade</span>
+          <span>Andamento</span>
+          <span>Prazo</span>
+        </div>
+        <div className="space-y-2">
+          {ocorrencias.map((o, indice) => {
+            const tipo = tipos.find((t) => t.id === o.tipoId);
+            const Icone = iconeTipoOcorrencia(tipo?.icone);
+            const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
+            const etapas = etapasDoTipo(tipo);
+            const encerrada = o.status === "encerrada";
+            const idxAtual = Math.max(
+              0,
+              etapas.findIndex((e) => e.id === o.macroAtual),
+            );
+            const origemAuditoria =
+              typeof o.respostas["origem_nc"] === "string"
+                ? (o.respostas["origem_nc"] as string)
+                : "";
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => onDetalhar(o)}
+                className={`${COLUNAS} ocorrencia-card-entrada group w-full rounded-xl border border-black/10 px-4 py-3 text-left text-white shadow-sm transition hover:brightness-110`}
                 style={{
-                  backgroundColor: sla.atrasado ? "#FDECEE" : sla.critical ? "#FFFBEB" : "#ECFDF5",
-                  color: sla.atrasado ? "#991A1A" : sla.critical ? "#92400E" : "#065F46",
+                  backgroundColor: `color-mix(in srgb, ${o.tipoCor} 88%, black)`,
+                  animationDelay: `${Math.min(indice, 11) * 80}ms`,
                 }}
               >
-                {nomeEtapaDoTipo(tipo, o.macroAtual)}
-              </span>
-              {origemAuditoria ? (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF2FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#1E3A8A]"
-                  title={`Origem: ${origemAuditoria}`}
-                >
-                  <ClipboardCheck className="h-3 w-3 shrink-0" />
-                  {origemAuditoria}
-                </span>
-              ) : null}
-              {o.procedencia !== "pendente" ? (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                  style={{
-                    backgroundColor: o.procedencia === "procedente" ? "#ECFDF5" : "#FDECEE",
-                    color: o.procedencia === "procedente" ? "#065F46" : "#991A1A",
-                  }}
-                >
-                  {PROCEDENCIA_LABELS[o.procedencia]}
-                </span>
-              ) : null}
-            </div>
+                <span className="font-mono text-[13px] font-bold">{o.numero}</span>
 
-            <div className="mt-3 flex-1 space-y-1 text-[12px] text-white/90">
-              <p>
-                <span className="text-white/60">Responsável:</span> {o.responsavelNome || "—"}
-              </p>
-              <p>
-                <span className="text-white/60">Abertura:</span>{" "}
-                {FormatadorSla.formatarData(o.createdAt)}
-              </p>
-            </div>
+                <span className="min-w-0">
+                  <span className="line-clamp-2 text-[14px] font-semibold leading-snug">
+                    {o.titulo || "—"}
+                  </span>
+                  <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-medium"
+                      title={o.tipoNome}
+                    >
+                      <Icone className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{o.tipoNome}</span>
+                    </span>
+                    {origemAuditoria ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-semibold text-[#1E3A8A]"
+                        title={`Origem: ${origemAuditoria}`}
+                      >
+                        <ClipboardCheck className="h-3 w-3 shrink-0" />
+                        {origemAuditoria}
+                      </span>
+                    ) : null}
+                    {o.procedencia !== "pendente" ? (
+                      <span
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={{
+                          backgroundColor: o.procedencia === "procedente" ? "#ECFDF5" : "#FDECEE",
+                          color: o.procedencia === "procedente" ? "#065F46" : "#991A1A",
+                        }}
+                      >
+                        {PROCEDENCIA_LABELS[o.procedencia]}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
 
-            <div className="mt-3 flex items-center gap-2 border-t border-white/20 pt-3">
-              <span className="rounded-full bg-white p-1">
-                <FormatadorSla.Icone sla={sla} />
-              </span>
-              <span className="text-[12px] font-medium text-white">
-                {sla.label}
-              </span>
-              <span className="ml-auto text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
-                Detalhar →
-              </span>
-            </div>
-          </button>
-        );
-      })}
+                <span className="text-[13px] text-white/90">
+                  {FormatadorSla.formatarData(o.createdAt)}
+                </span>
+
+                <span className="truncate text-[13px] text-white/90" title={o.responsavelNome}>
+                  {o.responsavelNome || "—"}
+                </span>
+
+                <span>
+                  <span
+                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white ring-2 ring-white/70"
+                    style={{
+                      backgroundColor:
+                        o.prioridade === "alta"
+                          ? "#DC2626"
+                          : o.prioridade === "media"
+                            ? "#F59E0B"
+                            : o.prioridade === "baixa"
+                              ? "#2563EB"
+                              : "#64748B",
+                    }}
+                  >
+                    {PRIORIDADE_LABELS[o.prioridade]}
+                  </span>
+                </span>
+
+                <span className="min-w-0">
+                  <span className="flex gap-1.5">
+                    {etapas.map((e, i) => {
+                      const feita = encerrada || i < idxAtual;
+                      const atual = !encerrada && i === idxAtual;
+                      return (
+                        <span
+                          key={e.id}
+                          title={e.nome}
+                          className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-white/25"
+                        >
+                          {(feita || atual) && (
+                            <motion.span
+                              className="absolute inset-y-0 left-0 rounded-full bg-white"
+                              initial={{ width: "0%" }}
+                              animate={
+                                atual
+                                  ? { width: "100%", opacity: [1, 0.55, 1] }
+                                  : { width: "100%", opacity: 1 }
+                              }
+                              transition={{
+                                width: {
+                                  duration: 0.5,
+                                  delay: i * 0.12 + Math.min(indice, 11) * 0.08,
+                                  ease: "easeOut",
+                                },
+                                opacity: atual
+                                  ? {
+                                      duration: 1.6,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                      delay: i * 0.12 + 0.6,
+                                    }
+                                  : { duration: 0 },
+                              }}
+                            />
+                          )}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  <motion.span
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4, delay: 0.3 + Math.min(indice, 11) * 0.08 }}
+                    className="mt-1.5 block truncate text-[12px] font-semibold"
+                  >
+                    {encerrada ? etapas.length : idxAtual + 1} ·{" "}
+                    {encerrada ? "Concluído" : nomeEtapaDoTipo(tipo, o.macroAtual)}
+                  </motion.span>
+                </span>
+
+                <span className="flex items-center gap-2">
+                  <span className="rounded-full bg-white p-1">
+                    <FormatadorSla.Icone sla={sla} />
+                  </span>
+                  <span className="text-[12px] font-medium">{sla.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -656,9 +735,12 @@ function AbrirOcorrenciaDialog({
   const totalTelas = titulosTelas.length;
   const [carregandoForm, setCarregandoForm] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // Arquivos escolhidos nos campos "arquivo" (enviados ao Storage após criar a ocorrência).
+  const arquivosCampos = useRef<Record<string, File[]>>({});
 
   useEffect(() => {
     if (aberto) {
+      arquivosCampos.current = {};
       setEtapa("tipo");
       setTipoId(null);
       setRespostas({});
@@ -797,8 +879,19 @@ function AbrirOcorrenciaDialog({
         },
         session,
       );
+      let final = criada;
+      const pendentes = Object.fromEntries(
+        Object.entries(arquivosCampos.current).filter(([id]) => id in respostasLimpas),
+      );
+      if (Object.keys(pendentes).length > 0) {
+        try {
+          final = await anexarArquivosDosCampos(criada, pendentes, session);
+        } catch (e) {
+          toast.error(`Ocorrência aberta, mas o envio dos arquivos falhou: ${traduzErro(e).message}`);
+        }
+      }
       toast.success("Ocorrência aberta com sucesso");
-      onCriado(criada);
+      onCriado(final);
     } catch (e) {
       toast.error(traduzErro(e).message);
     } finally {
@@ -933,7 +1026,8 @@ function AbrirOcorrenciaDialog({
                     nome: c.nome,
                     email: c.email ?? "",
                   }))}
-                  onArquivos={(campoId, arquivos) =>
+                  onArquivos={(campoId, arquivos) => {
+                    arquivosCampos.current[campoId] = arquivos ? Array.from(arquivos) : [];
                     setRespostas((r) => ({
                       ...r,
                       [campoId]: arquivos
@@ -943,8 +1037,8 @@ function AbrirOcorrenciaDialog({
                             tamanho: f.size,
                           }))
                         : [],
-                    }))
-                  }
+                    }));
+                  }}
                 />
                 </div>
               )}

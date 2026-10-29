@@ -1141,6 +1141,7 @@ export type Database = {
           macro_atual: string
           numero: string
           prazo_etapa: string | null
+          prioridade: string
           procedencia: string
           reaberturas: number
           responsavel_email: string
@@ -1171,6 +1172,7 @@ export type Database = {
           macro_atual?: string
           numero?: string
           prazo_etapa?: string | null
+          prioridade?: string
           procedencia?: string
           reaberturas?: number
           responsavel_email?: string
@@ -1201,6 +1203,7 @@ export type Database = {
           macro_atual?: string
           numero?: string
           prazo_etapa?: string | null
+          prioridade?: string
           procedencia?: string
           reaberturas?: number
           responsavel_email?: string

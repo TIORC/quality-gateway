@@ -40,6 +40,7 @@ import {
 import { usePanelSession } from "@/components/panel-shell";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 
+import { AnexosVisualizador, anexosDe } from "@/components/ocorrencias/anexos-visualizador";
 import { MetroLinha } from "@/components/ocorrencias/metro-linha";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
@@ -49,6 +50,7 @@ import {
   carregarFormularioAtivo,
   comentarOcorrencia,
   decidirProcedencia,
+  definirPrioridade,
   enviarAnexo,
   excluirOcorrencia,
   moverPara,
@@ -58,6 +60,8 @@ import {
 import { listarHistorico, listarOcorrencias } from "@/lib/ocorrencias-base";
 import {
   podeAgir,
+  podeDefinirPrioridade,
+  podeMoverEtapa,
   podeComentar,
   podeExcluir,
   podeGerenciar,
@@ -71,6 +75,9 @@ import { cienciasDe, setoresEnvolvidosDe } from "@/lib/ocorrencias";
 import {
   ACOES_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
+  PRIORIDADES_OCORRENCIA,
+  PRIORIDADE_LABELS,
+  type PrioridadeOcorrencia,
   STATUS_OCORRENCIA_LABELS,
   ehTipoNaoConformidade,
   formatarPrazo,
@@ -159,7 +166,10 @@ function DetalheCorpo({
         setEtapas(etapasCarregadas);
         setFormulario(formularioCarregado);
         setEventos(historico);
-        setEtapaRespostas((o.respostas[`__etapa_${o.macroAtual}_${o.subetapaAtualId}`] as Respostas | undefined) ?? {});
+        setEtapaRespostas(
+          (o.respostas[`__etapa_${o.macroAtual}_${o.subetapaAtualId}`] as Respostas | undefined) ??
+            {},
+        );
         setCarregando(false);
       })
       .catch(() => {
@@ -187,6 +197,10 @@ function DetalheCorpo({
   const meuSetor = normalizarSetor(session?.setor);
   const pode = podeAgir(session, o);
   const gerencia = podeGerenciar(session);
+  const podeMover = podeMoverEtapa(session);
+  const macrosFluxo = etapas.map((e) => e.macro);
+  const idxMacro = macrosFluxo.indexOf(o.macroAtual);
+  const proximaMacro = o.status === "encerrada" || idxMacro < 0 ? undefined : etapas[idxMacro + 1];
   const verInternos = podeVerInternos(session, o);
   const comentar = podeComentar(session, o);
   const camposEtapa = subEtapa?.campos ?? [];
@@ -200,9 +214,8 @@ function DetalheCorpo({
     if (atualizada) {
       setO(atualizada);
       setEtapaRespostas(
-        (atualizada.respostas[
-          `__etapa_${atualizada.macroAtual}_${atualizada.subetapaAtualId}`
-        ] as Respostas | undefined) ?? {},
+        (atualizada.respostas[`__etapa_${atualizada.macroAtual}_${atualizada.subetapaAtualId}`] as
+          Respostas | undefined) ?? {},
       );
     }
     setEventos(historico);
@@ -267,12 +280,7 @@ function DetalheCorpo({
   async function confirmarAvaliacao() {
     setSalvandoAvaliacao(true);
     try {
-      await avaliarEficacia(
-        o,
-        etapas,
-        { eficaz, observacao: observacao.trim() },
-        session,
-      );
+      await avaliarEficacia(o, etapas, { eficaz, observacao: observacao.trim() }, session);
       toast.success(eficaz ? "Eficácia confirmada." : "Ocorrência reaberta por ineficácia.");
       setAvaliacaoAberta(false);
       await recarregar();
@@ -297,6 +305,16 @@ function DetalheCorpo({
     try {
       await decidirProcedencia(o, procedencia, "", session);
       toast.success(`${PROCEDENCIA_LABELS[procedencia]} registrado.`);
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    }
+  }
+
+  async function mudarPrioridade(valor: PrioridadeOcorrencia) {
+    try {
+      await definirPrioridade(o, valor, session);
+      toast.success(`Prioridade: ${PRIORIDADE_LABELS[valor]}.`);
       await recarregar();
     } catch (e) {
       toast.error(traduzErro(e).message);
@@ -380,6 +398,30 @@ function DetalheCorpo({
         <div className="py-12 text-center text-sm text-[#64748B]">Carregando a viagem…</div>
       ) : (
         <div className="space-y-4">
+          {podeDefinirPrioridade(session) && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Prioridade
+              </span>
+              <Select
+                value={o.prioridade}
+                onValueChange={(v) => void mudarPrioridade(v as PrioridadeOcorrencia)}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORIDADES_OCORRENCIA.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PRIORIDADE_LABELS[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
+            </div>
+          )}
+
           <MetroLinha ocorrencia={o} etapas={etapas} eventos={eventos} visao={visao} />
 
           {mostraAbertura && (
@@ -436,14 +478,22 @@ function DetalheCorpo({
                   </>
                 ) : formulario.length > 0 ? (
                   formulario.map((c) => (
-                    <div key={c.id}>
+                    <div key={c.id} className={c.tipo === "arquivo" ? "sm:col-span-2" : undefined}>
                       <dt className="text-[11px] text-[#94A3B8]">{c.label}</dt>
-                      <dd className="text-[#334155]">{c.tipo === "moeda" && typeof o.respostas[c.id] === "number"
-                          ? (o.respostas[c.id] as number).toLocaleString("pt-BR", {
-                              style: "currency",
-                              currency: "BRL",
-                            })
-                          : textoResposta(o.respostas[c.id])}</dd>
+                      {c.tipo === "arquivo" && anexosDe(o.respostas[c.id]).length > 0 ? (
+                        <dd>
+                          <AnexosVisualizador anexos={anexosDe(o.respostas[c.id])} />
+                        </dd>
+                      ) : (
+                        <dd className="text-[#334155]">
+                          {c.tipo === "moeda" && typeof o.respostas[c.id] === "number"
+                            ? (o.respostas[c.id] as number).toLocaleString("pt-BR", {
+                                style: "currency",
+                                currency: "BRL",
+                              })
+                            : textoResposta(o.respostas[c.id])}
+                        </dd>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -464,30 +514,11 @@ function DetalheCorpo({
                   </dd>
                 </div>
               </dl>
-              {(o.respostas["anexos"] as AnexoOcorrencia[] | undefined)?.length ? (
+              {!formulario.some((c) => c.id === "anexos" && c.tipo === "arquivo") &&
+              anexosDe(o.respostas["anexos"]).length > 0 ? (
                 <div className="mt-3 border-t border-[#E9EEF5] pt-3">
                   <h4 className="text-[11px] font-semibold text-[#64748B]">Anexos da abertura</h4>
-                  <ul className="mt-1.5 space-y-1">
-                    {(o.respostas["anexos"] as AnexoOcorrencia[]).map((anexo, i) => (
-                      <li
-                        key={`${anexo.nome}-${i}`}
-                        className="flex items-center gap-2 text-[13px] text-[#475569]"
-                      >
-                        <Paperclip className="h-3.5 w-3.5 shrink-0 text-[#94A3B8]" />
-                        {anexo.caminho ? (
-                          <button
-                            type="button"
-                            className="truncate font-medium text-[#1E3A8A] hover:underline"
-                            onClick={() => void abrirAnexo(anexo.caminho as string)}
-                          >
-                            {anexo.nome}
-                          </button>
-                        ) : (
-                          <span className="truncate">{anexo.nome}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  <AnexosVisualizador anexos={anexosDe(o.respostas["anexos"])} />
                 </div>
               ) : null}
             </section>
@@ -521,7 +552,7 @@ function DetalheCorpo({
                     ? "Parecer final (obrigatório para fechar a ocorrência)…"
                     : o.macroAtual === "retorno_cliente"
                       ? "Registre o retorno dado ao cliente (obrigatório)…"
-                    : "Observação da ação (opcional)…"
+                      : "Observação da ação (opcional)…"
                 }
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
@@ -576,12 +607,24 @@ function DetalheCorpo({
             </section>
           )}
 
-          {gerencia && (
+          {podeMover && (
             <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
                 Gestão (Qualidade)
               </h3>
               <div className="mt-2 flex flex-wrap items-end gap-2">
+                {proximaMacro && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                    onClick={() =>
+                      void mover(proximaMacro.macro, proximaMacro.subetapas?.[0]?.id ?? "")
+                    }
+                  >
+                    Avançar para {proximaMacro.nome}
+                  </Button>
+                )}
                 <div className="w-full sm:w-[260px]">
                   <Label className="text-[12px]">Mover para etapa</Label>
                   <Select
@@ -621,7 +664,7 @@ function DetalheCorpo({
                     onClick={() => {
                       setEficaz(true);
                       setObservacao("");
-                                      setAvaliacaoAberta(true);
+                      setAvaliacaoAberta(true);
                     }}
                   >
                     <CheckCircle2 className="h-4 w-4" />
@@ -698,7 +741,9 @@ function DetalheCorpo({
                 Parecer final
                 {o.parecerEm ? ` · ${formatarPrazo(o.parecerEm)}` : ""}
               </h3>
-              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[#14532D]">{o.parecerFinal}</p>
+              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[#14532D]">
+                {o.parecerFinal}
+              </p>
               {o.eficaciaPrevistaEm && o.status !== "encerrada" && (
                 <p className="mt-2 text-[12px] text-[#166534]">
                   Avaliação de eficácia prevista para {formatarPrazo(o.eficaciaPrevistaEm)} (

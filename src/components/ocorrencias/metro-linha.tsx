@@ -15,6 +15,13 @@ import {
   Paperclip,
   TrainFront,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 import {
   MACRO_ETAPA_DESCRICAO,
@@ -53,8 +60,38 @@ function tempoDecorrido(desdeISO: string): string {
   return `${Math.floor(h / 24)} dias`;
 }
 
+const LIMITE_MOVIMENTACOES = 2;
+
+function ItemMovimentacao({ ev }: { ev: EventoOcorrencia }) {
+  return (
+    <li className="flex items-start gap-2 text-[12px] text-[#475569]">
+      <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#94A3B8]" />
+      <span>
+        <span className="font-medium text-[#1F2937]">{ev.acao}</span>
+        {ev.de && ` · de ${ev.de}`} {ev.para && `→ ${ev.para}`}
+        {ev.comentario && (
+          <span className="mt-0.5 flex items-start gap-1 text-[#64748B]">
+            <MessageSquare className="mt-0.5 h-3 w-3 shrink-0" />
+            {ev.comentario}
+          </span>
+        )}
+        {ev.anexos.length > 0 && (
+          <span className="mt-0.5 flex items-center gap-1 text-[#64748B]">
+            <Paperclip className="h-3 w-3" />
+            {ev.anexos.map((a) => a.nome).join(", ")}
+          </span>
+        )}
+        <span className="mt-0.5 block text-[11px] text-[#94A3B8]">
+          {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
+        </span>
+      </span>
+    </li>
+  );
+}
+
 export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinhaProps) {
   const [expandida, setExpandida] = useState<MacroEtapa | null>(null);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   const ids = etapas.map((e) => e.macro);
   const idxAtual = ids.indexOf(o.macroAtual);
   const atrasada = ocorrenciaAtrasada(o);
@@ -107,7 +144,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
               ? o.tipoCor
               : concluida
                 ? "#059669"
-                : "#E2E8F0";
+                : "#64748B";
           const expandidaAqui = expandida === macro;
           return (
             <Fragment key={macro}>
@@ -118,7 +155,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                 title={etapa.nome}
               >
                 <span
-                  className="relative flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white transition group-hover:scale-110"
+                  className={`relative flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold transition group-hover:scale-110 ${"text-white"}`}
                   style={{ backgroundColor: corPonto }}
                 >
                   {(emAndamento || atrasada) && (
@@ -130,7 +167,9 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                   {concluida ? (
                     <CheckCircle2 className="h-4 w-4 text-white" />
                   ) : (
-                    <span className="relative">{i + 1}</span>
+                    <span className="relative" style={{ color: "#fff" }}>
+                      {i + 1}
+                    </span>
                   )}
                   {expandidaAqui && (
                     <span className="absolute -inset-1 rounded-full border border-[#1E3A8A] animate-pulse" />
@@ -238,34 +277,34 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                       Movimentações
                     </p>
                     <ul className="space-y-1.5">
-                      {eventosDaEtapa.map((ev) => (
-                        <li
-                          key={ev.id}
-                          className="flex items-start gap-2 text-[12px] text-[#475569]"
-                        >
-                          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#94A3B8]" />
-                          <span>
-                            <span className="font-medium text-[#1F2937]">{ev.acao}</span>
-                            {ev.de && ` · de ${ev.de}`} {ev.para && `→ ${ev.para}`}
-                            {ev.comentario && (
-                              <span className="mt-0.5 flex items-start gap-1 text-[#64748B]">
-                                <MessageSquare className="mt-0.5 h-3 w-3 shrink-0" />
-                                {ev.comentario}
-                              </span>
-                            )}
-                            {ev.anexos.length > 0 && (
-                              <span className="mt-0.5 flex items-center gap-1 text-[#64748B]">
-                                <Paperclip className="h-3 w-3" />
-                                {ev.anexos.map((a) => a.nome).join(", ")}
-                              </span>
-                            )}
-                            <span className="mt-0.5 block text-[11px] text-[#94A3B8]">
-                              {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
-                            </span>
-                          </span>
-                        </li>
+                      {eventosDaEtapa.slice(-LIMITE_MOVIMENTACOES).map((ev) => (
+                        <ItemMovimentacao key={ev.id} ev={ev} />
                       ))}
                     </ul>
+                    {eventosDaEtapa.length > LIMITE_MOVIMENTACOES && (
+                      <button
+                        type="button"
+                        onClick={() => setHistoricoAberto(true)}
+                        className="mt-2 text-[12px] font-semibold text-[#1E3A8A] hover:underline"
+                      >
+                        Ver histórico completo ({eventosDaEtapa.length})
+                      </button>
+                    )}
+                    <Dialog open={historicoAberto} onOpenChange={setHistoricoAberto}>
+                      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle>
+                            Histórico — {nomeEtapaDoFluxo(etapas, expandida)}
+                          </DialogTitle>
+                          <DialogDescription>Todas as movimentações desta etapa.</DialogDescription>
+                        </DialogHeader>
+                        <ul className="space-y-2">
+                          {eventosDaEtapa.map((ev) => (
+                            <ItemMovimentacao key={ev.id} ev={ev} />
+                          ))}
+                        </ul>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 )}
 

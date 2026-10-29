@@ -96,6 +96,23 @@ export const PROCEDENCIA_LABELS: Record<ProcedenciaOcorrencia, string> = {
   nao_procedente: "Não-procedente",
 };
 
+/** Prioridade da ocorrência, definida pela Qualidade após a abertura. */
+export type PrioridadeOcorrencia = "a_definir" | "baixa" | "media" | "alta";
+
+export const PRIORIDADES_OCORRENCIA: readonly PrioridadeOcorrencia[] = [
+  "a_definir",
+  "baixa",
+  "media",
+  "alta",
+];
+
+export const PRIORIDADE_LABELS: Record<PrioridadeOcorrencia, string> = {
+  a_definir: "A definir",
+  baixa: "Baixa",
+  media: "Média",
+  alta: "Alta",
+};
+
 /** Ações permitidas em uma etapa. */
 export const ACOES_ETAPA = ["aprovar", "reprovar", "solicitar_info", "escalar"] as const;
 export type AcaoEtapa = (typeof ACOES_ETAPA)[number];
@@ -340,6 +357,7 @@ export interface Ocorrencia {
   tipoNome: string;
   tipoCor: string;
   procedencia: ProcedenciaOcorrencia;
+  prioridade: PrioridadeOcorrencia;
   formularioVersao: number;
   fluxoVersao: number;
   respostas: Respostas;

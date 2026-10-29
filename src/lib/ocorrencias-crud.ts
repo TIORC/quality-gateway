@@ -17,6 +17,8 @@ import {
   cienciasDe,
   setoresSemCiencia,
   PROCEDENCIA_LABELS,
+  PRIORIDADE_LABELS,
+  type PrioridadeOcorrencia,
   SETOR_RESPONSAVEL_OCORRENCIAS,
   calcularPrazoEtapa,
   fluxoVazio,
@@ -338,6 +340,40 @@ export async function adicionarAnexosAbertura(
     para: `${anexos.length} anexo(s)`,
     comentario: "",
     anexos,
+  });
+  return { ...o, respostas };
+}
+
+/**
+ * Envia ao Storage os arquivos dos campos "arquivo" do formulário dinâmico e
+ * grava `respostas[campoId]` com os caminhos (para visualização posterior).
+ */
+export async function anexarArquivosDosCampos(
+  o: Ocorrencia,
+  arquivosPorCampo: Record<string, File[]>,
+  sessao: UserSession | null,
+): Promise<Ocorrencia> {
+  const autor = autorDe(sessao);
+  const respostas: Respostas = { ...o.respostas };
+  const todos: AnexoOcorrencia[] = [];
+  for (const [campoId, arquivos] of Object.entries(arquivosPorCampo)) {
+    if (arquivos.length === 0) continue;
+    const enviados: AnexoOcorrencia[] = [];
+    for (const arquivo of arquivos) enviados.push(await enviarAnexo(o.id, arquivo));
+    respostas[campoId] = enviados;
+    todos.push(...enviados);
+  }
+  if (todos.length === 0) return o;
+  const { error } = await cloud().from("ocorrencias").update({ respostas }).eq("id", o.id);
+  if (error) throw traduzErro(error);
+  await registrarHistorico(o.id, autor, {
+    acao: "Anexos da abertura",
+    macro: "abertura",
+    subetapa: "",
+    de: "",
+    para: `${todos.length} anexo(s)`,
+    comentario: "",
+    anexos: todos,
   });
   return { ...o, respostas };
 }
@@ -805,6 +841,31 @@ export async function decidirProcedencia(
     autor,
     loja,
   ).catch(() => undefined);
+}
+
+/** A Qualidade define (ou muda) a prioridade da ocorrência após a abertura. */
+export async function definirPrioridade(
+  o: Ocorrencia,
+  prioridade: PrioridadeOcorrencia,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  if (o.prioridade === prioridade) return;
+  await loja.atualizarOcorrencia(o.id, { prioridade });
+  await registrarHistorico(
+    o.id,
+    autorDe(sessao),
+    {
+      acao: "Prioridade: " + PRIORIDADE_LABELS[prioridade],
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: PRIORIDADE_LABELS[o.prioridade],
+      para: PRIORIDADE_LABELS[prioridade],
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
 }
 
 /* -------------------------------------------------------------------------- */

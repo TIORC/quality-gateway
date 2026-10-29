@@ -74,6 +74,16 @@ export function podeGerenciar(sessao: UserSession | null | undefined): boolean {
   return podeOperarOcorrencias(sessao);
 }
 
+/** Move a ocorrência de etapa: Gestor/setor da Qualidade e Desenvolvedor do Sistema. */
+export function podeMoverEtapa(sessao: UserSession | null | undefined): boolean {
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
+}
+
+/** Define a prioridade da ocorrência: Qualidade e Desenvolvedor do Sistema. */
+export function podeDefinirPrioridade(sessao: UserSession | null | undefined): boolean {
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
+}
+
 /** Detalhes internos (respostas de etapa, histórico completo) — não para o solicitante. */
 export function podeVerInternos(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
   const papel = papelNaOcorrencia(sessao, o);
