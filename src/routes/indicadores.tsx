@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarDays,
   Download,
+  RefreshCw,
   Library,
   Network,
   Plus,
@@ -522,6 +523,9 @@ function Indicadores() {
   const [celulas, setCelulas] = useState<Celula[]>([]);
   const [setoresCelula, setSetoresCelula] = useState<{ id: string; nome: string }[]>([]);
   const [celulaFiltro, setCelulaFiltro] = useState("todas");
+  const [atualizando, setAtualizando] = useState(false);
+  const [orientacaoAberta, setOrientacaoAberta] = useState(false);
+  const [retrabalhoAberto, setRetrabalhoAberto] = useState(false);
   const [colaboradorCelulaFiltro, setColaboradorCelulaFiltro] = useState("todos");
 
   useEffect(() => {
@@ -736,6 +740,28 @@ function Indicadores() {
     }
   }
 
+  /** Atualizar: recarrega tarefas, atendimentos e células do banco, sem recarregar a página. */
+  async function atualizarDados() {
+    setAtualizando(true);
+    try {
+      const [lista, departamentos, porColaborador, celulasAtuais] = await Promise.all([
+        carregarTarefas(),
+        carregarAtendimentos(),
+        carregarAtendimentosColaborador(),
+        carregarCelulas(),
+      ]);
+      setTarefas(lista);
+      setAtendimentos(departamentos);
+      setAtendimentosColaborador(porColaborador);
+      setCelulas(celulasAtuais);
+      toast.success("Dados atualizados.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar os dados.");
+    } finally {
+      setAtualizando(false);
+    }
+  }
+
   /** Exportar snapshot: relatório completo da seção e dos filtros atuais, em PDF. */
   function exportarRelatorio() {
     const filtro =
@@ -863,6 +889,28 @@ function Indicadores() {
     setoresDoEscopo,
     sessao?.nome,
   ]);
+  /** Registro de Orientação: tarefas do departamento "Orientação ao Cliente" com vencimento no mês, respeitando os filtros. */
+  // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
+  const tarefasOrientacao = tarefasDoIndicador(
+    tarefasFiltradas.filter((t) => normalizarSetor(t.departamento) === "orientacao ao cliente"),
+    mesEscolhido,
+    "total",
+  );
+  const orientacoesNoMes = tarefasOrientacao.length;
+
+  /** Retrabalho Escrituração/Conciliação Contábil: só quando o setor Contábil está selecionado na tela. */
+  const setorNaTela = secao === "por-setor" ? setorFiltro : secao === "por-colaborador" ? setorDoColaborador : "todos";
+  const mostrarRetrabalho = setorNaTela !== "todos" && normalizarSetor(setorNaTela).startsWith("contabil");
+  const NOME_RETRABALHO = "retrabalho escrituracao/conciliacao contabil";
+  // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
+  const tarefasRetrabalho = tarefasDoIndicador(
+    tarefas.filter(
+      (t) => normalizarSetor(t.nome) === NOME_RETRABALHO && normalizarSetor(t.departamento).startsWith("contabil"),
+    ),
+    mesEscolhido,
+    "total",
+  );
+
   const metricasTarefas = useMemo(
     () => calcularMetricas(tarefasFiltradas, mesEscolhido),
     [tarefasFiltradas, mesEscolhido],
@@ -984,7 +1032,10 @@ function Indicadores() {
     nomes.delete("Fiscal");
     nomes.add("Fiscal Jaguaquara");
     nomes.add("Fiscal Maracás");
-    return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
+    // "Orientação ao Cliente" é tipo de tarefa, não setor: não entra na lista.
+    return [...nomes]
+      .filter((nome) => normalizarSetor(nome) !== "orientacao ao cliente")
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [catalogo.setores, ativos, tarefas]);
 
   function conteudoLista(lista: Indicador[], vazio: ReactNode) {
@@ -1190,6 +1241,10 @@ function Indicadores() {
             </Select>
           </div>
           ) : null}
+          <Button variant="outline" onClick={() => void atualizarDados()} disabled={atualizando}>
+            <RefreshCw className={`h-4 w-4 ${atualizando ? "animate-spin" : ""}`} />
+            {atualizando ? "Atualizando..." : "Atualizar"}
+          </Button>
           <Button variant="outline" onClick={exportarRelatorio}>
             <Download className="h-4 w-4" />
             Exportar snapshot
@@ -1255,8 +1310,49 @@ function Indicadores() {
                 }
               />
             </button>
+            <button
+              type="button"
+              onClick={() => setOrientacaoAberta(true)}
+              className="block cursor-pointer rounded-xl text-left transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+            >
+              <SummaryCard
+                label="Registro de Orientação"
+                value={String(orientacoesNoMes)}
+                valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937] dark:text-white"
+                accent="#1F2937"
+                footer="orientações ao cliente no mês"
+              />
+            </button>
+            {mostrarRetrabalho ? (
+              <button
+                type="button"
+                onClick={() => setRetrabalhoAberto(true)}
+                className="block cursor-pointer rounded-xl text-left transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]"
+              >
+                <SummaryCard
+                  label="Retrabalho Escrituração/Conciliação Contábil"
+                  value={String(tarefasRetrabalho.length)}
+                  valueClass="mt-3 text-[30px] font-semibold leading-none"
+                  accent="#9D174D"
+                  style={{ color: "#9D174D" }}
+                  footer="retrabalhos do Contábil no mês"
+                />
+              </button>
+            ) : null}
           </section>
         ) : null}
+        <DetalheTarefasSheet
+          aberto={orientacaoAberta ? { chave: "total", label: "Registro de Orientação" } : null}
+          tarefas={tarefasOrientacao}
+          mes={mesEscolhido}
+          onFechar={() => setOrientacaoAberta(false)}
+        />
+        <DetalheTarefasSheet
+          aberto={retrabalhoAberto ? { chave: "total", label: "Retrabalho Escrituração/Conciliação Contábil" } : null}
+          tarefas={tarefasRetrabalho}
+          mes={mesEscolhido}
+          onFechar={() => setRetrabalhoAberto(false)}
+        />
         {mostrarAtendimentos ? (
           <DetalheAtendimentosSheet
             aberto={atendimentosAberto}
