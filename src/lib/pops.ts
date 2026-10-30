@@ -868,6 +868,8 @@ export function podeAprovarLiderProcesso(
 ): boolean {
   if (!sessao || sessao.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
   if (ehAdministrador(sessao)) return true;
+  // Grupo com a permissão "Aprovar documentos" aprova a 1ª etapa de qualquer POP.
+  if (sessao.permAprovarDocumentos) return true;
   const ehLiderDeSetor = sessao.nivelAcesso === NIVEL_LIDER_SETOR;
   if (pop.setorId === "geral") return ehLiderDeSetor || podeAprovarLiderQualidade(sessao);
   if (ehLiderDeSetor) return liderDoSetor(sessao, nomeSetorDoPop);

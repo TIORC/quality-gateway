@@ -12,6 +12,7 @@ export const GRUPOS_PERMISSOES_EXTRAS: { titulo: string; itens: { chave: string;
       { chave: "adm_perfis", rotulo: "Gerenciar perfis e permissões de acesso" },
       { chave: "adm_relatorios", rotulo: "Visualizar relatórios e indicadores" },
       { chave: "adm_logs", rotulo: "Visualizar logs de auditoria (quem fez o quê e quando)" },
+      { chave: "adm_configuracoes", rotulo: "Acessar e editar Configurações (cadastros, células e colaboradores)" },
     ],
   },
   {

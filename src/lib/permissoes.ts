@@ -57,9 +57,6 @@ const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter(
   (rota) => rota !== "/configuracoes" && rota !== ROTA_LOGS,
 );
 
-/** Pessoas fora da gestão a quem foi liberada a tela de Configurações. */
-const EMAILS_COM_CONFIGURACOES = new Set(["kaylane.oliveira@orcoma.com.br"]);
-
 /** Colaborador: públicas + os próprios indicadores. */
 const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
 
@@ -89,9 +86,7 @@ export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> 
   if (!session) return new Set();
   const permitidas = rotasGerais(session);
   if (podeVerLogs(session)) permitidas.add(ROTA_LOGS);
-  if (EMAILS_COM_CONFIGURACOES.has(session.email.trim().toLowerCase())) {
-    permitidas.add("/configuracoes");
-  }
+  if (session.permissaoConfiguracoes) permitidas.add("/configuracoes");
   // Rotas liberadas pelos grupos de acesso da pessoa.
   for (const rota of session.rotasDeGrupos ?? []) permitidas.add(rota as AppRoutePath);
   return permitidas;
@@ -114,7 +109,8 @@ export function podeVerLogs(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   return (
     session.nivelAcesso === NIVEL_DESENVOLVEDOR_SISTEMA ||
-    session.nivelAcesso === NIVEL_GESTOR_QUALIDADE
+    session.nivelAcesso === NIVEL_GESTOR_QUALIDADE ||
+    (session.rotasDeGrupos ?? []).includes("/logs")
   );
 }
 
@@ -172,7 +168,7 @@ export function ehLiderancaDaQualidade(session: UserSession | null | undefined):
 export function podeAprovarDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
   if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
-  return ehLiderancaDaQualidade(session);
+  return ehLiderancaDaQualidade(session) || session.permAprovarDocumentos === true;
 }
 
 /**
@@ -214,6 +210,15 @@ export function podeGerenciarCadastros(session: UserSession | null | undefined):
     session.nivelAcesso === NIVEL_GESTOR_QUALIDADE ||
     session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE
   );
+}
+
+/**
+ * Edição em Configurações: a gestão de cadastros e quem tem a permissão
+ * `adm_configuracoes` (gravada no colaborador, em Funcionários > Permissões).
+ */
+export function podeEditarConfiguracoes(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return podeGerenciarCadastros(session) || session.permissaoConfiguracoes;
 }
 
 /**

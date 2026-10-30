@@ -220,9 +220,18 @@ export function colaboradorCorresponde(nomePlanilha: string, nomeGestta: string)
   return planilha.length <= gestta.length && planilha.every((p, i) => p === gestta[i]);
 }
 
-/** Todas as linhas por colaborador e departamento do mês, do maior para o menor. */
-export function atendimentosDoColaboradoresDoMes(dados: AtendimentoColaborador[], mes: string): AtendimentoColaborador[] {
-  return dados.filter((d) => d.mes === mes).sort((x, y) => y.total - x.total);
+/**
+ * Todas as linhas por colaborador e departamento do mês, do maior para o menor.
+ * `setor` null = sem filtro; com setor, só os departamentos desse setor.
+ */
+export function atendimentosDoColaboradoresDoMes(
+  dados: AtendimentoColaborador[],
+  mes: string,
+  setor: string | null = null,
+): AtendimentoColaborador[] {
+  return dados
+    .filter((d) => d.mes === mes && (!setor || chaveSetor(d.departamento) === chaveSetor(setor)))
+    .sort((x, y) => y.total - x.total);
 }
 
 /** Atendimentos de um colaborador (nome do Gestta) no mês, do maior para o menor, por departamento. */

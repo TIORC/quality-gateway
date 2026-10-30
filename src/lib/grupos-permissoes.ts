@@ -29,6 +29,11 @@ export const PERMISSOES_DE_GRUPO = [
     descricao: "Excluir POPs e políticas.",
   },
   {
+    chave: "perm_aprovar_documentos",
+    rotulo: "Aprovar documentos",
+    descricao: "Aprovar POPs e políticas nas etapas de aprovação.",
+  },
+  {
     chave: "perm_excluir_planos",
     rotulo: "Excluir planos de ação",
     descricao: "Remover planos de ação.",

@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   BarChart3,
   Building2,
-  Calculator,
   CalendarDays,
   Download,
   Library,
@@ -17,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type CSSProperties, type ReactNode } from "react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ptBR } from "date-fns/locale";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { type DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
@@ -95,6 +95,7 @@ import {
 import {
   atendimentosDoColaborador,
   atendimentosDoColaboradoresDoMes,
+  colaboradorCorresponde,
   atendimentosDoMes,
   carregarAtendimentos,
   carregarAtendimentosColaborador,
@@ -105,6 +106,9 @@ import {
   type AtendimentoColaborador,
   type AtendimentoDepartamento,
 } from "@/lib/atendimentos";
+import { carregarCelulas, type Celula } from "@/lib/celulas";
+import { carregarSetoresECargos } from "@/lib/organizacao";
+import { imprimirRelatorioIndicadores } from "@/lib/indicadores-pdf";
 
 export const Route = createFileRoute("/indicadores")({
   head: () => ({
@@ -437,12 +441,41 @@ interface SummaryCardProps {
 function SummaryCard({ label, value, valueClass, accent, footer, style }: SummaryCardProps) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-[#D9E0EA] bg-white p-4">
+      {/* Desenho de fundo na cor do card, animado com framer-motion. */}
+      <motion.svg
+        aria-hidden="true"
+        viewBox="0 0 200 200"
+        className="pointer-events-none absolute -bottom-12 -right-12 h-36 w-36 opacity-[0.7]"
+        // Cards "neutros" (accent #1F2937) somem no tema escuro: o desenho usa um cinza médio, visível nos dois temas.
+        style={{ color: accent === "#1F2937" ? "#64748B" : accent }}
+        initial={{ opacity: 0, rotate: -10 }}
+        animate={{ opacity: 0.7, rotate: 0 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      >
+        <motion.g
+          animate={{ rotate: 360 }}
+          transition={{ duration: 60, ease: "linear", repeat: Infinity }}
+          style={{ originX: "100px", originY: "100px" }}
+        >
+          <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="2" />
+          <circle cx="100" cy="100" r="60" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="6 8" />
+        </motion.g>
+        <motion.circle
+          cx="100"
+          cy="100"
+          r="28"
+          fill="currentColor"
+          animate={{ scale: [1, 1.08, 1] }}
+          transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
+          style={{ originX: "100px", originY: "100px" }}
+        />
+      </motion.svg>
       <span className="absolute inset-y-0 left-0 w-[3px]" style={{ backgroundColor: accent }} />
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+      <p className="relative text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
         {label}
       </p>
-      <p className={valueClass} style={style}>{value}</p>
-      <p className="mt-2 text-[13px] text-[#64748B]">{footer}</p>
+      <p className={`relative ${valueClass}`} style={style}>{value}</p>
+      <p className="relative mt-2 text-[13px] text-[#64748B]">{footer}</p>
     </div>
   );
 }
@@ -463,6 +496,8 @@ function Indicadores() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [setorFiltro, setSetorFiltro] = useState("todos");
+  /** Setor da seção Por Colaborador: restringe a lista de colaboradores e a tabela. */
+  const [setorDoColaborador, setSetorDoColaborador] = useState("todos");
   const [aba, setAba] = useState("visao-geral");
   const [secao, setSecao] = useState<SecaoIndicadores>("por-setor");
   const [tarefas, setTarefas] = useState<TarefaGestta[]>([]);
@@ -473,6 +508,20 @@ function Indicadores() {
   const [zerarAlvo, setZerarAlvo] = useState<"mes" | "tudo" | null>(null);
   const [zerando, setZerando] = useState(false);
   const [colaboradorFiltro, setColaboradorFiltro] = useState("todos");
+  /** Por Célula: células cadastradas, a escolhida ("todas" = todas) e o colaborador dentro dela. */
+  const [celulas, setCelulas] = useState<Celula[]>([]);
+  const [setoresCelula, setSetoresCelula] = useState<{ id: string; nome: string }[]>([]);
+  const [celulaFiltro, setCelulaFiltro] = useState("todas");
+  const [colaboradorCelulaFiltro, setColaboradorCelulaFiltro] = useState("todos");
+
+  useEffect(() => {
+    Promise.all([carregarCelulas(), carregarSetoresECargos()])
+      .then(([lista, setores]) => {
+        setCelulas(lista);
+        setSetoresCelula(setores);
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as células."));
+  }, []);
   /** Período de exibição (cards, gráficos, resumo e histórico). */
   const [periodo, setPeriodo] = useState<FiltroPeriodo>({ modo: "ultimos12" });
   // Abre sempre no mês anterior ao atual.
@@ -633,28 +682,18 @@ function Indicadores() {
       ? undefined
       : escopo === "setor"
         ? setoresDoEscopo.split("|").filter(Boolean)
-        : secao === "por-colaborador" && colaboradorFiltro !== "todos"
+        : secao === "por-celula" || (secao === "por-colaborador" && colaboradorFiltro !== "todos")
           ? undefined
-          : secao === "por-setor" && setorFiltro !== "todos"
-            ? [setorFiltro]
-            : null;
+          : secao === "por-colaborador" && setorDoColaborador !== "todos"
+            ? [setorDoColaborador]
+            : secao === "por-setor" && setorFiltro !== "todos"
+              ? [setorFiltro]
+              : null;
   /** Colaborador escolhido em Por Colaborador (visão geral): o card mostra os atendimentos dele. */
   const colaboradorAtendimento =
     escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro !== "todos" ? colaboradorFiltro : null;
   /** Por Colaborador sem nome escolhido: o detalhe lista todos os colaboradores (Colaborador | Total). */
   const todosColaboradores = escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro === "todos";
-  const mostrarAtendimentos = colaboradorAtendimento !== null || todosColaboradores || setoresAtendimentos !== undefined;
-  const linhasAtendimentos: LinhaDetalheAtendimento[] = todosColaboradores
-    ? atendimentosDoColaboradoresDoMes(atendimentosColaborador, mesEscolhido).map((l) => ({
-        chave: `${l.colaborador}|${l.departamento}`,
-        rotulo: l.departamento ? `${l.colaborador} - ${l.departamento}` : l.colaborador,
-        total: l.total,
-      }))
-    : (colaboradorAtendimento
-        ? atendimentosDoColaborador(atendimentosColaborador, mesEscolhido, colaboradorAtendimento)
-        : atendimentosDoMes(atendimentos, mesEscolhido, setoresAtendimentos ?? null)
-      ).map((d) => ({ chave: d.departamento, rotulo: d.departamento, total: d.total }));
-  const totalAtendimentosMes = linhasAtendimentos.reduce((soma, l) => soma + l.total, 0);
 
   useEffect(() => {
     const emCache = tarefasEmCache();
@@ -687,6 +726,93 @@ function Indicadores() {
     }
   }
 
+  /** Exportar snapshot: relatório completo da seção e dos filtros atuais, em PDF. */
+  function exportarRelatorio() {
+    const filtro =
+      secao === "por-setor"
+        ? setorFiltro === "todos"
+          ? "Todos os setores"
+          : setorFiltro
+        : secao === "por-colaborador"
+          ? `${setorDoColaborador === "todos" ? "Todos os setores" : setorDoColaborador} · ${
+              colaboradorFiltro === "todos" ? "Todos os colaboradores" : colaboradorFiltro
+            }`
+          : secao === "por-celula"
+            ? `${celulaAtual ? celulaAtual.nome : "Todas as células"} · ${
+                colaboradorCelulaFiltro === "todos" ? "Todos da célula" : colaboradorCelulaFiltro
+              }`
+            : "";
+    imprimirRelatorioIndicadores({
+      secao: SECOES_INDICADORES.find((s) => s.valor === secao)?.rotulo ?? "",
+      competencia: rotuloMesLongo(mesEscolhido),
+      filtro,
+      cartoes: cardsDeTarefas(metricasTarefas).map((c) => ({
+        label: c.label,
+        valor: c.valor,
+        cor: c.cor,
+        rodape: c.rodape,
+      })),
+      colunaGrupo: secao === "por-setor" ? "Setor" : "Colaborador",
+      grupos: gruposTarefas,
+      atendimentos: mostrarAtendimentos
+        ? {
+            total: totalAtendimentosMes,
+            coluna: todosColaboradores ? "Colaborador" : "Departamento",
+            linhas: linhasAtendimentos.map((l) => ({ rotulo: l.rotulo, total: l.total })),
+          }
+        : null,
+    });
+  }
+
+  /** Por Célula: colaboradores da célula escolhida (ou de todas, com "todas"), ordenados por nome. */
+  const celulaAtual = celulas.find((c) => c.id === celulaFiltro) ?? null;
+  const colaboradoresDaCelula = useMemo(() => {
+    const ids = new Set(celulaAtual ? celulaAtual.colaboradorIds : celulas.flatMap((c) => c.colaboradorIds));
+    return catalogo.colaboradores
+      .filter((c) => ids.has(c.id))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [catalogo.colaboradores, celulas, celulaAtual]);
+  const nomesDaCelula = useMemo(
+    () => new Set(colaboradoresDaCelula.map((c) => normalizarSetor(c.nome))),
+    [colaboradoresDaCelula],
+  );
+
+  /** Por Célula: atendimentos dos colaboradores da célula (ou de um só, se escolhido). */
+  const linhasCelula: LinhaDetalheAtendimento[] = atendimentosDoColaboradoresDoMes(
+    atendimentosColaborador,
+    mesEscolhido,
+  )
+    .filter(
+      (l) =>
+        colaboradoresDaCelula.some((c) => colaboradorCorresponde(l.colaborador, c.nome)) &&
+        (colaboradorCelulaFiltro === "todos" || colaboradorCorresponde(l.colaborador, colaboradorCelulaFiltro)),
+    )
+    .map((l) => ({
+      chave: `${l.colaborador}|${l.departamento}`,
+      rotulo: l.departamento ? `${l.colaborador} - ${l.departamento}` : l.colaborador,
+      total: l.total,
+    }));
+  const mostrarAtendimentos =
+    colaboradorAtendimento !== null || todosColaboradores || secao === "por-celula" || setoresAtendimentos !== undefined;
+  const linhasAtendimentos: LinhaDetalheAtendimento[] =
+    secao === "por-celula"
+      ? linhasCelula
+      : todosColaboradores
+        ? atendimentosDoColaboradoresDoMes(
+            atendimentosColaborador,
+            mesEscolhido,
+            setorDoColaborador === "todos" ? null : setorDoColaborador,
+          ).map((l) => ({
+            chave: `${l.colaborador}|${l.departamento}`,
+            rotulo: l.departamento ? `${l.colaborador} - ${l.departamento}` : l.colaborador,
+            total: l.total,
+          }))
+        : (colaboradorAtendimento
+            ? atendimentosDoColaborador(atendimentosColaborador, mesEscolhido, colaboradorAtendimento)
+            : atendimentosDoMes(atendimentos, mesEscolhido, setoresAtendimentos ?? null)
+          ).map((d) => ({ chave: d.departamento, rotulo: d.departamento, total: d.total }));
+  const totalAtendimentosMes = linhasAtendimentos.reduce((soma, l) => soma + l.total, 0);
+
   const tarefasFiltradas = useMemo(() => {
     if (escopo === "setor") {
       const setores = new Set(setoresDoEscopo.split("|").filter(Boolean));
@@ -698,10 +824,30 @@ function Indicadores() {
     }
     if (secao === "por-setor" && setorFiltro !== "todos")
       return tarefas.filter((t) => t.departamento === setorFiltro);
-    if (secao === "por-colaborador" && colaboradorFiltro !== "todos")
-      return tarefas.filter((t) => t.responsavel === colaboradorFiltro);
+    if (secao === "por-celula") {
+      const daCelula = tarefas.filter((t) => nomesDaCelula.has(normalizarSetor(t.responsavel)));
+      return colaboradorCelulaFiltro === "todos"
+        ? daCelula
+        : daCelula.filter((t) => t.responsavel === colaboradorCelulaFiltro);
+    }
+    if (secao === "por-colaborador") {
+      const doSetor =
+        setorDoColaborador === "todos" ? tarefas : tarefas.filter((t) => t.departamento === setorDoColaborador);
+      return colaboradorFiltro === "todos" ? doSetor : doSetor.filter((t) => t.responsavel === colaboradorFiltro);
+    }
     return tarefas;
-  }, [tarefas, secao, setorFiltro, colaboradorFiltro, escopo, setoresDoEscopo, sessao?.nome]);
+  }, [
+    tarefas,
+    secao,
+    setorFiltro,
+    colaboradorFiltro,
+    setorDoColaborador,
+    nomesDaCelula,
+    colaboradorCelulaFiltro,
+    escopo,
+    setoresDoEscopo,
+    sessao?.nome,
+  ]);
   const metricasTarefas = useMemo(
     () => calcularMetricas(tarefasFiltradas, mesEscolhido),
     [tarefasFiltradas, mesEscolhido],
@@ -711,16 +857,21 @@ function Indicadores() {
       agruparMetricas(
         tarefasFiltradas,
         mesEscolhido,
-        secao === "por-colaborador" ? "responsavel" : "departamento",
+        secao === "por-colaborador" || secao === "por-celula" ? "responsavel" : "departamento",
       ),
     [tarefasFiltradas, mesEscolhido, secao],
   );
   const colaboradoresTarefas = useMemo(
     () =>
-      [...new Set(tarefas.map((t) => t.responsavel).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b, "pt-BR"),
-      ),
-    [tarefas],
+      [
+        ...new Set(
+          tarefas
+            .filter((t) => setorDoColaborador === "todos" || t.departamento === setorDoColaborador)
+            .map((t) => t.responsavel)
+            .filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [tarefas, setorDoColaborador],
   );
 
   // Colaborador: só a seção "Por Colaborador", já com o próprio nome selecionado.
@@ -921,6 +1072,72 @@ function Indicadores() {
               className="w-[180px]"
             />
           </div>
+          {secao === "por-celula" ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-[#64748B]">Célula</Label>
+                <Select
+                  value={celulaFiltro}
+                  onValueChange={(valor) => {
+                    setCelulaFiltro(valor);
+                    setColaboradorCelulaFiltro("todos");
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[260px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas as células</SelectItem>
+                    {celulas.map((celula) => (
+                      <SelectItem key={celula.id} value={celula.id}>
+                        {celula.nome} · {setoresCelula.find((s) => s.id === celula.setorId)?.nome ?? "—"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-[#64748B]">Colaborador</Label>
+                <Select value={colaboradorCelulaFiltro} onValueChange={setColaboradorCelulaFiltro}>
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos da célula</SelectItem>
+                    {colaboradoresDaCelula.map((colaborador) => (
+                      <SelectItem key={colaborador.id} value={colaborador.nome}>
+                        {colaborador.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          ) : null}
+          {secao === "por-colaborador" && !soProprio ? (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-[#64748B]">Setor</Label>
+              <Select
+                value={setorDoColaborador}
+                onValueChange={(valor) => {
+                  setSetorDoColaborador(valor);
+                  setColaboradorFiltro("todos");
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os setores</SelectItem>
+                  {setoresDoFiltro.map((setor) => (
+                    <SelectItem key={setor} value={setor}>
+                      {setor}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           {secao === "por-colaborador" ? (
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-[#64748B]">Colaborador</Label>
@@ -960,11 +1177,7 @@ function Indicadores() {
             </Select>
           </div>
           ) : null}
-          <Button disabled title="Ainda sem integração neste projeto">
-            <Calculator className="h-4 w-4" />
-            Recalcular snapshot
-          </Button>
-          <Button variant="outline" disabled title="Ainda sem integração neste projeto">
+          <Button variant="outline" onClick={exportarRelatorio}>
             <Download className="h-4 w-4" />
             Exportar snapshot
           </Button>
@@ -1021,7 +1234,9 @@ function Indicadores() {
                 footer={
                   colaboradorAtendimento
                     ? "atendimentos do colaborador no mês"
-                    : setoresAtendimentos === null
+                    : secao === "por-celula"
+                      ? "atendimentos da célula no mês"
+                      : setoresAtendimentos === null
                       ? "total de atendimentos no mês"
                       : `atendimentos do setor no mês`
                 }
@@ -1033,23 +1248,16 @@ function Indicadores() {
           <DetalheAtendimentosSheet
             aberto={atendimentosAberto}
             linhas={linhasAtendimentos}
-            coluna={todosColaboradores ? "Colaborador" : "Departamento"}
+            coluna={todosColaboradores || secao === "por-celula" ? "Colaborador" : "Departamento"}
             mes={mesEscolhido}
             onFechar={() => setAtendimentosAberto(false)}
           />
         ) : null}
-        {secao === "por-celula" ? (
-          <p className="mt-6 rounded-xl border border-[#D9E0EA] bg-white px-6 py-10 text-center text-sm text-[#64748B]">
-            As células ainda não foram definidas. Quando você cadastrar quem faz parte de cada célula, os
-            números aparecerão aqui.
-          </p>
-        ) : (
-          <TabelaMetricas
-            titulo={secao === "por-colaborador" ? "Colaborador" : "Setor"}
-            grupos={gruposTarefas}
-            ocultarVazio={soProprio}
-          />
-        )}
+        <TabelaMetricas
+          titulo={secao === "por-setor" ? "Setor" : "Colaborador"}
+          grupos={gruposTarefas}
+          ocultarVazio={soProprio}
+        />
         </>
         ) : null}
 

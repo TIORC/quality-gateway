@@ -60,8 +60,12 @@ export interface UserSession {
   permExcluirDocumentos: boolean;
   /** Permite excluir planos de ação (concedida pelo gestor em Configurações). */
   permExcluirPlanos: boolean;
+  /** Aprova POPs e políticas nas etapas de aprovação (concedida por grupo de acesso). */
+  permAprovarDocumentos: boolean;
   /** Caminhos do menu liberados pelos grupos de acesso da pessoa. */
   rotasDeGrupos: string[];
+  /** Acesso e edição de Configurações (permissão `adm_configuracoes` do colaborador). */
+  permissaoConfiguracoes: boolean;
   loginAt: string;
 }
 
@@ -108,7 +112,9 @@ function readSession(): UserSession | null {
       permModificarDocumentos: parsed.permModificarDocumentos ?? false,
       permExcluirDocumentos: parsed.permExcluirDocumentos ?? false,
       permExcluirPlanos: parsed.permExcluirPlanos ?? false,
+      permAprovarDocumentos: parsed.permAprovarDocumentos ?? false,
       rotasDeGrupos: Array.isArray(parsed.rotasDeGrupos) ? parsed.rotasDeGrupos : [],
+      permissaoConfiguracoes: parsed.permissaoConfiguracoes ?? false,
       loginAt: parsed.loginAt ?? new Date().toISOString(),
     };
   } catch {
@@ -215,22 +221,46 @@ function buildSession(
     permModificarDocumentos: false,
     permExcluirDocumentos: false,
     permExcluirPlanos: false,
+    permAprovarDocumentos: false,
     rotasDeGrupos: [],
+    permissaoConfiguracoes: false,
     loginAt: new Date().toISOString(),
   };
 }
 
+/** Lê a permissão `adm_configuracoes` do colaborador em `colaboradores.permissoes_extras`. */
+async function lerPermissaoConfiguracoes(
+  client: SupabaseClient<Database>,
+  colaboradorId: string,
+): Promise<boolean> {
+  if (!colaboradorId) return false;
+  try {
+    const { data, error } = await client
+      .from("colaboradores")
+      .select("permissoes_extras")
+      .eq("id", colaboradorId)
+      .maybeSingle();
+    if (error) throw error;
+    const extras = data?.permissoes_extras;
+    return extras !== null && typeof extras === "object" && (extras as Record<string, unknown>).adm_configuracoes === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Soma às permissões da sessão o acesso dos grupos em que a pessoa está
- * (`colaboradores.grupos`). Não bloqueia o login: se a consulta falhar, a sessão
- * segue só com o acesso individual.
+ * (`colaboradores.grupos`) e a permissão de Configurações. Não bloqueia o login: se
+ * uma consulta falhar, a sessão segue só com o acesso individual.
  */
 async function aplicarGruposNaSessao(
   client: SupabaseClient<Database>,
   sessao: UserSession,
 ): Promise<UserSession> {
+  const permissaoConfiguracoes = await lerPermissaoConfiguracoes(client, sessao.colaboradorId);
+  const comConfiguracoes = { ...sessao, permissaoConfiguracoes };
   const nomes = nomesDosGrupos(sessao.grupos).map((nome) => nome.toLowerCase());
-  if (nomes.length === 0) return { ...sessao, rotasDeGrupos: [] };
+  if (nomes.length === 0) return { ...comConfiguracoes, rotasDeGrupos: [] };
   try {
     const { data, error } = await client.from("grupos_acessos").select("nome,modulos_perm");
     if (error) throw error;
@@ -239,15 +269,16 @@ async function aplicarGruposNaSessao(
       .map((grupo) => grupo.modulos_perm);
     const acesso = acessoDosGrupos(modulos);
     return {
-      ...sessao,
+      ...comConfiguracoes,
       permAdicionarDocumentos: sessao.permAdicionarDocumentos || acesso.permissoes.perm_adicionar_documentos,
       permModificarDocumentos: sessao.permModificarDocumentos || acesso.permissoes.perm_modificar_documentos,
       permExcluirDocumentos: sessao.permExcluirDocumentos || acesso.permissoes.perm_excluir_documentos,
       permExcluirPlanos: sessao.permExcluirPlanos || acesso.permissoes.perm_excluir_planos,
+      permAprovarDocumentos: sessao.permAprovarDocumentos || acesso.permissoes.perm_aprovar_documentos,
       rotasDeGrupos: acesso.rotas,
     };
   } catch {
-    return { ...sessao, rotasDeGrupos: [] };
+    return { ...comConfiguracoes, rotasDeGrupos: [] };
   }
 }
 

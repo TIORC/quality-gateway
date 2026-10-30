@@ -1,14 +1,10 @@
-import { Check, Plus, Users, X } from "lucide-react";
-import { useState } from "react";
+import { motion } from "framer-motion";
+import { Pencil, Plus, Trash2, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -26,24 +21,63 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { atualizarCelula, carregarCelulas, criarCelula, removerCelula, type Celula } from "@/lib/celulas";
 import type { Colaborador } from "@/lib/dados";
-
-export interface Celula {
-  id: string;
-  nome: string;
-  setor: string;
-  colaboradorIds: string[];
-}
 
 interface CelulaTabProps {
   setores: { id: string; nome: string }[];
   colaboradores: Colaborador[];
 }
 
-/** Aba "Célula": lista as células e abre o modal de cadastro. */
+/** Cor sólida de cada card de célula, em rodízio. */
+const CORES_CELULA = [
+  "bg-[#1E3A8A]",
+  "bg-[#0F766E]",
+  "bg-[#7C3AED]",
+  "bg-[#B45309]",
+  "bg-[#BE185D]",
+  "bg-[#0369A1]",
+];
+
+/** Aba "Célula": lista as células gravadas no banco e abre o modal de cadastro e edição. */
 export function CelulaTab({ setores, colaboradores }: CelulaTabProps) {
   const [celulas, setCelulas] = useState<Celula[]>([]);
-  const [aberto, setAberto] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  /** "nova" abre o cadastro; uma célula abre a edição; `null` = fechado. */
+  const [edicao, setEdicao] = useState<Celula | "nova" | null>(null);
+  const [excluirAlvo, setExcluirAlvo] = useState<Celula | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+
+  async function recarregar() {
+    try {
+      setCelulas(await carregarCelulas());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível carregar as células.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    void recarregar();
+  }, []);
+
+  async function confirmarExcluir() {
+    if (!excluirAlvo) return;
+    setExcluindo(true);
+    try {
+      await removerCelula(excluirAlvo.id);
+      toast.success("Célula excluída.");
+      setExcluirAlvo(null);
+      await recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível excluir a célula.");
+    } finally {
+      setExcluindo(false);
+    }
+  }
+
+  const nomeDoSetor = (id: string) => setores.find((s) => s.id === id)?.nome ?? "Setor removido";
 
   return (
     <div className="rounded-xl border border-[#E2E8F0] bg-white">
@@ -53,7 +87,7 @@ export function CelulaTab({ setores, colaboradores }: CelulaTabProps) {
           <p className="mt-1 text-sm text-[#64748B]">Grupos de colaboradores dentro de um setor.</p>
         </div>
         <Button
-          onClick={() => setAberto(true)}
+          onClick={() => setEdicao("nova")}
           className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
         >
           <Plus className="h-4 w-4" />
@@ -61,62 +95,132 @@ export function CelulaTab({ setores, colaboradores }: CelulaTabProps) {
         </Button>
       </div>
 
-      {celulas.length === 0 ? (
+      {carregando ? (
+        <p className="px-6 py-12 text-center text-sm text-[#64748B]">Carregando células...</p>
+      ) : celulas.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-6 py-12 text-sm text-[#64748B]">
           <Users className="h-6 w-6" />
           Nenhuma célula cadastrada.
         </div>
       ) : (
-        <ul className="divide-y divide-[#E2E8F0]">
-          {celulas.map((celula) => (
-            <li key={celula.id} className="px-5 py-3">
-              <p className="text-sm font-semibold text-[#1F2937]">{celula.nome}</p>
-              <p className="text-xs text-[#64748B]">
-                {celula.setor} · {celula.colaboradorIds.length} colaborador(es)
-              </p>
+        <ul className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
+          {celulas.map((celula, indice) => (
+            <li
+              key={celula.id}
+              className={`relative flex items-start justify-between gap-3 overflow-hidden rounded-xl px-5 py-4 text-white shadow-sm ${CORES_CELULA[indice % CORES_CELULA.length]}`}
+            >
+              <motion.svg
+                aria-hidden="true"
+                viewBox="0 0 200 200"
+                className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 text-white/15"
+                initial={{ opacity: 0, rotate: -12 }}
+                animate={{ opacity: 1, rotate: 0 }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+              >
+                <motion.g
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 60, ease: "linear", repeat: Infinity }}
+                  style={{ originX: "100px", originY: "100px" }}
+                >
+                  <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <circle cx="100" cy="100" r="60" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="6 8" />
+                </motion.g>
+                <motion.circle
+                  cx="100"
+                  cy="100"
+                  r="30"
+                  fill="currentColor"
+                  animate={{ scale: [1, 1.08, 1] }}
+                  transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
+                  style={{ originX: "100px", originY: "100px" }}
+                />
+                <motion.path
+                  d="M0 150 Q 50 120 100 150 T 200 150"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  animate={{ d: ["M0 150 Q 50 120 100 150 T 200 150", "M0 130 Q 50 160 100 130 T 200 130", "M0 150 Q 50 120 100 150 T 200 150"] }}
+                  transition={{ duration: 6, ease: "easeInOut", repeat: Infinity }}
+                />
+              </motion.svg>
+              <div className="relative min-w-0">
+                <p className="text-sm font-semibold">{celula.nome}</p>
+                <p className="mt-1 text-xs text-white/80">
+                  {nomeDoSetor(celula.setorId)} · {celula.colaboradorIds.length} colaborador(es)
+                </p>
+              </div>
+              <div className="relative flex shrink-0 gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Editar célula"
+                  className="text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => setEdicao(celula)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Excluir célula"
+                  className="text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => setExcluirAlvo(celula)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
       )}
 
-      <NovaCelulaDialog
-        aberto={aberto}
-        setores={setores}
-        colaboradores={colaboradores}
-        onFechar={() => setAberto(false)}
-        onSalvar={(celula) => {
-          setCelulas((atual) => [...atual, celula]);
-          setAberto(false);
+      {edicao !== null ? (
+        <CelulaDialog
+          key={edicao === "nova" ? "nova" : edicao.id}
+          celula={edicao === "nova" ? null : edicao}
+          setores={setores}
+          colaboradores={colaboradores}
+          onFechar={() => setEdicao(null)}
+          onSalvo={async () => {
+            setEdicao(null);
+            await recarregar();
+          }}
+        />
+      ) : null}
+
+      <ConfirmarDialog
+        open={excluirAlvo !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !excluindo) setExcluirAlvo(null);
         }}
+        tom="danger"
+        titulo="Excluir célula?"
+        descricao={`A célula ${excluirAlvo?.nome ?? ""} e seus vínculos com colaboradores serão removidos.`}
+        textoConfirmar="Excluir"
+        carregando={excluindo}
+        onConfirmar={() => void confirmarExcluir()}
       />
     </div>
   );
 }
 
-interface NovaCelulaDialogProps extends CelulaTabProps {
-  aberto: boolean;
+/** Minúsculas e sem acento: compara nomes de setor e de colaborador sem depender da grafia. */
+const normalizar = (texto: string) =>
+  texto.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+interface CelulaDialogProps extends CelulaTabProps {
+  celula: Celula | null;
   onFechar: () => void;
-  onSalvar: (celula: Celula) => void;
+  onSalvo: () => void;
 }
 
-function NovaCelulaDialog({
-  aberto,
-  setores,
-  colaboradores,
-  onFechar,
-  onSalvar,
-}: NovaCelulaDialogProps) {
-  const [nome, setNome] = useState("");
-  const [setor, setSetor] = useState("");
-  const [selecionados, setSelecionados] = useState<string[]>([]);
-  const [lista, setLista] = useState(false);
-
-  function reiniciar() {
-    setNome("");
-    setSetor("");
-    setSelecionados([]);
-    setLista(false);
-  }
+/** Montado só enquanto aberto: o formulário começa com os dados da célula (ou vazio, no cadastro). */
+function CelulaDialog({ celula, setores, colaboradores, onFechar, onSalvo }: CelulaDialogProps) {
+  const [nome, setNome] = useState(celula?.nome ?? "");
+  const [setorId, setSetorId] = useState(celula?.setorId ?? "");
+  const [selecionados, setSelecionados] = useState<string[]>(celula?.colaboradorIds ?? []);
+  const [busca, setBusca] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   function alternar(id: string) {
     setSelecionados((atual) =>
@@ -124,35 +228,44 @@ function NovaCelulaDialog({
     );
   }
 
-  const podeSalvar = nome.trim() !== "" && setor !== "";
+  // Só os colaboradores do setor escolhido aparecem na lista.
+  const nomeSetor = setores.find((s) => s.id === setorId)?.nome ?? "";
+  const doSetor = nomeSetor
+    ? colaboradores.filter((c) => normalizar(c.setor ?? "") === normalizar(nomeSetor))
+    : [];
+  const visiveis = doSetor.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
+  // Selecionados de outros setores continuam na célula, mesmo fora da lista.
+  const deOutrosSetores = selecionados.filter((id) => !doSetor.some((c) => c.id === id)).length;
+
+  const podeSalvar = nome.trim() !== "" && setorId !== "" && !salvando;
+
+  async function salvar() {
+    if (!podeSalvar) return;
+    setSalvando(true);
+    try {
+      if (celula) await atualizarCelula(celula.id, nome, setorId, selecionados);
+      else await criarCelula(nome, setorId, selecionados);
+      toast.success(celula ? "Célula atualizada." : "Célula cadastrada.");
+      onSalvo();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível salvar a célula.");
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   return (
-    <Dialog
-      open={aberto}
-      onOpenChange={(abre) => {
-        if (!abre) {
-          reiniciar();
-          onFechar();
-        }
-      }}
-    >
+    <Dialog open onOpenChange={(abre) => !abre && !salvando && onFechar()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Nova Célula</DialogTitle>
+          <DialogTitle>{celula ? "Editar Célula" : "Nova Célula"}</DialogTitle>
         </DialogHeader>
 
         <form
           className="space-y-4"
           onSubmit={(evento) => {
             evento.preventDefault();
-            if (!podeSalvar) return;
-            onSalvar({
-              id: crypto.randomUUID(),
-              nome: nome.trim(),
-              setor,
-              colaboradorIds: selecionados,
-            });
-            reiniciar();
+            void salvar();
           }}
         >
           <div className="space-y-2">
@@ -166,13 +279,13 @@ function NovaCelulaDialog({
 
           <div className="space-y-2">
             <Label>Setor</Label>
-            <Select value={setor} onValueChange={setSetor}>
+            <Select value={setorId} onValueChange={setSetorId}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o setor" />
               </SelectTrigger>
               <SelectContent>
                 {setores.map((item) => (
-                  <SelectItem key={item.id} value={item.nome}>
+                  <SelectItem key={item.id} value={item.id}>
                     {item.nome}
                   </SelectItem>
                 ))}
@@ -181,73 +294,54 @@ function NovaCelulaDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Colaboradores da célula</Label>
-            <Popover open={lista} onOpenChange={setLista}>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="outline" className="w-full justify-start font-normal">
-                  {selecionados.length > 0
-                    ? `${selecionados.length} selecionado(s)`
-                    : "Digite para buscar colaboradores"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                <Command
-                  filter={(valor, busca) =>
-                    valor
-                      .toLowerCase()
-                      .split(/\s+/)
-                      .some((palavra) => palavra.startsWith(busca.toLowerCase()))
-                      ? 1
-                      : 0
-                  }
-                >
-                  <CommandInput placeholder="Digite as primeiras letras…" />
-                  <CommandList>
-                    <CommandEmpty>Nenhum colaborador encontrado.</CommandEmpty>
-                    <CommandGroup>
-                      {colaboradores.map((colaborador) => (
-                        <CommandItem
-                          key={colaborador.id}
-                          value={`${colaborador.nome} ${colaborador.id}`}
-                          onSelect={() => alternar(colaborador.id)}
-                        >
-                          <Check
-                            className={`mr-2 h-4 w-4 ${
-                              selecionados.includes(colaborador.id) ? "opacity-100" : "opacity-0"
-                            }`}
-                          />
-                          {colaborador.nome}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <div className="flex items-center justify-between">
+              <Label>Colaboradores da célula</Label>
+              <span className="text-xs text-[#64748B]">{selecionados.length} selecionado(s)</span>
+            </div>
 
-            {selecionados.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {selecionados.map((id) => {
-                  const colaborador = colaboradores.find((item) => item.id === id);
-                  return (
-                    <span
-                      key={id}
-                      className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] px-2.5 py-1 text-xs font-medium text-[#4F46E5]"
-                    >
-                      {colaborador?.nome ?? id}
-                      <button
-                        type="button"
-                        aria-label="Remover"
-                        onClick={() => alternar(id)}
-                        className="hover:text-[#312E81]"
+            {setorId === "" ? (
+              <p className="rounded-md border border-dashed border-[#CBD5E1] px-4 py-6 text-center text-sm text-[#64748B]">
+                Selecione um setor para listar os colaboradores.
+              </p>
+            ) : (
+              <>
+                <Input
+                  placeholder="Buscar colaborador"
+                  value={busca}
+                  onChange={(evento) => setBusca(evento.target.value)}
+                />
+                <div className="max-h-60 divide-y divide-[#E2E8F0] overflow-y-auto rounded-md border border-[#E2E8F0]">
+                  {visiveis.length === 0 ? (
+                    <p className="px-3 py-4 text-center text-sm text-[#64748B]">
+                      Nenhum colaborador neste setor.
+                    </p>
+                  ) : (
+                    visiveis.map((colaborador) => (
+                      <label
+                        key={colaborador.id}
+                        className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-[#F8FAFC]"
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            ) : null}
+                        <Checkbox
+                          checked={selecionados.includes(colaborador.id)}
+                          onCheckedChange={() => alternar(colaborador.id)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm text-[#1F2937]">{colaborador.nome}</span>
+                          {colaborador.cargo ? (
+                            <span className="block text-xs text-[#64748B]">{colaborador.cargo}</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {deOutrosSetores > 0 ? (
+                  <p className="text-xs text-[#64748B]">
+                    {deOutrosSetores} colaborador(es) de outros setores continuam marcados.
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
 
           <DialogFooter>
@@ -256,7 +350,7 @@ function NovaCelulaDialog({
               disabled={!podeSalvar}
               className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
             >
-              Salvar
+              {salvando ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </form>

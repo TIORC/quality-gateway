@@ -44,7 +44,7 @@ import {
 import { listarGruposAcesso } from "@/lib/grupos";
 import {
   ehLiderancaDaQualidade,
-  podeGerenciarCadastros,
+  podeEditarConfiguracoes,
   podeGerenciarGrupos,
 } from "@/lib/permissoes";
 import type { GrupoAcesso } from "@/lib/projetos-crud";
@@ -124,7 +124,7 @@ function Configuracoes() {
   // A página monta o próprio PanelShell, então o contexto da sessão ainda não existe
   // aqui: lê a sessão do cache, que o PanelShell atualiza ao abrir o painel.
   const sessaoAtual = getSession();
-  const podeGerenciar = podeGerenciarCadastros(sessaoAtual);
+  const podeGerenciar = podeEditarConfiguracoes(sessaoAtual);
   const gruposDisponiveis = [
     ...new Set([...GRUPOS_PERSONALIZADOS, ...gruposCadastrados.map((grupo) => grupo.nome)]),
   ];
@@ -797,7 +797,7 @@ function ColaboradoresTab({
     const bateUnidade = unidade === "todas" || colaborador.unidade === unidade;
     const bateSetor = setor === "todos" || colaborador.setor === setor;
     return bateBusca && bateUnidade && bateSetor;
-  });
+  }).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   const paginacao = usePaginacao(filtrados, [busca, unidade, setor]);
 
@@ -978,18 +978,18 @@ function ColaboradoresTab({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left">
+            <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-[#E9EEF5]">
                   <Th>Colaborador</Th>
                   <Th>E-mail</Th>
                   <Th>Unidade</Th>
-                  <Th>Cidade</Th>
+                  <Th className="hidden 2xl:table-cell">Cidade</Th>
                   <Th>Setor</Th>
                   <Th>Nível de acesso</Th>
                   <Th>Grupos</Th>
                   <Th>Acesso</Th>
-                  <Th>Docs liberados</Th>
+                  <Th className="hidden xl:table-cell">Docs liberados</Th>
                 </tr>
               </thead>
               <tbody>
@@ -1011,13 +1011,15 @@ function ColaboradoresTab({
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
-                        {colaborador.email}
+                      <td className="max-w-[200px] px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                        <span className="block truncate" title={colaborador.email}>
+                          {colaborador.email}
+                        </span>
                       </td>
                       <td className="px-4 py-3 align-middle text-[13px] text-[#1F2937]">
                         {colaborador.unidade}
                       </td>
-                      <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                      <td className="hidden px-4 py-3 align-middle text-[13px] text-[#64748B] 2xl:table-cell">
                         {colaborador.cidade}
                       </td>
                       <td className="px-4 py-3 align-middle">
@@ -1032,7 +1034,7 @@ function ColaboradoresTab({
                           {colaborador.nivelAcesso}
                         </span>
                       </td>
-                      <td className="px-4 py-3 align-middle text-[13px] text-[#64748B]">
+                      <td className="max-w-[170px] px-4 py-3 align-middle text-[13px] text-[#64748B]">
                         {colaborador.grupos ?? "—"}
                       </td>
                       <td className="px-4 py-3 align-middle">
@@ -1044,7 +1046,7 @@ function ColaboradoresTab({
                           {temLogin ? "Tem login" : "Sem login"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 align-middle">
+                      <td className="hidden px-4 py-3 align-middle xl:table-cell">
                         <span className="inline-block rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-semibold text-[#4F46E5]">
                           {liberadosPorColaborador[colaborador.id] ?? 0}
                         </span>
@@ -2229,9 +2231,11 @@ function RemoverUnidadeDialog({
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <th className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748B]">
+    <th
+      className={`whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748B] ${className}`}
+    >
       {children}
     </th>
   );
