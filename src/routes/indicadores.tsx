@@ -860,8 +860,16 @@ function Indicadores() {
       const eu = sessao?.nome ?? "";
       return eu.trim() ? tarefas.filter((t) => colaboradorCorresponde(t.responsavel, eu)) : [];
     }
-    if (secao === "por-setor" && setorFiltro !== "todos")
-      return tarefas.filter((t) => t.departamento === setorFiltro);
+    if (secao === "por-setor" && setorFiltro !== "todos") {
+      // Tarefas do departamento do setor, e as de "Orientação ao Cliente" feitas por quem é do setor.
+      const membros = catalogo.colaboradores.filter((c) => setorDoCadastroCorresponde(c.setor, setorFiltro));
+      return tarefas.filter(
+        (t) =>
+          t.departamento === setorFiltro ||
+          (normalizarSetor(t.departamento) === "orientacao ao cliente" &&
+            membros.some((m) => colaboradorCorresponde(t.responsavel, m.nome))),
+      );
+    }
     if (secao === "por-celula") {
       const daCelula = tarefas.filter((t) => pertenceACelula(t.responsavel));
       return colaboradorCelulaFiltro === "todos"
@@ -881,6 +889,7 @@ function Indicadores() {
     tarefas,
     secao,
     setorFiltro,
+    catalogo.colaboradores,
     colaboradorFiltro,
     membrosDoSetor,
     colaboradoresDaCelula,

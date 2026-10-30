@@ -600,7 +600,11 @@ function ListaOcorrencias({
             const tipo = tipos.find((t) => t.id === o.tipoId);
             const Icone = iconeTipoOcorrencia(tipo?.icone);
             const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
-            const etapas = etapasDoTipo(tipo);
+            // Se a lista salva do tipo é antiga e não tem a etapa atual, usa a padrão do tipo.
+            const salvas = etapasDoTipo(tipo);
+            const etapas = salvas.some((e) => e.id === o.macroAtual)
+              ? salvas
+              : etapasDoTipo({ nome: tipo?.nome });
             const encerrada = o.status === "encerrada";
             const idxAtual = Math.max(
               0,
