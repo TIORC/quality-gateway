@@ -438,6 +438,16 @@ interface SummaryCardProps {
   style?: CSSProperties;
 }
 
+/**
+ * Setor do cadastro × setor do Gestta. "Fiscal" no cadastro vale para "Fiscal Maracás" e
+ * "Fiscal Jaguaquara" (o Gestta separa por unidade); a igualdade também conta.
+ */
+function setorDoCadastroCorresponde(setorCadastro: string | undefined, setorGestta: string): boolean {
+  const cadastro = normalizarSetor(setorCadastro);
+  const gestta = normalizarSetor(setorGestta);
+  return cadastro !== "" && (gestta === cadastro || gestta.startsWith(`${cadastro} `));
+}
+
 function SummaryCard({ label, value, valueClass, accent, footer, style }: SummaryCardProps) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-[#D9E0EA] bg-white p-4">
@@ -775,6 +785,12 @@ function Indicadores() {
   const pertenceACelula = (responsavel: string) =>
     colaboradoresDaCelula.some((c) => colaboradorCorresponde(c.nome, responsavel));
 
+  /** Por Colaborador com setor: os colaboradores desse setor no cadastro (null = sem setor escolhido). */
+  const membrosDoSetor =
+    setorDoColaborador === "todos"
+      ? null
+      : catalogo.colaboradores.filter((c) => setorDoCadastroCorresponde(c.setor, setorDoColaborador));
+
   /** Por Célula: atendimentos dos colaboradores da célula (ou de um só, se escolhido). */
   const linhasCelula: LinhaDetalheAtendimento[] = atendimentosDoColaboradoresDoMes(
     atendimentosColaborador,
@@ -796,11 +812,9 @@ function Indicadores() {
     secao === "por-celula"
       ? linhasCelula
       : todosColaboradores
-        ? atendimentosDoColaboradoresDoMes(
-            atendimentosColaborador,
-            mesEscolhido,
-            setorDoColaborador === "todos" ? null : setorDoColaborador,
-          ).map((l) => ({
+        ? atendimentosDoColaboradoresDoMes(atendimentosColaborador, mesEscolhido)
+            .filter((l) => !membrosDoSetor || membrosDoSetor.some((m) => colaboradorCorresponde(l.colaborador, m.nome)))
+            .map((l) => ({
             chave: `${l.colaborador}|${l.departamento}`,
             rotulo: l.departamento ? `${l.colaborador} - ${l.departamento}` : l.colaborador,
             total: l.total,
@@ -829,9 +843,12 @@ function Indicadores() {
         : daCelula.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorCelulaFiltro));
     }
     if (secao === "por-colaborador") {
-      const doSetor =
-        setorDoColaborador === "todos" ? tarefas : tarefas.filter((t) => t.departamento === setorDoColaborador);
-      return colaboradorFiltro === "todos" ? doSetor : doSetor.filter((t) => t.responsavel === colaboradorFiltro);
+      const doSetor = membrosDoSetor
+        ? tarefas.filter((t) => membrosDoSetor.some((m) => colaboradorCorresponde(t.responsavel, m.nome)))
+        : tarefas;
+      return colaboradorFiltro === "todos"
+        ? doSetor
+        : doSetor.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorFiltro));
     }
     return tarefas;
   }, [
@@ -839,7 +856,7 @@ function Indicadores() {
     secao,
     setorFiltro,
     colaboradorFiltro,
-    setorDoColaborador,
+    membrosDoSetor,
     colaboradoresDaCelula,
     colaboradorCelulaFiltro,
     escopo,
@@ -859,17 +876,15 @@ function Indicadores() {
       ),
     [tarefasFiltradas, mesEscolhido, secao],
   );
+  /** Por Colaborador: quem aparece no filtro. Com setor, só os colaboradores desse setor no cadastro. */
   const colaboradoresTarefas = useMemo(
     () =>
-      [
-        ...new Set(
-          tarefas
-            .filter((t) => setorDoColaborador === "todos" || t.departamento === setorDoColaborador)
-            .map((t) => t.responsavel)
-            .filter(Boolean),
-        ),
-      ].sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [tarefas, setorDoColaborador],
+      membrosDoSetor
+        ? membrosDoSetor.map((c) => c.nome).sort((a, b) => a.localeCompare(b, "pt-BR"))
+        : [...new Set(tarefas.map((t) => t.responsavel).filter(Boolean))].sort((a, b) =>
+            a.localeCompare(b, "pt-BR"),
+          ),
+    [tarefas, membrosDoSetor],
   );
 
   // Colaborador: só a seção "Por Colaborador", já com o próprio nome selecionado.
