@@ -30,6 +30,36 @@ export function podeOperarOcorrencias(sessao: UserSession | null | undefined): b
   );
 }
 
+/** A pessoa da sessão é o dono da tratativa (quem assumiu a ocorrência). */
+export function ehDonoDaOcorrencia(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  if (!sessao) return false;
+  const email = (sessao.email ?? "").trim().toLowerCase();
+  const colaborador = (sessao.colaboradorId ?? "").trim();
+  return (
+    (!!o.donoQualidadeEmail && o.donoQualidadeEmail.toLowerCase() === email) ||
+    (!!o.donoQualidadeId && o.donoQualidadeId === colaborador)
+  );
+}
+
+/**
+ * Operadores da Qualidade só agem na ocorrência que assumiram ("puxar tarefa")
+ * e a acompanham até o encerramento. Encerrada: segue como antes (qualquer operador).
+ */
+function operaComoDono(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  return o.status === "encerrada" || ehDonoDaOcorrencia(sessao, o);
+}
+
+/** Pode puxar a ocorrência: operador da Qualidade, aberta e ainda sem dono (ou já é dele). */
+export function podeAssumirOcorrencia(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  if (!podeOperarOcorrencias(sessao) || o.status === "encerrada") return false;
+  return !o.donoQualidadeEmail || ehDonoDaOcorrencia(sessao, o);
+}
+
+/** Pode soltar a tratativa: só o dono, enquanto a ocorrência estiver aberta. */
+export function podeLiberarOcorrencia(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  return o.status !== "encerrada" && ehDonoDaOcorrencia(sessao, o);
+}
+
 export function papelNaOcorrencia(
   sessao: UserSession | null | undefined,
   o: Ocorrencia,
@@ -59,8 +89,9 @@ export function veVisaoCompleta(sessao: UserSession | null | undefined, o: Ocorr
 /** Pode agir (aprovar/reprovar/…) na etapa atual da ocorrência. */
 export function podeAgir(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
   const papel = papelNaOcorrencia(sessao, o);
-  if (o.status === "encerrada") return papel === "qualidade";
-  return papel === "qualidade" || papel === "encarregado";
+  if (papel === "qualidade") return operaComoDono(sessao, o);
+  if (o.status === "encerrada") return false;
+  return papel === "encarregado";
 }
 
 /** Pode comentar (solicitante acompanha e pode responder). */
@@ -69,14 +100,14 @@ export function podeComentar(sessao: UserSession | null | undefined, o: Ocorrenc
   return papel !== "leitor";
 }
 
-/** Movimentação manual e avaliação de eficácia: só a Qualidade. */
-export function podeGerenciar(sessao: UserSession | null | undefined): boolean {
-  return podeOperarOcorrencias(sessao);
+/** Movimentação manual e avaliação de eficácia: só a Qualidade, na ocorrência que assumiu. */
+export function podeGerenciar(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  return podeOperarOcorrencias(sessao) && operaComoDono(sessao, o);
 }
 
-/** Move a ocorrência de etapa: Gestor/setor da Qualidade e Desenvolvedor do Sistema. */
-export function podeMoverEtapa(sessao: UserSession | null | undefined): boolean {
-  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
+/** Move a ocorrência de etapa: dono da tratativa (Qualidade) e Desenvolvedor do Sistema. */
+export function podeMoverEtapa(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  return (podeOperarOcorrencias(sessao) && operaComoDono(sessao, o)) || ehAdministrador(sessao);
 }
 
 /** Define a prioridade da ocorrência: Qualidade e Desenvolvedor do Sistema. */

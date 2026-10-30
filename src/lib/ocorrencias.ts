@@ -372,6 +372,10 @@ export interface Ocorrencia {
   responsavelId: string;
   responsavelNome: string;
   responsavelEmail: string;
+  /** Pessoa da Qualidade que assumiu a tratativa (vazio = ninguém assumiu ainda). */
+  donoQualidadeId: string;
+  donoQualidadeNome: string;
+  donoQualidadeEmail: string;
   prazoEtapa: string | null;
   etapaEntrouEm: string;
   avaliacao: AvaliacaoEficacia | null;

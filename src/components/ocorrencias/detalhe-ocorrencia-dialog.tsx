@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Hand,
   MessageSquare,
   Paperclip,
   Plus,
@@ -45,6 +46,8 @@ import { MetroLinha } from "@/components/ocorrencias/metro-linha";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
   agirNaOcorrencia,
+  assumirOcorrencia,
+  liberarOcorrencia,
   avaliarEficacia,
   carregarFluxoAtivo,
   carregarFormularioAtivo,
@@ -56,12 +59,21 @@ import {
   moverPara,
   urlAssinada,
   registrarCiencia,
+  desconsiderarOcorrencia,
+  DESCONSIDERAR_MOTIVO_MIN,
+  RESULTADOS_APURACAO_CHAVE,
+  RESULTADOS_APURACAO_MAX,
+  RESULTADOS_APURACAO_MIN,
+  salvarResultadosApuracao,
 } from "@/lib/ocorrencias-crud";
 import { listarHistorico, listarOcorrencias } from "@/lib/ocorrencias-base";
 import {
   podeAgir,
+  podeAssumirOcorrencia,
   podeDefinirPrioridade,
+  podeLiberarOcorrencia,
   podeMoverEtapa,
+  podeOperarOcorrencias,
   podeComentar,
   podeExcluir,
   podeGerenciar,
@@ -143,11 +155,27 @@ function DetalheCorpo({
   const [anexos, setAnexos] = useState<File[]>([]);
   const [carregando, setCarregando] = useState(true);
 
+  // Resultados da Apuração (Qualidade).
+  const salvosApuracao = o.respostas[RESULTADOS_APURACAO_CHAVE] as
+    | { texto?: string; anexos?: AnexoOcorrencia[] }
+    | undefined;
+  const [resultados, setResultados] = useState(salvosApuracao?.texto ?? "");
+  const [anexosSalvos, setAnexosSalvos] = useState<AnexoOcorrencia[]>(
+    salvosApuracao?.anexos ?? [],
+  );
+  const [novosAnexosResultado, setNovosAnexosResultado] = useState<File[]>([]);
+  const [salvandoResultados, setSalvandoResultados] = useState(false);
+
   // Avaliação de eficácia (diálogo da Qualidade).
   const [avaliacaoAberta, setAvaliacaoAberta] = useState(false);
   const [eficaz, setEficaz] = useState(true);
   const [observacao, setObservacao] = useState("");
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
+
+  // Desconsiderar (Qualidade).
+  const [desconsiderarAberto, setDesconsiderarAberto] = useState(false);
+  const [motivoDesconsiderar, setMotivoDesconsiderar] = useState("");
+  const [desconsiderando, setDesconsiderando] = useState(false);
 
   // Exclusão (Qualidade/administradores).
   const [excluirAberto, setExcluirAberto] = useState(false);
@@ -196,8 +224,10 @@ function DetalheCorpo({
   const ciencias = cienciasDe(o);
   const meuSetor = normalizarSetor(session?.setor);
   const pode = podeAgir(session, o);
-  const gerencia = podeGerenciar(session);
-  const podeMover = podeMoverEtapa(session);
+  const gerencia = podeGerenciar(session, o);
+  const podeMover = podeMoverEtapa(session, o);
+  const podeAssumir = podeAssumirOcorrencia(session, o);
+  const podeLiberar = podeLiberarOcorrencia(session, o);
   const macrosFluxo = etapas.map((e) => e.macro);
   const idxMacro = macrosFluxo.indexOf(o.macroAtual);
   const proximaMacro = o.status === "encerrada" || idxMacro < 0 ? undefined : etapas[idxMacro + 1];
@@ -251,6 +281,16 @@ function DetalheCorpo({
   }
 
   async function mover(macro: MacroEtapa, subetapaId: string) {
+    if (
+      o.macroAtual === "apuracao" &&
+      macro !== "apuracao" &&
+      (salvosApuracao?.texto?.trim().length ?? 0) < RESULTADOS_APURACAO_MIN
+    ) {
+      toast.error(
+        `Salve os Resultados da Etapa (mínimo de ${RESULTADOS_APURACAO_MIN} caracteres) antes de sair da Apuração.`,
+      );
+      return;
+    }
     try {
       await moverPara(o, etapas, macro, subetapaId, session, "Movimentação manual pela Qualidade.");
       toast.success("Ocorrência movida de etapa.");
@@ -274,6 +314,25 @@ function DetalheCorpo({
       await recarregar();
     } catch (e) {
       toast.error(traduzErro(e).message);
+    }
+  }
+
+  async function salvarResultados() {
+    setSalvandoResultados(true);
+    try {
+      const enviados = [...anexosSalvos];
+      for (const arquivo of novosAnexosResultado) {
+        enviados.push(await enviarAnexo(o.id, arquivo));
+      }
+      await salvarResultadosApuracao(o, resultados, enviados, session);
+      setAnexosSalvos(enviados);
+      setNovosAnexosResultado([]);
+      toast.success("Resultados da etapa salvos.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvandoResultados(false);
     }
   }
 
@@ -321,11 +380,46 @@ function DetalheCorpo({
     }
   }
 
+  async function puxarTratativa() {
+    try {
+      await assumirOcorrencia(o, session);
+      toast.success("Tratativa assumida: a ocorrência é sua até o encerramento.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    }
+  }
+
+  async function soltarTratativa() {
+    try {
+      await liberarOcorrencia(o, session);
+      toast.success("Tratativa liberada para a Qualidade.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    }
+  }
+
   async function abrirAnexo(caminho: string) {
     try {
       window.open(await urlAssinada(caminho), "_blank", "noopener");
     } catch {
       toast.error("Não foi possível abrir o anexo.");
+    }
+  }
+
+  async function confirmarDesconsiderar() {
+    setDesconsiderando(true);
+    try {
+      await desconsiderarOcorrencia(o, etapas, motivoDesconsiderar, session);
+      toast.success(`Ocorrência ${o.numero} desconsiderada.`);
+      setDesconsiderarAberto(false);
+      setMotivoDesconsiderar("");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setDesconsiderando(false);
     }
   }
 
@@ -398,6 +492,32 @@ function DetalheCorpo({
         <div className="py-12 text-center text-sm text-[#64748B]">Carregando a viagem…</div>
       ) : (
         <div className="space-y-4">
+          {(o.donoQualidadeNome || podeOperarOcorrencias(session)) && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Tratativa
+              </span>
+              <span className="text-[13px] font-semibold text-[#1F2937]">
+                {o.donoQualidadeNome
+                  ? `Com ${o.donoQualidadeNome}`
+                  : o.status === "encerrada"
+                    ? "Sem responsável"
+                    : "Aguardando alguém da Qualidade"}
+              </span>
+              {podeAssumir && !o.donoQualidadeNome && (
+                <Button type="button" size="sm" onClick={() => void puxarTratativa()}>
+                  <Hand className="h-4 w-4" />
+                  Puxar tratativa
+                </Button>
+              )}
+              {podeLiberar && (
+                <Button type="button" size="sm" variant="outline" onClick={() => void soltarTratativa()}>
+                  Liberar tratativa
+                </Button>
+              )}
+            </div>
+          )}
+
           {podeDefinirPrioridade(session) && (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
@@ -418,6 +538,18 @@ function DetalheCorpo({
                   ))}
                 </SelectContent>
               </Select>
+              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
+            </div>
+          )}
+
+          {!podeDefinirPrioridade(session) && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Prioridade
+              </span>
+              <span className="text-[13px] font-semibold text-[#1F2937]">
+                {PRIORIDADE_LABELS[o.prioridade]}
+              </span>
               <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
             </div>
           )}
@@ -602,6 +734,67 @@ function DetalheCorpo({
                 >
                   <AlertTriangle className="h-4 w-4" />
                   Não-procedente
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {podeMover && o.status !== "encerrada" && o.macroAtual === "apuracao" && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Resultados da Etapa (Qualidade)
+              </h3>
+              <Textarea
+                className="mt-2 min-h-[160px]"
+                maxLength={RESULTADOS_APURACAO_MAX}
+                placeholder="Descreva os resultados da apuração (mínimo de 100 caracteres)…"
+                value={resultados}
+                onChange={(e) => setResultados(e.target.value)}
+              />
+              <p
+                className={`mt-1 text-[11px] ${
+                  resultados.trim().length < RESULTADOS_APURACAO_MIN
+                    ? "text-[#E11D48]"
+                    : "text-[#64748B]"
+                }`}
+              >
+                {resultados.trim().length}/{RESULTADOS_APURACAO_MAX} caracteres · mínimo{" "}
+                {RESULTADOS_APURACAO_MIN}
+              </p>
+              {anexosSalvos.length > 0 && (
+                <div className="mt-3">
+                  <AnexosVisualizador anexos={anexosSalvos} />
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  {novosAnexosResultado.length > 0
+                    ? `${novosAnexosResultado.length} arquivo(s) a enviar`
+                    : "Anexar imagens, vídeos ou documentos"}
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                    className="hidden"
+                    onChange={(e) =>
+                      setNovosAnexosResultado((atual) => [
+                        ...atual,
+                        ...Array.from(e.target.files ?? []),
+                      ])
+                    }
+                  />
+                </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    salvandoResultados || resultados.trim().length < RESULTADOS_APURACAO_MIN
+                  }
+                  className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                  onClick={() => void salvarResultados()}
+                >
+                  {salvandoResultados ? "Salvando…" : "Salvar resultados"}
                 </Button>
               </div>
             </section>
@@ -825,11 +1018,19 @@ function DetalheCorpo({
       )}
 
       <DialogFooter>
+        {podeMover && o.status !== "encerrada" && (
+          <Button
+            type="button"
+            className="bg-[#C2410C] text-white hover:bg-[#9A3412]"
+            onClick={() => setDesconsiderarAberto(true)}
+          >
+            Desconsiderar ocorrência
+          </Button>
+        )}
         {podeExcluir(session) && (
           <Button
             type="button"
-            variant="outline"
-            className="border-[#E11D48]/40 text-[#E11D48] hover:bg-[#FDECEE]"
+            className="bg-[#E11D48] text-white hover:bg-[#BE123C]"
             onClick={() => setExcluirAberto(true)}
           >
             Excluir ocorrência
@@ -839,6 +1040,55 @@ function DetalheCorpo({
           Fechar
         </Button>
       </DialogFooter>
+
+      <Dialog open={desconsiderarAberto} onOpenChange={(a) => !a && setDesconsiderarAberto(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Desconsiderar a ocorrência {o.numero}?</DialogTitle>
+            <DialogDescription>
+              A ocorrência será encerrada e o motivo ficará registrado no histórico.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label className="text-[13px]">Motivo (obrigatório)</Label>
+            <Textarea
+              className="min-h-[90px]"
+              placeholder="Explique por que a ocorrência está sendo desconsiderada…"
+              value={motivoDesconsiderar}
+              onChange={(e) => setMotivoDesconsiderar(e.target.value)}
+            />
+            <p
+              className={`text-[11px] ${
+                motivoDesconsiderar.trim().length < DESCONSIDERAR_MOTIVO_MIN
+                  ? "text-[#E11D48]"
+                  : "text-[#64748B]"
+              }`}
+            >
+              {motivoDesconsiderar.trim().length} caracteres · mínimo {DESCONSIDERAR_MOTIVO_MIN}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={desconsiderando}
+              onClick={() => setDesconsiderarAberto(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                desconsiderando || motivoDesconsiderar.trim().length < DESCONSIDERAR_MOTIVO_MIN
+              }
+              onClick={() => void confirmarDesconsiderar()}
+              className="bg-[#C2410C] text-white hover:bg-[#9A3412]"
+            >
+              {desconsiderando ? "Salvando…" : "Desconsiderar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={excluirAberto} onOpenChange={(a) => !a && setExcluirAberto(false)}>
         <DialogContent className="max-w-md">

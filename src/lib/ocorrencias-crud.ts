@@ -487,13 +487,22 @@ async function encerrar(
     },
     loja,
   );
+  // Retorno ao solicitante: inclui o resultado da apuração, quando registrado.
+  const resultadosApuracao = (
+    o.respostas[RESULTADOS_APURACAO_CHAVE] as { texto?: string } | undefined
+  )?.texto?.trim();
   await notificar(
     [
       {
         email: o.abertaPorEmail,
         nome: o.abertaPorNome,
         titulo: `Ocorrência ${o.numero} foi encerrada`,
-        mensagem: `${o.titulo} · ${motivo}`,
+        mensagem: [
+          `${o.titulo} · ${motivo}`,
+          resultadosApuracao ? `Resultados da apuração: ${resultadosApuracao}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
       },
     ],
     autor,
@@ -863,6 +872,130 @@ export async function definirPrioridade(
       para: PRIORIDADE_LABELS[prioridade],
       comentario: "",
       anexos: [],
+    },
+    loja,
+  );
+}
+
+/** Puxa a ocorrência: a pessoa da Qualidade passa a responder por ela até o encerramento. */
+export async function assumirOcorrencia(
+  o: Ocorrencia,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const autor = autorDe(sessao);
+  if (o.donoQualidadeEmail && o.donoQualidadeEmail !== autor.autor_email) {
+    throw new Error(`Esta ocorrência já está com ${o.donoQualidadeNome || o.donoQualidadeEmail}.`);
+  }
+  await loja.atualizarOcorrencia(o.id, {
+    dono_qualidade_id: autor.autor_id,
+    dono_qualidade_nome: autor.autor_nome,
+    dono_qualidade_email: autor.autor_email,
+    dono_qualidade_em: new Date().toISOString(),
+  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Tratativa assumida",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: o.donoQualidadeNome,
+      para: autor.autor_nome,
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/** Solta a tratativa para que outra pessoa da Qualidade possa puxá-la. */
+export async function liberarOcorrencia(
+  o: Ocorrencia,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const autor = autorDe(sessao);
+  await loja.atualizarOcorrencia(o.id, {
+    dono_qualidade_id: "",
+    dono_qualidade_nome: "",
+    dono_qualidade_email: "",
+    dono_qualidade_em: null,
+  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Tratativa liberada",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: o.donoQualidadeNome,
+      para: "",
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+export const DESCONSIDERAR_MOTIVO_MIN = 20;
+export const DESCONSIDERADA_CHAVE = "__desconsiderada";
+
+/** Encerra a ocorrência como desconsiderada, registrando o motivo. */
+export async function desconsiderarOcorrencia(
+  o: Ocorrencia,
+  etapas: MacroFluxo[],
+  motivo: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpo = motivo.trim();
+  if (limpo.length < DESCONSIDERAR_MOTIVO_MIN) {
+    throw new Error(`O motivo deve ter ao menos ${DESCONSIDERAR_MOTIVO_MIN} caracteres.`);
+  }
+  const autor = autorDe(sessao);
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: {
+      ...o.respostas,
+      [DESCONSIDERADA_CHAVE]: { motivo: limpo, em: new Date().toISOString() },
+    },
+  });
+  await encerrar(o, etapas, autor, `Ocorrência desconsiderada: ${limpo}`, loja);
+}
+
+/** Resultados da etapa de Apuração (Qualidade): texto + evidências. */
+export const RESULTADOS_APURACAO_CHAVE = "__resultados_apuracao";
+export const RESULTADOS_APURACAO_MIN = 100;
+export const RESULTADOS_APURACAO_MAX = 12000;
+
+export async function salvarResultadosApuracao(
+  o: Ocorrencia,
+  texto: string,
+  anexos: AnexoOcorrencia[],
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpo = texto.trim();
+  if (limpo.length < RESULTADOS_APURACAO_MIN) {
+    throw new Error(`Os resultados devem ter ao menos ${RESULTADOS_APURACAO_MIN} caracteres.`);
+  }
+  if (limpo.length > RESULTADOS_APURACAO_MAX) {
+    throw new Error(`Os resultados podem ter no máximo ${RESULTADOS_APURACAO_MAX} caracteres.`);
+  }
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [RESULTADOS_APURACAO_CHAVE]: { texto: limpo, anexos } },
+  });
+  await registrarHistorico(
+    o.id,
+    autorDe(sessao),
+    {
+      acao: "Resultados da apuração registrados",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "",
+      comentario: "",
+      anexos,
     },
     loja,
   );

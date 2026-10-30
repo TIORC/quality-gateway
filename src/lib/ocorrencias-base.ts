@@ -346,6 +346,9 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
     responsavelId: str(row["responsavel_id"]),
     responsavelNome: str(row["responsavel_nome"]),
     responsavelEmail: str(row["responsavel_email"]),
+    donoQualidadeId: str(row["dono_qualidade_id"]),
+    donoQualidadeNome: str(row["dono_qualidade_nome"]),
+    donoQualidadeEmail: str(row["dono_qualidade_email"]),
     prazoEtapa: typeof row["prazo_etapa"] === "string" ? (row["prazo_etapa"] as string) : null,
     etapaEntrouEm: str(row["etapa_entrou_em"]),
     avaliacao: avaliacaoRaw

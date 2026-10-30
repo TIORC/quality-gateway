@@ -1,15 +1,24 @@
 /**
- * Atendimentos realizados por departamento: leitura do relatório "Indicador_Atendimento"
- * (aba "Por Departamento", colunas Departamento e Total), gravação por mês e soma para o card.
+ * Atendimentos realizados do relatório "Indicador_Atendimento": aba "Por Departamento" (colunas
+ * Departamento e Total) e aba "Por Colaborador" (colunas Colaborador e Total), gravação por mês e
+ * somas para os cards.
  */
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
 import { clienteLivre } from "@/lib/supabase-livro";
 import { unificarSetor } from "@/lib/tarefas-gestta";
 
 const TABELA = "atendimentos_departamento";
+const TABELA_COLABORADOR = "atendimentos_colaborador";
 
 export interface AtendimentoDepartamento {
   mes: string; // YYYY-MM
+  departamento: string;
+  total: number;
+}
+
+export interface AtendimentoColaborador {
+  mes: string; // YYYY-MM
+  colaborador: string; // nome como vem na planilha, sem o " - Dep. ..."
   departamento: string;
   total: number;
 }
@@ -42,57 +51,112 @@ export interface LinhaAtendimento {
   total: number;
 }
 
+export type LinhaAtendimentoColaborador = AtendimentoColaborador;
+
+type Planilha = typeof import("xlsx");
+
+interface LinhaBruta {
+  mes: string;
+  nome: string;
+  total: number;
+}
+
 /**
- * Lê a aba "Por Departamento" (colunas Competência, Departamento e Total). O mês de cada linha
- * vem da coluna Competência; a coluna é opcional (sem ela, o mês fica vazio).
+ * Soma uma aba por (mês, nome). A coluna `coluna` traz o nome (Departamento ou Colaborador);
+ * Competência é opcional (sem ela, o mês fica vazio).
  */
-export async function lerPlanilhaAtendimentos(arquivo: File): Promise<{ linhas: LinhaAtendimento[] }> {
+function lerAba(XLSX: Planilha, aba: import("xlsx").WorkSheet, coluna: string): LinhaBruta[] {
+  const linhas = XLSX.utils.sheet_to_json<unknown[]>(aba, { header: 1, raw: true, defval: null });
+  const cabecalho = (linhas[0] ?? []).map((c) => semAcento(String(c ?? "")));
+  const iNome = cabecalho.indexOf(semAcento(coluna));
+  const iTotal = cabecalho.indexOf("total");
+  const iMes = cabecalho.indexOf("competencia");
+  if (iNome < 0 || iTotal < 0) {
+    throw new Error(`Planilha fora do formato: a aba precisa das colunas "${coluna}" e "Total".`);
+  }
+  const somados = new Map<string, LinhaBruta>();
+  for (const linha of linhas.slice(1)) {
+    const nome = String(linha[iNome] ?? "").replace(/\s+/g, " ").trim();
+    const total = Number(linha[iTotal]);
+    if (!nome || !Number.isFinite(total)) continue;
+    const mes = iMes < 0 ? "" : mesDaCompetencia(linha[iMes]);
+    const chave = `${mes}|${nome}`;
+    const atual = somados.get(chave);
+    if (atual) atual.total += total;
+    else somados.set(chave, { mes, nome, total });
+  }
+  return [...somados.values()];
+}
+
+/** "Adalgiza - Dep. Pessoal" → colaborador "Adalgiza" e departamento "Dep. Pessoal". */
+function separarColaborador(l: LinhaBruta): LinhaAtendimentoColaborador {
+  const m = /^(.*?)\s+-\s+(.*)$/.exec(l.nome);
+  return {
+    mes: l.mes,
+    colaborador: (m?.[1] ?? l.nome).trim(),
+    departamento: m?.[2]?.trim() ?? "",
+    total: l.total,
+  };
+}
+
+/**
+ * Lê a aba "Por Departamento" (obrigatória) e a aba "Por Colaborador" (opcional).
+ * Sem a aba de colaborador, `colaboradores` vem vazio.
+ */
+export async function lerPlanilhaAtendimentos(
+  arquivo: File,
+): Promise<{ linhas: LinhaAtendimento[]; colaboradores: LinhaAtendimentoColaborador[] }> {
   const XLSX = await import("xlsx");
   const wb = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
   const nomeAba =
     wb.SheetNames.find((n) => semAcento(n).includes("departamento")) ?? wb.SheetNames[0];
   const aba = nomeAba ? wb.Sheets[nomeAba] : undefined;
   if (!aba) throw new Error("A planilha está vazia.");
-  const linhas = XLSX.utils.sheet_to_json<unknown[]>(aba, { header: 1, raw: true, defval: null });
-  const cabecalho = (linhas[0] ?? []).map((c) => semAcento(String(c ?? "")));
-  const iDep = cabecalho.indexOf("departamento");
-  const iTotal = cabecalho.indexOf("total");
-  const iMes = cabecalho.indexOf("competencia");
-  if (iDep < 0 || iTotal < 0) {
-    throw new Error('Planilha fora do formato: a aba precisa das colunas "Departamento" e "Total".');
-  }
-  const somados = new Map<string, LinhaAtendimento>();
-  for (const linha of linhas.slice(1)) {
-    const departamento = String(linha[iDep] ?? "").replace(/\s+/g, " ").trim();
-    const total = Number(linha[iTotal]);
-    if (!departamento || !Number.isFinite(total)) continue;
-    const mes = iMes < 0 ? "" : mesDaCompetencia(linha[iMes]);
-    const chave = `${mes}|${departamento}`;
-    const atual = somados.get(chave);
-    if (atual) atual.total += total;
-    else somados.set(chave, { mes, departamento, total });
-  }
-  return { linhas: [...somados.values()] };
+  const nomeAbaColaborador = wb.SheetNames.find((n) => semAcento(n).includes("colaborador"));
+  const abaColaborador = nomeAbaColaborador ? wb.Sheets[nomeAbaColaborador] : undefined;
+  return {
+    linhas: lerAba(XLSX, aba, "Departamento").map((l) => ({ mes: l.mes, departamento: l.nome, total: l.total })),
+    colaboradores: abaColaborador ? lerAba(XLSX, abaColaborador, "Colaborador").map(separarColaborador) : [],
+  };
 }
 
 /** Grava por mês: cada mês presente nas linhas é substituído por inteiro. */
-export async function importarAtendimentos(linhas: LinhaAtendimento[]): Promise<void> {
+async function gravarPorMes<T extends { mes: string }>(
+  tabela: string,
+  registros: T[],
+  registro: (r: T, agora: string) => Record<string, unknown>,
+): Promise<void> {
   const cliente = clienteLivre();
-  const meses = [...new Set(linhas.map((l) => l.mes))];
-  const { error: erroApagar } = await cliente.from(TABELA).delete().in("mes", meses);
+  const meses = [...new Set(registros.map((r) => r.mes))];
+  const { error: erroApagar } = await cliente.from(tabela).delete().in("mes", meses);
   if (erroApagar) throw traduzErro(erroApagar);
   const agora = new Date().toISOString();
-  const { error } = await cliente
-    .from(TABELA)
-    .insert(linhas.map((l) => ({ mes: l.mes, departamento: l.departamento, total: l.total, importado_em: agora })));
+  const { error } = await cliente.from(tabela).insert(registros.map((r) => registro(r, agora)));
   if (error) {
     if (tabelaAusente(error)) {
-      throw new Error(
-        "A tabela atendimentos_departamento ainda não existe. Aplique a migration 20261030050000_atendimentos_departamento.sql.",
-      );
+      throw new Error(`A tabela ${tabela} ainda não existe. Aplique a migration de atendimentos do Supabase.`);
     }
     throw traduzErro(error);
   }
+}
+
+export async function importarAtendimentos(linhas: LinhaAtendimento[]): Promise<void> {
+  await gravarPorMes(TABELA, linhas, (l, agora) => ({
+    mes: l.mes,
+    departamento: l.departamento,
+    total: l.total,
+    importado_em: agora,
+  }));
+}
+
+export async function importarAtendimentosColaborador(linhas: LinhaAtendimentoColaborador[]): Promise<void> {
+  await gravarPorMes(TABELA_COLABORADOR, linhas, (l, agora) => ({
+    mes: l.mes,
+    colaborador: l.colaborador,
+    departamento: l.departamento,
+    total: l.total,
+    importado_em: agora,
+  }));
 }
 
 export async function carregarAtendimentos(): Promise<AtendimentoDepartamento[]> {
@@ -103,6 +167,20 @@ export async function carregarAtendimentos(): Promise<AtendimentoDepartamento[]>
   }
   return ((data ?? []) as { mes: string; departamento: string; total: number }[]).map((r) => ({
     mes: r.mes,
+    departamento: r.departamento,
+    total: Number(r.total),
+  }));
+}
+
+export async function carregarAtendimentosColaborador(): Promise<AtendimentoColaborador[]> {
+  const { data, error } = await clienteLivre().from(TABELA_COLABORADOR).select("mes,colaborador,departamento,total");
+  if (error) {
+    if (tabelaAusente(error)) return [];
+    throw traduzErro(error);
+  }
+  return ((data ?? []) as AtendimentoColaborador[]).map((r) => ({
+    mes: r.mes,
+    colaborador: r.colaborador,
     departamento: r.departamento,
     total: Number(r.total),
   }));
@@ -125,10 +203,29 @@ export function atendimentosDoMes(
     .sort((x, y) => y.total - x.total);
 }
 
-export function totalAtendimentos(
-  dados: AtendimentoDepartamento[],
+/**
+ * A planilha traz o nome curto ("Adalgiza") e o Gestta, o nome completo ("Adalgiza Argôlo de Souza").
+ * Bate quando as palavras da planilha são o início do nome do Gestta.
+ */
+export function colaboradorCorresponde(nomePlanilha: string, nomeGestta: string): boolean {
+  const planilha = semAcento(nomePlanilha).split(" ");
+  const gestta = semAcento(nomeGestta).split(" ");
+  return planilha.length <= gestta.length && planilha.every((p, i) => p === gestta[i]);
+}
+
+/** Todas as linhas por colaborador e departamento do mês, do maior para o menor. */
+export function atendimentosDoColaboradoresDoMes(dados: AtendimentoColaborador[], mes: string): AtendimentoColaborador[] {
+  return dados.filter((d) => d.mes === mes).sort((x, y) => y.total - x.total);
+}
+
+/** Atendimentos de um colaborador (nome do Gestta) no mês, do maior para o menor, por departamento. */
+export function atendimentosDoColaborador(
+  dados: AtendimentoColaborador[],
   mes: string,
-  setores: string[] | null,
-): number {
-  return atendimentosDoMes(dados, mes, setores).reduce((soma, d) => soma + d.total, 0);
+  nomeGestta: string,
+): AtendimentoDepartamento[] {
+  return dados
+    .filter((d) => d.mes === mes && colaboradorCorresponde(d.colaborador, nomeGestta))
+    .map((d) => ({ mes: d.mes, departamento: d.departamento, total: d.total }))
+    .sort((x, y) => y.total - x.total);
 }

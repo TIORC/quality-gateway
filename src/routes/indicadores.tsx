@@ -93,12 +93,16 @@ import {
   type TarefaGestta,
 } from "@/lib/tarefas-gestta";
 import {
+  atendimentosDoColaborador,
+  atendimentosDoColaboradoresDoMes,
   atendimentosDoMes,
   carregarAtendimentos,
+  carregarAtendimentosColaborador,
   importarAtendimentos,
+  importarAtendimentosColaborador,
   lerPlanilhaAtendimentos,
   mesDoNomeDoArquivo,
-  totalAtendimentos,
+  type AtendimentoColaborador,
   type AtendimentoDepartamento,
 } from "@/lib/atendimentos";
 
@@ -220,14 +224,23 @@ function formatarData(iso: string | null) {
   return `${d}/${m}/${a}`;
 }
 
+/** Uma linha do detalhe de atendimentos: colaborador ou departamento, conforme a visão. */
+interface LinhaDetalheAtendimento {
+  chave: string;
+  rotulo: string;
+  total: number;
+}
+
 function DetalheAtendimentosSheet({
   aberto,
   linhas,
+  coluna,
   mes,
   onFechar,
 }: {
   aberto: boolean;
-  linhas: AtendimentoDepartamento[];
+  linhas: LinhaDetalheAtendimento[];
+  coluna: "Colaborador" | "Departamento";
   mes: string;
   onFechar: () => void;
 }) {
@@ -245,14 +258,14 @@ function DetalheAtendimentosSheet({
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-[#E2E8F0] text-[#1F2937] dark:bg-[#1E293B] dark:text-white">
               <tr>
-                <th className="border border-[#CBD5E1] px-3 py-2 text-left font-semibold">Departamento</th>
+                <th className="border border-[#CBD5E1] px-3 py-2 text-left font-semibold">{coluna}</th>
                 <th className="border border-[#CBD5E1] px-3 py-2 text-right font-semibold">Total</th>
               </tr>
             </thead>
             <tbody>
               {linhas.map((l) => (
-                <tr key={l.departamento} className="odd:bg-transparent even:bg-[#94A3B8]/10">
-                  <td className="border border-[#CBD5E1]/60 px-3 py-1.5">{l.departamento}</td>
+                <tr key={l.chave} className="odd:bg-transparent even:bg-[#94A3B8]/10">
+                  <td className="border border-[#CBD5E1]/60 px-3 py-1.5">{l.rotulo}</td>
                   <td className="border border-[#CBD5E1]/60 px-3 py-1.5 text-right">{l.total}</td>
                 </tr>
               ))}
@@ -454,6 +467,7 @@ function Indicadores() {
   const [secao, setSecao] = useState<SecaoIndicadores>("por-setor");
   const [tarefas, setTarefas] = useState<TarefaGestta[]>([]);
   const [atendimentos, setAtendimentos] = useState<AtendimentoDepartamento[]>([]);
+  const [atendimentosColaborador, setAtendimentosColaborador] = useState<AtendimentoColaborador[]>([]);
   const [atendimentosAberto, setAtendimentosAberto] = useState(false);
   /** Zerar tarefas: "mes" apaga o mês escolhido; "tudo" apaga todas. `null` = sem confirmação aberta. */
   const [zerarAlvo, setZerarAlvo] = useState<"mes" | "tudo" | null>(null);
@@ -461,7 +475,8 @@ function Indicadores() {
   const [colaboradorFiltro, setColaboradorFiltro] = useState("todos");
   /** Período de exibição (cards, gráficos, resumo e histórico). */
   const [periodo, setPeriodo] = useState<FiltroPeriodo>({ modo: "ultimos12" });
-  const [mesEscolhido, setMesEscolhido] = useState(mesReferenciaAtual());
+  // Abre sempre no mês anterior ao atual.
+  const [mesEscolhido, setMesEscolhido] = useState(() => mesAnterior(mesReferenciaAtual()));
   const [anoEscolhido, setAnoEscolhido] = useState(() => new Date().getFullYear());
   /** Seleção parcial do calendário de intervalo (1º clique → arrastar → 2º clique). */
   const [intervaloCal, setIntervaloCal] = useState<DateRange>({ from: undefined });
@@ -604,8 +619,11 @@ function Indicadores() {
   }
 
   useEffect(() => {
-    carregarAtendimentos()
-      .then(setAtendimentos)
+    Promise.all([carregarAtendimentos(), carregarAtendimentosColaborador()])
+      .then(([departamentos, colaboradores]) => {
+        setAtendimentos(departamentos);
+        setAtendimentosColaborador(colaboradores);
+      })
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar os atendimentos."));
   }, []);
 
@@ -620,18 +638,29 @@ function Indicadores() {
           : secao === "por-setor" && setorFiltro !== "todos"
             ? [setorFiltro]
             : null;
+  /** Colaborador escolhido em Por Colaborador (visão geral): o card mostra os atendimentos dele. */
+  const colaboradorAtendimento =
+    escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro !== "todos" ? colaboradorFiltro : null;
+  /** Por Colaborador sem nome escolhido: o detalhe lista todos os colaboradores (Colaborador | Total). */
+  const todosColaboradores = escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro === "todos";
+  const mostrarAtendimentos = colaboradorAtendimento !== null || todosColaboradores || setoresAtendimentos !== undefined;
+  const linhasAtendimentos: LinhaDetalheAtendimento[] = todosColaboradores
+    ? atendimentosDoColaboradoresDoMes(atendimentosColaborador, mesEscolhido).map((l) => ({
+        chave: `${l.colaborador}|${l.departamento}`,
+        rotulo: l.departamento ? `${l.colaborador} - ${l.departamento}` : l.colaborador,
+        total: l.total,
+      }))
+    : (colaboradorAtendimento
+        ? atendimentosDoColaborador(atendimentosColaborador, mesEscolhido, colaboradorAtendimento)
+        : atendimentosDoMes(atendimentos, mesEscolhido, setoresAtendimentos ?? null)
+      ).map((d) => ({ chave: d.departamento, rotulo: d.departamento, total: d.total }));
+  const totalAtendimentosMes = linhasAtendimentos.reduce((soma, l) => soma + l.total, 0);
 
   useEffect(() => {
-    const abrir = (lista: TarefaGestta[]) => {
-      setTarefas(lista);
-      // Abre já no mês mais recente que tem tarefas (senão mostraria o mês atual, vazio).
-      const ultimo = lista.reduce((max, t) => (t.vencimento && t.vencimento.slice(0, 7) > max ? t.vencimento.slice(0, 7) : max), "");
-      if (ultimo) setMesEscolhido(ultimo);
-    };
     const emCache = tarefasEmCache();
-    if (emCache) abrir(emCache);
+    if (emCache) setTarefas(emCache);
     carregarTarefas()
-      .then((lista) => (emCache ? setTarefas(lista) : abrir(lista)))
+      .then(setTarefas)
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));
   }, []);
 
@@ -977,7 +1006,7 @@ function Indicadores() {
           onConfirmar={() => void confirmarZerar()}
         />
         <CardsTarefas metricas={metricasTarefas} tarefas={tarefasFiltradas} mes={mesEscolhido} />
-        {setoresAtendimentos !== undefined ? (
+        {mostrarAtendimentos ? (
           <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <button
               type="button"
@@ -986,22 +1015,25 @@ function Indicadores() {
             >
               <SummaryCard
                 label="Atendimentos Realizados"
-                value={String(totalAtendimentos(atendimentos, mesEscolhido, setoresAtendimentos))}
+                value={String(totalAtendimentosMes)}
                 valueClass="mt-3 text-[30px] font-semibold leading-none text-[#1F2937] dark:text-white"
                 accent="#1F2937"
                 footer={
-                  setoresAtendimentos === null
-                    ? "total de atendimentos no mês"
-                    : `atendimentos do setor no mês`
+                  colaboradorAtendimento
+                    ? "atendimentos do colaborador no mês"
+                    : setoresAtendimentos === null
+                      ? "total de atendimentos no mês"
+                      : `atendimentos do setor no mês`
                 }
               />
             </button>
           </section>
         ) : null}
-        {setoresAtendimentos !== undefined ? (
+        {mostrarAtendimentos ? (
           <DetalheAtendimentosSheet
             aberto={atendimentosAberto}
-            linhas={atendimentosDoMes(atendimentos, mesEscolhido, setoresAtendimentos)}
+            linhas={linhasAtendimentos}
+            coluna={todosColaboradores ? "Colaborador" : "Departamento"}
             mes={mesEscolhido}
             onFechar={() => setAtendimentosAberto(false)}
           />
@@ -1102,8 +1134,9 @@ function Indicadores() {
             <ImportadorAtendimentos
               mesPadrao={mesEscolhido}
               totalLinhas={atendimentos.length}
-              aoConcluir={(lista, mes) => {
+              aoConcluir={(lista, porColaborador, mes) => {
                 setAtendimentos(lista);
+                setAtendimentosColaborador(porColaborador);
                 setMesEscolhido(mes);
               }}
             />
@@ -1492,7 +1525,7 @@ function OcorrenciasIndicadores() {
 
 
 
-/** Importa a aba "Por Departamento" do relatório de atendimentos (substitui o mês do arquivo). */
+/** Importa as abas "Por Departamento" e "Por Colaborador" do relatório de atendimentos (substitui o mês do arquivo). */
 function ImportadorAtendimentos({
   mesPadrao,
   totalLinhas,
@@ -1500,7 +1533,7 @@ function ImportadorAtendimentos({
 }: {
   mesPadrao: string;
   totalLinhas: number;
-  aoConcluir: (lista: AtendimentoDepartamento[], mes: string) => void;
+  aoConcluir: (lista: AtendimentoDepartamento[], porColaborador: AtendimentoColaborador[], mes: string) => void;
 }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [importando, setImportando] = useState(false);
@@ -1512,17 +1545,24 @@ function ImportadorAtendimentos({
     setImportando(true);
     setResumo("");
     try {
-      const { linhas } = await lerPlanilhaAtendimentos(arquivo);
+      const { linhas, colaboradores } = await lerPlanilhaAtendimentos(arquivo);
       if (linhas.length === 0) throw new Error("Nenhum departamento encontrado na planilha.");
       // O mês vem da coluna Competência; sem ela, das datas do nome do arquivo ou do mês da tela.
       const mesPlanilha = mesDoNomeDoArquivo(arquivo.name) || mesPadrao;
       const comMes = linhas.map((l) => ({ ...l, mes: l.mes || mesPlanilha }));
+      const colaboradoresComMes = colaboradores.map((l) => ({ ...l, mes: l.mes || mesPlanilha }));
       await importarAtendimentos(comMes);
+      // Sem a aba "Por Colaborador", os atendimentos por colaborador do mês continuam como estavam.
+      if (colaboradoresComMes.length > 0) await importarAtendimentosColaborador(colaboradoresComMes);
       const meses = [...new Set(comMes.map((l) => l.mes))].sort();
       const total = comMes.reduce((soma, l) => soma + l.total, 0);
       setResumo(`${total} atendimentos em ${meses.map(rotuloMesLongo).join(", ")}.`);
       const mes = meses[meses.length - 1]!;
-      aoConcluir(await carregarAtendimentos(), mes);
+      const [departamentos, porColaborador] = await Promise.all([
+        carregarAtendimentos(),
+        carregarAtendimentosColaborador(),
+      ]);
+      aoConcluir(departamentos, porColaborador, mes);
       setArquivo(null);
       toast.success("Atendimentos importados.");
     } catch (e) {
@@ -1537,7 +1577,8 @@ function ImportadorAtendimentos({
       <h3 className="text-base font-semibold text-[#1F2937]">Atendimentos realizados</h3>
       <p className="mt-1 text-sm text-[#64748B]">
         Envie o Indicador de Atendimento (.xlsx). Lê a aba &quot;Por Departamento&quot; (colunas Departamento e
-        Total); o mês vem da coluna Competência, e reimportar um mês substitui os números dele.
+        Total) e, se existir, a aba &quot;Por Colaborador&quot; (colunas Colaborador e Total). O mês vem da coluna
+        Competência, e reimportar um mês substitui os números dele.
       </p>
       <div
         role="button"
