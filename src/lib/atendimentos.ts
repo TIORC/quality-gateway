@@ -186,7 +186,14 @@ export async function carregarAtendimentosColaborador(): Promise<AtendimentoCola
   }));
 }
 
-const chaveSetor = (nome: string) => semAcento(unificarSetor(nome));
+/**
+ * Compara departamento da planilha com o setor do sistema. A planilha traz "Contábil Maracás" e o
+ * sistema tem "Contábil": qualquer variação que comece por "contábil" conta como o setor Contábil.
+ */
+const chaveSetor = (nome: string) => {
+  const chave = semAcento(unificarSetor(nome));
+  return chave.startsWith("contabil") ? "contabil" : chave;
+};
 
 /**
  * Departamentos do mês, do maior para o menor. `setores` null = sem filtro;
