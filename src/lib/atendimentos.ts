@@ -210,14 +210,19 @@ export function atendimentosDoMes(
     .sort((x, y) => y.total - x.total);
 }
 
+/** Um nome é o início do outro, palavra por palavra ("Joyce Nascimento" e "Joyce Nascimento Santos"). */
+function inicioDoNome(curto: string, longo: string): boolean {
+  const a = semAcento(curto).split(" ");
+  const b = semAcento(longo).split(" ");
+  return a.length <= b.length && a.every((p, i) => p === b[i]);
+}
+
 /**
- * A planilha traz o nome curto ("Adalgiza") e o Gestta, o nome completo ("Adalgiza Argôlo de Souza").
- * Bate quando as palavras da planilha são o início do nome do Gestta.
+ * Mesmo colaborador quando um nome é o início do outro, nos dois sentidos. Cobre a planilha com o
+ * nome curto ("Adalgiza") e o Gestta com o completo ("Adalgiza Argôlo de Souza"), e também o cadastro.
  */
-export function colaboradorCorresponde(nomePlanilha: string, nomeGestta: string): boolean {
-  const planilha = semAcento(nomePlanilha).split(" ");
-  const gestta = semAcento(nomeGestta).split(" ");
-  return planilha.length <= gestta.length && planilha.every((p, i) => p === gestta[i]);
+export function colaboradorCorresponde(nomeA: string, nomeB: string): boolean {
+  return inicioDoNome(nomeA, nomeB) || inicioDoNome(nomeB, nomeA);
 }
 
 /**

@@ -772,10 +772,8 @@ function Indicadores() {
       .filter((c) => ids.has(c.id))
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [catalogo.colaboradores, celulas, celulaAtual]);
-  const nomesDaCelula = useMemo(
-    () => new Set(colaboradoresDaCelula.map((c) => normalizarSetor(c.nome))),
-    [colaboradoresDaCelula],
-  );
+  const pertenceACelula = (responsavel: string) =>
+    colaboradoresDaCelula.some((c) => colaboradorCorresponde(c.nome, responsavel));
 
   /** Por Célula: atendimentos dos colaboradores da célula (ou de um só, se escolhido). */
   const linhasCelula: LinhaDetalheAtendimento[] = atendimentosDoColaboradoresDoMes(
@@ -819,16 +817,16 @@ function Indicadores() {
       return tarefas.filter((t) => setores.has(normalizarSetor(t.departamento)));
     }
     if (escopo === "proprio") {
-      const eu = normalizarSetor(sessao?.nome);
-      return eu ? tarefas.filter((t) => normalizarSetor(t.responsavel) === eu) : [];
+      const eu = sessao?.nome ?? "";
+      return eu.trim() ? tarefas.filter((t) => colaboradorCorresponde(t.responsavel, eu)) : [];
     }
     if (secao === "por-setor" && setorFiltro !== "todos")
       return tarefas.filter((t) => t.departamento === setorFiltro);
     if (secao === "por-celula") {
-      const daCelula = tarefas.filter((t) => nomesDaCelula.has(normalizarSetor(t.responsavel)));
+      const daCelula = tarefas.filter((t) => pertenceACelula(t.responsavel));
       return colaboradorCelulaFiltro === "todos"
         ? daCelula
-        : daCelula.filter((t) => t.responsavel === colaboradorCelulaFiltro);
+        : daCelula.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorCelulaFiltro));
     }
     if (secao === "por-colaborador") {
       const doSetor =
@@ -842,7 +840,7 @@ function Indicadores() {
     setorFiltro,
     colaboradorFiltro,
     setorDoColaborador,
-    nomesDaCelula,
+    colaboradoresDaCelula,
     colaboradorCelulaFiltro,
     escopo,
     setoresDoEscopo,
@@ -877,7 +875,7 @@ function Indicadores() {
   // Colaborador: só a seção "Por Colaborador", já com o próprio nome selecionado.
   const soProprio = escopo === "proprio";
   const meuNomeNasTarefas =
-    colaboradoresTarefas.find((n) => normalizarSetor(n) === normalizarSetor(sessao?.nome)) ??
+    colaboradoresTarefas.find((n) => colaboradorCorresponde(n, sessao?.nome ?? "")) ??
     sessao?.nome ??
     "";
   useEffect(() => {

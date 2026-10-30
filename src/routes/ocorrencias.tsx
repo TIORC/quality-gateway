@@ -367,6 +367,133 @@ function Ocorrencias() {
 /* Lista                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/** Pontos de um hexágono centrado em (100, 100) com raio `r`. */
+function hexagono(r: number): string {
+  return Array.from({ length: 6 }, (_, k) => {
+    const angulo = (Math.PI / 3) * k;
+    return `${(100 + r * Math.cos(angulo)).toFixed(1)},${(100 + r * Math.sin(angulo)).toFixed(1)}`;
+  }).join(" ");
+}
+
+const ENTRADA_FUNDO = {
+  initial: { opacity: 0 },
+  animate: { opacity: 0.22 },
+  transition: { duration: 0.8, ease: "easeOut" as const },
+};
+
+/**
+ * Desenho de fundo dos cards de tipo, animado com framer-motion. Cada card recebe
+ * uma variante (0 a 3), para que os desenhos sejam diferentes entre si.
+ */
+function FundoAnimado({ variante }: { variante: number }) {
+  const classe = "pointer-events-none absolute -bottom-14 -right-14 h-48 w-48 text-white";
+
+  if (variante === 1) {
+    // Ondas que deslizam na horizontal.
+    return (
+      <motion.svg aria-hidden="true" viewBox="0 0 200 200" className={classe} {...ENTRADA_FUNDO}>
+        {[50, 100, 150].map((y, i) => (
+          <motion.path
+            key={y}
+            d={`M-60 ${y} Q -20 ${y - 25} 20 ${y} T 100 ${y} T 180 ${y} T 260 ${y}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            animate={{ x: [0, -40, 0] }}
+            transition={{ duration: 6 + i, ease: "easeInOut", repeat: Infinity }}
+          />
+        ))}
+      </motion.svg>
+    );
+  }
+
+  if (variante === 2) {
+    // Grade de pontos que pulsam em ondas.
+    return (
+      <motion.svg aria-hidden="true" viewBox="0 0 200 200" className={classe} {...ENTRADA_FUNDO}>
+        {Array.from({ length: 25 }, (_, i) => {
+          const x = 20 + (i % 5) * 40;
+          const y = 20 + Math.floor(i / 5) * 40;
+          return (
+            <motion.circle
+              key={i}
+              cx={x}
+              cy={y}
+              r={5}
+              fill="currentColor"
+              animate={{ scale: [1, 1.8, 1], opacity: [0.4, 1, 0.4] }}
+              transition={{
+                duration: 3,
+                ease: "easeInOut",
+                repeat: Infinity,
+                delay: (i % 5) * 0.2 + Math.floor(i / 5) * 0.15,
+              }}
+              style={{ originX: `${x}px`, originY: `${y}px` }}
+            />
+          );
+        })}
+      </motion.svg>
+    );
+  }
+
+  if (variante === 3) {
+    // Hexágonos concêntricos girando em sentidos opostos.
+    return (
+      <motion.svg aria-hidden="true" viewBox="0 0 200 200" className={classe} {...ENTRADA_FUNDO}>
+        <motion.polygon
+          points={hexagono(90)}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 40, ease: "linear", repeat: Infinity }}
+          style={{ originX: "100px", originY: "100px" }}
+        />
+        <motion.polygon
+          points={hexagono(55)}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeDasharray="6 8"
+          animate={{ rotate: -360 }}
+          transition={{ duration: 30, ease: "linear", repeat: Infinity }}
+          style={{ originX: "100px", originY: "100px" }}
+        />
+        <motion.polygon
+          points={hexagono(20)}
+          fill="currentColor"
+          animate={{ scale: [1, 1.15, 1] }}
+          transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
+          style={{ originX: "100px", originY: "100px" }}
+        />
+      </motion.svg>
+    );
+  }
+
+  // Variante 0: anéis que giram, com um círculo central que pulsa.
+  return (
+    <motion.svg aria-hidden="true" viewBox="0 0 200 200" className={classe} {...ENTRADA_FUNDO}>
+      <motion.g
+        animate={{ rotate: 360 }}
+        transition={{ duration: 60, ease: "linear", repeat: Infinity }}
+        style={{ originX: "100px", originY: "100px" }}
+      >
+        <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="100" cy="100" r="60" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="6 8" />
+      </motion.g>
+      <motion.circle
+        cx="100"
+        cy="100"
+        r="28"
+        fill="currentColor"
+        animate={{ scale: [1, 1.08, 1] }}
+        transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
+        style={{ originX: "100px", originY: "100px" }}
+      />
+    </motion.svg>
+  );
+}
+
 function ListaOcorrencias({
   ocorrencias,
   tipos,
@@ -634,7 +761,7 @@ function AberturaOcorrencia({
 
       <motion.div layout className="grid gap-6 md:grid-cols-2">
         <AnimatePresence initial={false}>
-          {visiveis.map((c) => {
+          {visiveis.map((c, indice) => {
             const aberto = selecionado === c.chave;
             const Icone = c.icone;
             return (
@@ -661,13 +788,14 @@ function AberturaOcorrencia({
                 }`}
                 style={{ backgroundColor: c.cor }}
               >
-                <div className="flex items-center gap-3">
+                <FundoAnimado variante={indice % 4} />
+                <div className="relative flex items-center gap-3">
                   <span className="flex size-10 items-center justify-center rounded-lg bg-white/15">
                     <Icone className="size-5" aria-hidden />
                   </span>
                   <h2 className="text-xl font-bold">{c.rotulo}</h2>
                 </div>
-                <p className="mt-4 text-sm font-medium opacity-90">
+                <p className="relative mt-4 text-sm font-medium opacity-90">
                   {c.descricao}
                 </p>
 
