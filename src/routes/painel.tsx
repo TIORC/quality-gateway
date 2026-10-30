@@ -147,9 +147,9 @@ const ROTULO_VENCIMENTO: Record<ItemVencimento["tipo"], string> = {
 };
 
 const COR_VENCIMENTO: Record<ItemVencimento["tipo"], string> = {
-  pop: "bg-[#EEF2FF] text-[#4F46E5]",
-  politica: "bg-[#ECFDF5] text-[#047857]",
-  acao: "bg-[#FFF7ED] text-[#C2410C]",
+  pop: "bg-[#4F46E5] text-white",
+  politica: "bg-[#047857] text-white",
+  acao: "bg-[#C2410C] text-white",
 };
 
 interface SummaryCardProps {

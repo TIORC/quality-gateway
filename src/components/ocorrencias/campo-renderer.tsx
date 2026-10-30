@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import type { CampoFormulario, Respostas } from "@/lib/ocorrencias";
 import { TIPO_CAMPO_LABELS } from "@/lib/ocorrencias";
@@ -219,6 +219,7 @@ function CampoSetores({
 
 export function CampoFormularioRender(props: CampoRenderProps) {
   const { campo, respostas, onChange, colaboradores = [], setores, onArquivos, desabilitado = false } = props;
+  const { setores: setoresDaOrganizacao } = useCatalogoOrganizacional();
   const valor = respostas[campo.id];
   const erros = respostas["__erros"] as Record<string, string> | undefined;
   const erro = erros?.[campo.id];
@@ -446,9 +447,20 @@ export function CampoFormularioRender(props: CampoRenderProps) {
             <SelectValue placeholder={campo.placeholder || "Selecionar responsável…"} />
           </SelectTrigger>
           <SelectContent>
-            {(colaboradores ?? []).map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-            ))}
+            {setoresDaOrganizacao.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Setores</SelectLabel>
+                {setoresDaOrganizacao.map((nome) => (
+                  <SelectItem key={`setor-${nome}`} value={nome}>{nome}</SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+            <SelectGroup>
+              <SelectLabel>Colaboradores</SelectLabel>
+              {(colaboradores ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       )}

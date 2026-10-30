@@ -85,6 +85,11 @@ export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
 export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> {
   if (!session) return new Set();
   const permitidas = rotasGerais(session);
+  // "Minha equipe" existe para quem lidera setor e para quem acompanha todos os setores.
+  if (setoresLiderados(session).length > 0 || acompanhaTodosOsSetores(session)) {
+    permitidas.add("/minha-equipe");
+  }
+  else permitidas.delete("/minha-equipe");
   if (podeVerLogs(session)) permitidas.add(ROTA_LOGS);
   if (session.permissaoConfiguracoes) permitidas.add("/configuracoes");
   // Rotas liberadas pelos grupos de acesso da pessoa.
@@ -179,6 +184,15 @@ export function setoresLiderados(session: UserSession | null | undefined): strin
   if (!session || session.nivelAcesso !== NIVEL_LIDER_SETOR) return [];
   const nomes = [session.setor, ...(session.setoresLiderados ?? [])];
   return [...new Set(nomes.map(normalizarSetor).filter(Boolean))];
+}
+
+/**
+ * Acompanha a equipe de todos os setores (aba e menu "Minha equipe"): Gestor da
+ * Qualidade e Desenvolvedor do Sistema.
+ */
+export function acompanhaTodosOsSetores(session: UserSession | null | undefined): boolean {
+  if (!session) return false;
+  return ehAdministrador(session) || session.nivelAcesso === NIVEL_GESTOR_QUALIDADE;
 }
 
 /** Líder de setor que lidera o setor informado (nome do setor, sem diferenciar acentos). */

@@ -79,6 +79,7 @@ import {
   CHAVE_SETORES_ENVOLVIDOS,
   setoresDoFormulario,
   setoresEnvolvidosDe,
+  tituloDaOcorrencia,
   iconeTipoOcorrencia,
   idCurto,
   nomeEtapaDoTipo,
@@ -91,7 +92,13 @@ import {
 } from "@/lib/ocorrencias";
 import { getSession } from "@/lib/auth";
 import { NIVEL_LIDER_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
-import { ehUsuarioDaQualidade } from "@/lib/permissoes";
+import {
+  acompanhaTodosOsSetores,
+  ehAdministrador,
+  ehUsuarioDaQualidade,
+  liderDoSetor,
+  setoresLiderados,
+} from "@/lib/permissoes";
 import { podeConfigurarOcorrencias, veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
 
@@ -106,9 +113,15 @@ const ABAS = [
   { valor: "abertura", rotulo: "Abertura de Ocorrência" },
   { valor: "todas", rotulo: "Todas as Ocorrências" },
   { valor: "abri", rotulo: "Que eu abri" },
+  { valor: "equipe", rotulo: "Minha equipe" },
 ] as const;
 
-function Ocorrencias() {
+/** Página "Minha equipe": mesma lista, só com as ocorrências dos setores que a pessoa lidera. */
+export function OcorrenciasEquipe() {
+  return <Ocorrencias equipe />;
+}
+
+function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   // O hook de contexto é nulo aqui: este componente RENDERIZA o PanelShell (e o
   // contexto só flui para baixo). Lemos a sessão persistida no navegador, como
   // as demais rotas (planos-de-acao/painel).
@@ -121,7 +134,7 @@ function Ocorrencias() {
   // Cartão expandido na aba de abertura ("nao-conformidade" ou "reclamacao").
   const [cartaoSelecionado, setCartaoSelecionado] = useState<string | null>(null);
   // Aba ativa; depois de abrir uma ocorrência, a tela vai para "Que eu abri".
-  const [abaAtiva, setAbaAtiva] = useState<string>("abertura");
+  const [abaAtiva, setAbaAtiva] = useState<string>(equipe ? "equipe" : "abertura");
   const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
   // Aviso de ocorrência registrada (fica na tela até ser dispensado).
   const [avisoCriada, setAvisoCriada] = useState<Ocorrencia | null>(null);
@@ -167,9 +180,20 @@ function Ocorrencias() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ocorrencias.loading, refreshToken]);
 
-  const abasVisiveis = ABAS.filter(
-    (aba) => aba.valor !== "todas" || veTodasAsOcorrencias(session),
-  );
+  // A aba "Minha equipe" existe para quem lidera setor e para quem acompanha todos os setores.
+  const ehLiderDeSetor = setoresLiderados(session).length > 0 || acompanhaTodosOsSetores(session);
+  const abasVisiveis = ABAS.filter((aba) => {
+    if (equipe) return aba.valor === "equipe";
+    if (aba.valor === "equipe") return ehLiderDeSetor;
+    return aba.valor !== "todas" || veTodasAsOcorrencias(session);
+  });
+
+  // Ocorrência de um setor que a pessoa lidera (aberta por alguém dele ou com ele envolvido).
+  // Gestor da Qualidade e Desenvolvedor do Sistema acompanham todos os setores.
+  const setorDaEquipe = (o: Ocorrencia): boolean =>
+    acompanhaTodosOsSetores(session) ||
+    liderDoSetor(session, o.abertaPorSetor) ||
+    setoresEnvolvidosDe(o).some((s) => liderDoSetor(session, s));
 
   const filtrar = (aba: (typeof ABAS)[number]["valor"], o: Ocorrencia): boolean => {
     const email = (session?.email ?? "").trim().toLowerCase();
@@ -183,6 +207,7 @@ function Ocorrencias() {
         (!!o.responsavelId && o.responsavelId === colaboradorId));
     if (aba === "abertura") return false;
     if (aba === "todas") return true;
+    if (aba === "equipe") return setorDaEquipe(o);
     // Setor envolvido (marcado no formulário) acompanha para dar ciência.
     const meuSetor = normalizarSetor(session?.setor);
     const setorEnvolvido =
@@ -220,11 +245,12 @@ function Ocorrencias() {
               Tratativa
             </p>
             <h1 className="mt-1.5 text-2xl font-bold tracking-tight text-[#1F2937] sm:text-[26px]">
-              Ocorrências
+              {equipe ? "Minha equipe" : "Ocorrências"}
             </h1>
             <p className="mt-1.5 max-w-2xl text-sm text-[#64748B]">
-              Quem abre acompanha a etapa como quem acompanha o metrô: só sabe onde está e quando
-              chega.
+              {equipe
+                ? "Acompanhe junto com a Qualidade as ocorrências dos setores que você lidera."
+                : "Quem abre acompanha a etapa como quem acompanha o metrô: só sabe onde está e quando chega."}
             </p>
           </div>
 
@@ -381,6 +407,17 @@ const ENTRADA_FUNDO = {
   transition: { duration: 0.8, ease: "easeOut" as const },
 };
 
+/*
+ * Origem das transformações no SVG. Com `transformBox: view-box`, a origem é
+ * medida na viewBox (0 a 200), então giros e escalas acontecem em torno do centro
+ * do desenho e não se deslocam como aconteceria com a caixa de cada elemento.
+ */
+const CENTRO_FUNDO = {
+  transformBox: "view-box" as const,
+  originX: 0.5,
+  originY: 0.5,
+};
+
 /**
  * Desenho de fundo dos cards de tipo, animado com framer-motion. Cada card recebe
  * uma variante (0 a 3), para que os desenhos sejam diferentes entre si.
@@ -428,7 +465,7 @@ function FundoAnimado({ variante }: { variante: number }) {
                 repeat: Infinity,
                 delay: (i % 5) * 0.2 + Math.floor(i / 5) * 0.15,
               }}
-              style={{ originX: `${x}px`, originY: `${y}px` }}
+              style={{ transformBox: "view-box", originX: x / 200, originY: y / 200 }}
             />
           );
         })}
@@ -447,7 +484,7 @@ function FundoAnimado({ variante }: { variante: number }) {
           strokeWidth="2"
           animate={{ rotate: 360 }}
           transition={{ duration: 40, ease: "linear", repeat: Infinity }}
-          style={{ originX: "100px", originY: "100px" }}
+          style={CENTRO_FUNDO}
         />
         <motion.polygon
           points={hexagono(55)}
@@ -457,14 +494,14 @@ function FundoAnimado({ variante }: { variante: number }) {
           strokeDasharray="6 8"
           animate={{ rotate: -360 }}
           transition={{ duration: 30, ease: "linear", repeat: Infinity }}
-          style={{ originX: "100px", originY: "100px" }}
+          style={CENTRO_FUNDO}
         />
         <motion.polygon
           points={hexagono(20)}
           fill="currentColor"
           animate={{ scale: [1, 1.15, 1] }}
           transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
-          style={{ originX: "100px", originY: "100px" }}
+          style={CENTRO_FUNDO}
         />
       </motion.svg>
     );
@@ -476,7 +513,7 @@ function FundoAnimado({ variante }: { variante: number }) {
       <motion.g
         animate={{ rotate: 360 }}
         transition={{ duration: 60, ease: "linear", repeat: Infinity }}
-        style={{ originX: "100px", originY: "100px" }}
+        style={CENTRO_FUNDO}
       >
         <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="2" />
         <circle cx="100" cy="100" r="60" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="6 8" />
@@ -488,7 +525,7 @@ function FundoAnimado({ variante }: { variante: number }) {
         fill="currentColor"
         animate={{ scale: [1, 1.08, 1] }}
         transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
-        style={{ originX: "100px", originY: "100px" }}
+        style={CENTRO_FUNDO}
       />
     </motion.svg>
   );
@@ -734,13 +771,15 @@ function AberturaOcorrencia({
   const cartoes = tipos
     .filter((t) => t.ativo)
     .sort((a, b) => a.ordem - b.ordem)
-    .map((t) => ({
+    .map((t, posicao) => ({
       chave: t.id,
       rotulo: t.nome,
       descricao: t.descricao || "Sem descrição",
       icone: iconeTipoOcorrencia(t.icone),
       cor: t.cor,
       tipoId: t.id,
+      // Fixo pela posição no cadastro, para o desenho do fundo não trocar ao filtrar.
+      variante: posicao % 4,
     }));
   const visiveis = cartoes.filter((c) => !selecionado || c.chave === selecionado);
 
@@ -761,7 +800,7 @@ function AberturaOcorrencia({
 
       <motion.div layout className="grid gap-6 md:grid-cols-2">
         <AnimatePresence initial={false}>
-          {visiveis.map((c, indice) => {
+          {visiveis.map((c) => {
             const aberto = selecionado === c.chave;
             const Icone = c.icone;
             return (
@@ -788,7 +827,7 @@ function AberturaOcorrencia({
                 }`}
                 style={{ backgroundColor: c.cor }}
               >
-                <FundoAnimado variante={indice % 4} />
+                <FundoAnimado variante={c.variante} />
                 <div className="relative flex items-center gap-3">
                   <span className="flex size-10 items-center justify-center rounded-lg bg-white/15">
                     <Icone className="size-5" aria-hidden />
@@ -814,6 +853,7 @@ function AberturaOcorrencia({
           })}
         </AnimatePresence>
       </motion.div>
+
     </div>
   );
 }
@@ -987,11 +1027,7 @@ function AbrirOcorrenciaDialog({
       toast.error("Verifique os campos obrigatórios do formulário.");
       return;
     }
-    const titulo = String(respostasLimpas["titulo"] ?? "").trim();
-    if (!titulo) {
-      toast.error("Informe o título curto da ocorrência.");
-      return;
-    }
+    const titulo = tituloDaOcorrencia(versoes.campos, respostasLimpas, tipo.nome);
     setSalvando(true);
     try {
       const criada = await abrirOcorrencia(
@@ -1366,8 +1402,12 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
   const [telas, setTelas] = useState<string[]>([]);
   const [versao, setVersao] = useState(1);
   const [publicando, setPublicando] = useState(false);
+  // Assinatura (campos + telas) da última versão publicada nesta tela. Se o formulário
+  // mudar depois, deixa de bater e o botão volta ao normal.
+  const [publicadoAssinatura, setPublicadoAssinatura] = useState<string | null>(null);
 
   const tipo = tipos.find((t) => t.id === tipoId);
+  const assinaturaAtual = JSON.stringify([campos, telas]);
 
   useEffect(() => {
     if (!tipoId) {
@@ -1407,6 +1447,7 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
       setCampos(v.campos);
       setTelas(v.telas);
       setVersao(v.formularioVersao);
+      setPublicadoAssinatura(JSON.stringify([v.campos, v.telas]));
     } catch (e) {
       toast.error(traduzErro(e).message);
     } finally {
@@ -1449,6 +1490,7 @@ function FormularioTab({ tipos }: { tipos: TipoOcorrencia[] }) {
           onChangeTelas={setTelas}
           onPublicar={publicar}
           publicando={publicando}
+          publicado={publicadoAssinatura === assinaturaAtual}
         />
       )}
     </div>

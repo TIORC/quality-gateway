@@ -659,6 +659,31 @@
   animation: ocorrencia-card-entrada 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* Botão "Puxar tratativa": treme de tempos em tempos para chamar atenção. */
+@keyframes ocorrencia-botao-tremer {
+  0%,
+  40%,
+  100% {
+    transform: translateX(0);
+  }
+  5%,
+  25% {
+    transform: translateX(-3px);
+  }
+  10%,
+  30% {
+    transform: translateX(3px);
+  }
+  15%,
+  35% {
+    transform: translateX(-2px);
+  }
+}
+
+.ocorrencia-botao-tremer {
+  animation: ocorrencia-botao-tremer 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ocorrencia-card-entrada {
     opacity: 1;

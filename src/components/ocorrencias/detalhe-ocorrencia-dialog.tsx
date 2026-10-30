@@ -48,6 +48,8 @@ import {
   agirNaOcorrencia,
   assumirOcorrencia,
   liberarOcorrencia,
+  marcarImpedida,
+  retomarImpedida,
   avaliarEficacia,
   carregarFluxoAtivo,
   carregarFormularioAtivo,
@@ -70,6 +72,7 @@ import { listarHistorico, listarOcorrencias } from "@/lib/ocorrencias-base";
 import {
   podeAgir,
   podeAssumirOcorrencia,
+  podeSugerirAcao,
   podeDefinirPrioridade,
   podeLiberarOcorrencia,
   podeMoverEtapa,
@@ -84,6 +87,9 @@ import {
 import { traduzErro } from "@/lib/organizacao";
 import { normalizarSetor } from "@/lib/niveis-acesso";
 import { cienciasDe, setoresEnvolvidosDe } from "@/lib/ocorrencias";
+import { marcarRetornoVisto } from "@/lib/ocorrencias-retorno";
+import { PlanoAcoesOcorrencia } from "@/components/ocorrencias/plano-acoes-ocorrencia";
+import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import {
   ACOES_ETAPA_LABELS,
   PROCEDENCIA_LABELS,
@@ -104,7 +110,9 @@ import {
   type MacroEtapa,
   type MacroFluxo,
   type Ocorrencia,
+  LIMITE_TEXTO_OCORRENCIA,
   type ProcedenciaOcorrencia,
+  type ResultadoEficacia,
   type Respostas,
 } from "@/lib/ocorrencias";
 
@@ -115,6 +123,9 @@ interface DetalheOcorrenciaDialogProps {
   /** Chamado após qualquer alteração para o pai atualizar a lista. */
   onAlterada?: () => void;
 }
+
+/** Tamanho máximo de cada anexo do relatório de eficácia (fotos, vídeos e documentos). */
+const TAMANHO_MAX_ANEXO_EFICACIA = 50 * 1024 * 1024;
 
 export function DetalheOcorrenciaDialog({
   aberto,
@@ -168,9 +179,23 @@ function DetalheCorpo({
 
   // Avaliação de eficácia (diálogo da Qualidade).
   const [avaliacaoAberta, setAvaliacaoAberta] = useState(false);
-  const [eficaz, setEficaz] = useState(true);
+  const [resultado, setResultado] = useState<ResultadoEficacia>("eficaz");
   const [observacao, setObservacao] = useState("");
+  const [novosAnexosEficacia, setNovosAnexosEficacia] = useState<File[]>([]);
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
+  // Marcar a etapa como impedida (o prazo para de contar).
+  const [impedindoAberto, setImpedindoAberto] = useState(false);
+  const [motivoImpedimento, setMotivoImpedimento] = useState("");
+  const [salvandoImpedimento, setSalvandoImpedimento] = useState(false);
+  const catalogo = useCatalogoOrganizacional();
+  // Retorno da Qualidade: abre sozinho quando a ocorrência é encerrada.
+  const [retornoAberto, setRetornoAberto] = useState(false);
+  useEffect(() => {
+    if (o.status !== "encerrada") return;
+    setRetornoAberto(true);
+    marcarRetornoVisto(o);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.id, o.status]);
 
   // Desconsiderar (Qualidade).
   const [desconsiderarAberto, setDesconsiderarAberto] = useState(false);
@@ -337,16 +362,62 @@ function DetalheCorpo({
   }
 
   async function confirmarAvaliacao() {
+    const grandes = novosAnexosEficacia.filter((f) => f.size > TAMANHO_MAX_ANEXO_EFICACIA);
+    if (grandes.length > 0) {
+      toast.error("Cada anexo deve ter até 50 MB.");
+      return;
+    }
     setSalvandoAvaliacao(true);
     try {
-      await avaliarEficacia(o, etapas, { eficaz, observacao: observacao.trim() }, session);
-      toast.success(eficaz ? "Eficácia confirmada." : "Ocorrência reaberta por ineficácia.");
+      const anexos: AnexoOcorrencia[] = [];
+      for (const arquivo of novosAnexosEficacia) {
+        anexos.push(await enviarAnexo(o.id, arquivo));
+      }
+      await avaliarEficacia(
+        o,
+        etapas,
+        { resultado, observacao: observacao.trim(), anexos },
+        session,
+      );
+      setNovosAnexosEficacia([]);
+      toast.success(
+        resultado === "eficaz"
+          ? "Eficácia confirmada."
+          : resultado === "nao_eficaz"
+            ? "Ocorrência reaberta por ineficácia."
+            : "Etapa marcada como impedida.",
+      );
       setAvaliacaoAberta(false);
       await recarregar();
     } catch (e) {
       toast.error(traduzErro(e).message);
     } finally {
       setSalvandoAvaliacao(false);
+    }
+  }
+
+  async function confirmarImpedimento() {
+    setSalvandoImpedimento(true);
+    try {
+      await marcarImpedida(o, session, motivoImpedimento);
+      toast.success("Etapa marcada como impedida. O prazo está parado.");
+      setImpedindoAberto(false);
+      setMotivoImpedimento("");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvandoImpedimento(false);
+    }
+  }
+
+  async function retomarEtapa() {
+    try {
+      await retomarImpedida(o, session);
+      toast.success("Impedimento resolvido. O prazo voltou a contar.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
     }
   }
 
@@ -505,7 +576,12 @@ function DetalheCorpo({
                     : "Aguardando alguém da Qualidade"}
               </span>
               {podeAssumir && !o.donoQualidadeNome && (
-                <Button type="button" size="sm" onClick={() => void puxarTratativa()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="ocorrencia-botao-tremer"
+                  onClick={() => void puxarTratativa()}
+                >
                   <Hand className="h-4 w-4" />
                   Puxar tratativa
                 </Button>
@@ -515,6 +591,29 @@ function DetalheCorpo({
                   Liberar tratativa
                 </Button>
               )}
+            </div>
+          )}
+
+          {o.impedidaEm && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#F59E0B] bg-[#FFFBEB] px-4 py-3">
+              <div className="text-[13px] text-[#92400E]">
+                <p className="font-semibold">
+                  Etapa impedida desde {formatarPrazo(o.impedidaEm.slice(0, 10))}
+                </p>
+                {o.impedidaMotivo && <p className="mt-0.5 whitespace-pre-wrap">{o.impedidaMotivo}</p>}
+              </div>
+              {podeMover && (
+                <Button type="button" size="sm" variant="outline" onClick={() => void retomarEtapa()}>
+                  Retomar prazo
+                </Button>
+              )}
+            </div>
+          )}
+          {!o.impedidaEm && podeMover && o.status !== "encerrada" && (
+            <div className="flex justify-end">
+              <Button type="button" size="sm" variant="outline" onClick={() => setImpedindoAberto(true)}>
+                Marcar etapa como impedida
+              </Button>
             </div>
           )}
 
@@ -855,7 +954,7 @@ function DetalheCorpo({
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      setEficaz(true);
+                      setResultado("eficaz");
                       setObservacao("");
                       setAvaliacaoAberta(true);
                     }}
@@ -869,17 +968,26 @@ function DetalheCorpo({
               {o.avaliacao && (
                 <div className="mt-3 rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
                   <span className="font-semibold">
-                    Avaliação:{" "}
-                    {o.avaliacao.eficaz === null
-                      ? "pendente"
-                      : o.avaliacao.eficaz
-                        ? "eficaz"
-                        : "ineficaz"}
+                    Relatório de eficácia:{" "}
+                    {o.avaliacao.resultado === "impedida"
+                      ? "impedida"
+                      : o.avaliacao.resultado === "nao_eficaz" || o.avaliacao.eficaz === false
+                        ? "não eficaz"
+                        : o.avaliacao.resultado === "eficaz" || o.avaliacao.eficaz === true
+                          ? "eficaz"
+                          : "pendente"}
                     {o.avaliacao.verificacaoEm
                       ? ` · verificação ${formatarPrazo(o.avaliacao.verificacaoEm)}`
                       : ""}
                   </span>
-                  {o.avaliacao.observacao && <p className="mt-0.5">{o.avaliacao.observacao}</p>}
+                  {o.avaliacao.observacao && (
+                    <p className="mt-0.5 whitespace-pre-wrap">{o.avaliacao.observacao}</p>
+                  )}
+                  {o.avaliacao.anexos.length > 0 && (
+                    <div className="mt-2">
+                      <AnexosVisualizador anexos={o.avaliacao.anexos} />
+                    </div>
+                  )}
                 </div>
               )}
             </section>
@@ -927,6 +1035,24 @@ function DetalheCorpo({
                 </ul>
               </section>
             )}
+
+          {o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
+            <PlanoAcoesOcorrencia
+              ocorrencia={o}
+              session={session}
+              colaboradores={catalogo.colaboradores}
+              podeSugerir={podeSugerirAcao(session, o)}
+              podeValidar={podeOperarOcorrencias(session)}
+            />
+          )}
+
+          {o.status === "encerrada" && (
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => setRetornoAberto(true)}>
+                Ver retorno da Qualidade
+              </Button>
+            </div>
+          )}
 
           {o.parecerFinal && (
             <section className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4">
@@ -1125,9 +1251,11 @@ function DetalheCorpo({
           <DialogHeader>
             <DialogTitle>Avaliar eficácia</DialogTitle>
             <DialogDescription>
-              {eficaz
+              {resultado === "eficaz"
                 ? "Não houve reincidência: a ocorrência é encerrada."
-                : "Houve reincidência: a ocorrência volta para o plano de ação e abre um novo ciclo."}
+                : resultado === "nao_eficaz"
+                  ? "Houve reincidência: a ocorrência volta para o plano de ação e abre um novo ciclo."
+                  : "A etapa depende de alguém ou de algo: o prazo para de contar até ser retomada."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1135,34 +1263,72 @@ function DetalheCorpo({
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                variant={eficaz ? "default" : "outline"}
+                variant={resultado === "eficaz" ? "default" : "outline"}
                 size="sm"
-                className={eficaz ? "bg-[#059669] text-white hover:bg-[#047857]" : ""}
-                onClick={() => setEficaz(true)}
+                className={resultado === "eficaz" ? "bg-[#059669] text-white hover:bg-[#047857]" : ""}
+                onClick={() => setResultado("eficaz")}
               >
                 <CheckCircle2 className="h-4 w-4" />
                 Eficaz
               </Button>
               <Button
                 type="button"
-                variant={!eficaz ? "default" : "outline"}
+                variant={resultado === "nao_eficaz" ? "default" : "outline"}
                 size="sm"
-                className={!eficaz ? "bg-[#E11D48] text-white hover:bg-[#BE123C]" : ""}
-                onClick={() => setEficaz(false)}
+                className={resultado === "nao_eficaz" ? "bg-[#E11D48] text-white hover:bg-[#BE123C]" : ""}
+                onClick={() => setResultado("nao_eficaz")}
               >
                 <AlertTriangle className="h-4 w-4" />
-                Ineficaz
+                Não eficaz
+              </Button>
+              <Button
+                type="button"
+                variant={resultado === "impedida" ? "default" : "outline"}
+                size="sm"
+                className={resultado === "impedida" ? "bg-[#F59E0B] text-white hover:bg-[#D97706]" : ""}
+                onClick={() => setResultado("impedida")}
+              >
+                Impedida
               </Button>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-[13px]">Observação</Label>
+              <Label className="text-[13px]">
+                {resultado === "impedida" ? "Motivo do impedimento" : "Justificativa"}
+              </Label>
               <Textarea
                 className="min-h-[80px]"
-                placeholder="O que foi verificado / por que a ação não resolveu…"
+                maxLength={LIMITE_TEXTO_OCORRENCIA}
+                placeholder={
+                  resultado === "impedida"
+                    ? "Do que a etapa depende e por que está parada…"
+                    : "O que foi verificado / por que a ação resolveu ou não resolveu…"
+                }
                 value={observacao}
                 onChange={(e) => setObservacao(e.target.value)}
               />
+              <p className="text-right text-[11px] text-[#94A3B8]">
+                {observacao.length}/{LIMITE_TEXTO_OCORRENCIA} caracteres
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[13px]">Fotos, vídeos e documentos (opcional)</Label>
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]">
+                <Paperclip className="h-3.5 w-3.5" />
+                {novosAnexosEficacia.length > 0
+                  ? `${novosAnexosEficacia.length} arquivo(s) a enviar`
+                  : "Anexar imagens, vídeos ou documentos (até 50 MB cada)"}
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                  className="hidden"
+                  onChange={(e) =>
+                    setNovosAnexosEficacia((atual) => [...atual, ...Array.from(e.target.files ?? [])])
+                  }
+                />
+              </label>
             </div>
           </div>
 
@@ -1175,18 +1341,97 @@ function DetalheCorpo({
               disabled={salvandoAvaliacao}
               onClick={() => void confirmarAvaliacao()}
               className={
-                eficaz
+                resultado === "eficaz"
                   ? "bg-[#059669] text-white hover:bg-[#047857]"
-                  : "bg-[#E11D48] text-white hover:bg-[#BE123C]"
+                  : resultado === "nao_eficaz"
+                    ? "bg-[#E11D48] text-white hover:bg-[#BE123C]"
+                    : "bg-[#F59E0B] text-white hover:bg-[#D97706]"
               }
             >
               {salvandoAvaliacao
                 ? "Salvando…"
-                : eficaz
+                : resultado === "eficaz"
                   ? "Confirmar eficácia"
-                  : "Reabrir por ineficácia"}
+                  : resultado === "nao_eficaz"
+                    ? "Reabrir por ineficácia"
+                    : "Marcar como impedida"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={impedindoAberto} onOpenChange={(a) => !a && setImpedindoAberto(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Marcar etapa como impedida</DialogTitle>
+            <DialogDescription>
+              O prazo desta etapa para de contar até o impedimento ser resolvido e a etapa ser retomada.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label className="text-[13px]">Motivo do impedimento</Label>
+            <Textarea
+              className="min-h-[100px]"
+              maxLength={LIMITE_TEXTO_OCORRENCIA}
+              placeholder="Do que a etapa depende e por que está parada…"
+              value={motivoImpedimento}
+              onChange={(e) => setMotivoImpedimento(e.target.value)}
+            />
+            <p className="text-right text-[11px] text-[#94A3B8]">
+              {motivoImpedimento.length}/{LIMITE_TEXTO_OCORRENCIA} caracteres
+            </p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setImpedindoAberto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={salvandoImpedimento || !motivoImpedimento.trim()}
+              onClick={() => void confirmarImpedimento()}
+              className="bg-[#F59E0B] text-white hover:bg-[#D97706]"
+            >
+              {salvandoImpedimento ? "Salvando…" : "Marcar como impedida"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={retornoAberto} onOpenChange={(a) => !a && setRetornoAberto(false)}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Retorno da Qualidade</DialogTitle>
+            <DialogDescription>
+              {o.numero} · {o.titulo}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {verInternos && (
+              <section className="space-y-2">
+                <h3 className="text-[15px] font-bold text-[#1F2937]">O que foi identificado:</h3>
+                <p className="whitespace-pre-wrap rounded-xl bg-[#F8FAFC] p-4 text-[14px] leading-relaxed text-[#334155]">
+                  {salvosApuracao?.texto?.trim() || "Não registrado."}
+                </p>
+              </section>
+            )}
+
+            <section className="space-y-2">
+              <h3 className="text-[15px] font-bold text-[#1F2937]">Como resolvemos:</h3>
+              <p className="whitespace-pre-wrap rounded-xl bg-[#F0FDF4] p-4 text-[14px] leading-relaxed text-[#14532D]">
+                {o.parecerFinal || "Não registrado."}
+              </p>
+            </section>
+          </div>
+
+          <p className="border-t border-[#E2E8F0] pt-4 text-[14px] text-[#475569]">
+            Encerrado por{" "}
+            <strong className="text-[#1F2937]">
+              {eventos.filter((e) => e.acao === "Encerramento").slice(-1)[0]?.autorNome ||
+                "a Qualidade"}
+            </strong>{" "}
+            — Obrigado pelo registro, ele ajudou a melhorar o processo.
+          </p>
         </DialogContent>
       </Dialog>
     </DialogContent>

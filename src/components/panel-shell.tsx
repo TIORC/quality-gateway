@@ -21,6 +21,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -32,6 +33,9 @@ import {
   type UserSession,
 } from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
+import { listarOcorrencias } from "@/lib/ocorrencias-base";
+import type { Ocorrencia } from "@/lib/ocorrencias";
+import { contarRetornosNaoVistos, EVENTO_RETORNO_VISTO } from "@/lib/ocorrencias-retorno";
 import { rotaInicial, rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -70,6 +74,33 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
   const [session, setSession] = useState<UserSession | null>(null);
   const [checando, setChecando] = useState(true);
   const [menuAberto, setMenuAberto] = useState(false);
+  // Retornos da Qualidade ainda não vistos (contador ao lado de "Ocorrencias").
+  const [retornosPendentes, setRetornosPendentes] = useState(0);
+  const ultimasOcorrencias = useRef<Ocorrencia[]>([]);
+
+  useEffect(() => {
+    if (!session) return;
+    let ativo = true;
+    const recontar = () => {
+      if (ativo) setRetornosPendentes(contarRetornosNaoVistos(ultimasOcorrencias.current, session));
+    };
+    const buscar = () => {
+      listarOcorrencias()
+        .then((lista) => {
+          ultimasOcorrencias.current = lista;
+          recontar();
+        })
+        .catch(() => undefined);
+    };
+    buscar();
+    const intervalo = window.setInterval(buscar, 60_000);
+    window.addEventListener(EVENTO_RETORNO_VISTO, recontar);
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+      window.removeEventListener(EVENTO_RETORNO_VISTO, recontar);
+    };
+  }, [session]);
 
   // Guarda de acesso: admin, gestor e colaboradores com nível de acesso entram.
   // Antes, re-sincroniza a sessão com o vínculo organizacional atual (troca de
@@ -187,6 +218,11 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {item.label}
+                      {item.path === "/ocorrencias" && retornosPendentes > 0 && (
+                        <span className="ml-auto rounded-full bg-[#E11D48] px-2 py-0.5 text-[11px] font-bold leading-none text-white">
+                          {retornosPendentes}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );

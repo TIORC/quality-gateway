@@ -68,6 +68,8 @@ export interface FormBuilderProps {
   onChangeCampos: (campos: CampoFormulario[]) => void;
   onPublicar: () => Promise<void> | void;
   publicando?: boolean;
+  /** Versão atual já publicada e sem alterações: o botão fica verde. */
+  publicado?: boolean;
   /** Rótulo do botão principal (ex.: "Salvar campos da etapa" fora do contexto de publicação). */
   salvarLabel?: string;
   /** Texto de apoio sob o botão principal. */
@@ -96,6 +98,7 @@ export function FormBuilder({
   onChangeCampos,
   onPublicar,
   publicando,
+  publicado,
   salvarLabel,
   salvarDica,
   telas,
@@ -522,13 +525,19 @@ export function FormBuilder({
           type="button"
           onClick={() => void onPublicar()}
           disabled={publicando}
-          className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+          className={
+            publicado
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : "bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+          }
         >
-          {salvarLabel ?? "Publicar nova versão"}
+          {publicado ? "Publicado com sucesso" : (salvarLabel ?? "Publicar nova versão")}
         </Button>
         <p className="text-right text-xs text-[#94A3B8]">
-          {salvarDica ??
-            "Publicar cria uma nova versão — ocorrências já abertas continuam no formulário original."}
+          {publicado
+            ? "Versão publicada. Ocorrências novas já usam esta versão."
+            : (salvarDica ??
+              "Publicar cria uma nova versão — ocorrências já abertas continuam no formulário original.")}
         </p>
       </div>
     </div>

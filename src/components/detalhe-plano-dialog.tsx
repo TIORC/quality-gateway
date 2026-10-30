@@ -329,6 +329,8 @@ export function DetalhePlanoDialog({ plano, podeGerenciar, onFechar, onAlterado,
             <p className="text-[12px] text-[#64748B]">
               {plano.vinculoTipo === "Ata de Reunião" ? (
                 <>Vinculado à ata: “{tituloAta || plano.vinculoId}”</>
+              ) : plano.vinculoTipo === "ocorrencia" ? (
+                <>Ocorrência de origem: {plano.origemOutros || "—"}</>
               ) : (
                 <>Vinculado a: {plano.vinculoId}</>
               )}

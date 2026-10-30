@@ -75,7 +75,7 @@ function textoDaColuna(p: PlanoAcao, col: Coluna): string {
     case "titulo": return p.titulo;
     case "responsavel": return p.responsavelNome;
     case "seguidores": return p.seguidores.join(", ");
-    case "vinculo": return p.vinculoTipo ? `${p.vinculoTipo}: ${p.vinculoId}` : "";
+    case "vinculo": return p.vinculoTipo === "ocorrencia" ? `Ocorrência ${p.origemOutros}` : p.vinculoTipo ? `${p.vinculoTipo}: ${p.vinculoId}` : "";
     case "prazo": return formatarPrazo(p.prazo);
     case "status": return STATUS_ACAO_LABELS[p.status];
     case "progresso": return `${p.progresso}%`;
@@ -94,7 +94,11 @@ function Celula({ plano, coluna }: { plano: PlanoAcao; coluna: Coluna }) {
     case "progresso": return <span className="font-mono text-[12px]">{plano.progresso}%</span>;
     case "seguidores": return <span className="text-[#64748B]">{plano.seguidores.length || "—"}</span>;
     case "origem": return <span className="text-[#64748B]">{plano.origem}</span>;
-    case "vinculo": return <span className="text-[#64748B]">{plano.vinculoTipo || "—"}</span>;
+    case "vinculo": return (
+      <span className="text-[#64748B]">
+        {plano.vinculoTipo === "ocorrencia" ? `Ocorrência ${plano.origemOutros}` : plano.vinculoTipo || "—"}
+      </span>
+    );
     default: return <>{String(valorDaColuna(plano, coluna) || "—")}</>;
   }
 }

@@ -45,7 +45,23 @@ export const MACRO_ETAPAS = [
   "abertura",
   "apuracao",
   "julgamento",
+  "plano_acao",
+  "implementacao",
   "comunicacao",
+  "fechamento",
+  "avaliacao_eficacia",
+] as const;
+
+/**
+ * Linha do metrô padrão. Julgamento só entra para Reclamação de Cliente e Multa
+ * (ver `etapasDoTipo`); os demais tipos seguem com as 6 etapas restantes.
+ */
+const ETAPAS_PADRAO_IDS = [
+  "abertura",
+  "apuracao",
+  "julgamento",
+  "plano_acao",
+  "implementacao",
   "fechamento",
   "avaliacao_eficacia",
 ] as const;
@@ -64,9 +80,11 @@ export const MACRO_ETAPA_LABELS: Record<string, string> = {
   abertura: "Abertura",
   apuracao: "Apuração",
   julgamento: "Julgamento",
+  plano_acao: "Plano de ação",
+  implementacao: "Implementação",
   comunicacao: "Comunicação",
-  fechamento: "Fechamento",
-  avaliacao_eficacia: "Avaliação de Eficácia",
+  fechamento: "Finalização",
+  avaliacao_eficacia: "Eficácia",
 };
 
 export const MACRO_ETAPA_DESCRICAO: Partial<Record<MacroEtapa, string>> = {
@@ -243,12 +261,28 @@ export interface EtapaTipo {
 
 /** Etapas padrão da linha do metrô, com SLA inicial de 5 dias. */
 export function etapasPadrao(): EtapaTipo[] {
-  return MACRO_ETAPAS.map((id) => ({ id, nome: MACRO_ETAPA_LABELS[id] ?? id, slaDias: 5 }));
+  return ETAPAS_PADRAO_IDS.map((id) => ({ id, nome: MACRO_ETAPA_LABELS[id] ?? id, slaDias: 5 }));
+}
+
+/**
+ * Julgamento só existe para Reclamação de Cliente e Multa (7 etapas). Os demais
+ * tipos seguem com 6 etapas, sem julgamento.
+ */
+export function tipoTemJulgamento(tipo: { nome?: string } | null | undefined): boolean {
+  if (!tipo?.nome) return true;
+  const normalizado = tipo.nome
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  return normalizado.includes("reclamacao") || normalizado.includes("multa");
 }
 
 /** Etapas do tipo na ordem configurada (sem configuração: as padrão). */
-export function etapasDoTipo(tipo: { etapas?: EtapaTipo[] } | null | undefined): EtapaTipo[] {
-  return tipo?.etapas?.length ? tipo.etapas : etapasPadrao();
+export function etapasDoTipo(
+  tipo: { etapas?: EtapaTipo[]; nome?: string } | null | undefined,
+): EtapaTipo[] {
+  const etapas = tipo?.etapas?.length ? tipo.etapas : etapasPadrao();
+  return tipoTemJulgamento(tipo) ? etapas : etapas.filter((e) => e.id !== "julgamento");
 }
 
 export function nomeEtapaDoTipo(tipo: { etapas?: EtapaTipo[] } | null | undefined, id: string) {
@@ -324,7 +358,13 @@ export interface TipoOcorrencia {
   ordem: number;
 }
 
-export const PRAZOS_EFICACIA = [30, 60, 90] as const;
+export const PRAZOS_EFICACIA = [30, 60] as const;
+
+/** Limite de caracteres para observações, justificativas e motivos de impedimento. */
+export const LIMITE_TEXTO_OCORRENCIA = 12000;
+
+/** Resultado da avaliação de eficácia: eficaz encerra; não eficaz reabre; impedida para o prazo. */
+export type ResultadoEficacia = "eficaz" | "nao_eficaz" | "impedida";
 
 /**
  * O tipo "Não Conformidade" tem formulário de abertura fixo (área envolvida,
@@ -345,8 +385,12 @@ export function ehTipoNaoConformidade(
 export interface AvaliacaoEficacia {
   prazoDias: number;
   verificacaoEm: string | null;
+  /** Resultado do relatório de eficácia (Eficaz, Não eficaz ou Impedida). */
+  resultado: ResultadoEficacia | null;
   eficaz: boolean | null;
   observacao: string;
+  /** Fotos, vídeos e documentos anexados à justificativa do relatório. */
+  anexos: AnexoOcorrencia[];
 }
 
 export interface Ocorrencia {
@@ -387,6 +431,9 @@ export interface Ocorrencia {
   /** Data prevista da avaliação de eficácia (fechamento + eficaciaDias). */
   eficaciaPrevistaEm: string | null;
   reaberturas: number;
+  /** Quando a etapa foi marcada como impedida (o prazo fica parado). Nulo = não impedida. */
+  impedidaEm: string | null;
+  impedidaMotivo: string;
   encerradaEm: string | null;
   createdAt: string;
   updatedAt: string;
@@ -440,18 +487,55 @@ export function idCurto(): string {
   return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function proximoNumero(ocorrencias: Ocorrencia[]): string {
+/**
+ * Título curto da ocorrência: a resposta do campo "titulo"; se o formulário não tem esse
+ * campo, a primeira resposta curta preenchida; se nada foi preenchido, o nome do tipo.
+ */
+export function tituloDaOcorrencia(
+  campos: CampoFormulario[],
+  respostas: Respostas,
+  nomeTipo: string,
+): string {
+  const explicito = String(respostas["titulo"] ?? "").trim();
+  if (explicito) return explicito;
+  const primeiroTexto = campos.find(
+    (c) => c.tipo === "texto" && String(respostas[c.id] ?? "").trim() !== "",
+  );
+  if (primeiroTexto) return String(respostas[primeiroTexto.id]).trim();
+  return nomeTipo;
+}
+
+/**
+ * Prefixo do número da ocorrência, conforme o tipo: NC (Não Conformidade),
+ * RC (Reclamação de Cliente), MT (Multas), EO (Erro Operacional),
+ * OM (Oportunidade de Melhoria). Tipos criados depois usam "OC".
+ */
+export function prefixoNumeroTipo(tipo: Pick<TipoOcorrencia, "nome"> | null | undefined): string {
+  const normalizado = (tipo?.nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  if (normalizado.includes("nao conformidade")) return "NC";
+  if (normalizado.includes("reclamacao")) return "RC";
+  if (normalizado.includes("multa")) return "MT";
+  if (normalizado.includes("erro")) return "EO";
+  if (normalizado.includes("oportunidade")) return "OM";
+  return "OC";
+}
+
+/** Próximo número do tipo no ano: `NC-2026-001`, `NC-2026-002` e assim por diante. */
+export function proximoNumero(ocorrencias: Ocorrencia[], prefixo: string): string {
   const ano = new Date().getFullYear();
   let max = 0;
   for (const o of ocorrencias) {
-    const m = /^OCR-(\d{4})-(\d+)$/.exec(o.numero);
+    const m = new RegExp(`^${prefixo}-(\\d{4})-(\\d+)$`).exec(o.numero);
     if (!m) continue;
     const anoM = m[1];
     const numM = m[2];
     if (anoM === undefined || numM === undefined) continue;
     if (Number(anoM) === ano) max = Math.max(max, Number(numM));
   }
-  return `OCR-${ano}-${String(max + 1).padStart(3, "0")}`;
+  return `${prefixo}-${ano}-${String(max + 1).padStart(3, "0")}`;
 }
 
 /** Data (ISO dia) em que o prazo da etapa atual estoura. */
@@ -475,7 +559,7 @@ export function diasParaPrazo(prazo: string | null): number | null {
 }
 
 export function ocorrenciaAtrasada(o: Ocorrencia): boolean {
-  if (o.status === "encerrada") return false;
+  if (o.status === "encerrada" || o.impedidaEm) return false;
   const dias = diasParaPrazo(o.prazoEtapa);
   return dias !== null && dias < 0;
 }

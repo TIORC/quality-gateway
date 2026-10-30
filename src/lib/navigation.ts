@@ -4,6 +4,7 @@ export type AppRoutePath =
   | "/painel"
   | "/planos-de-acao"
   | "/ocorrencias"
+  | "/minha-equipe"
   | "/auditorias"
   | "/atas-de-reuniao"
   | "/projetos-e-estrategias"
@@ -33,6 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Painel", path: "/painel" },
       { label: "Planos de Ação", path: "/planos-de-acao" },
       { label: "Ocorrencias", path: "/ocorrencias" },
+      { label: "Minha equipe", path: "/minha-equipe" },
       { label: "Pesquisas de Satisfação", path: "/pesquisas-de-satisfacao" },
       { label: "Auditorias", path: "/auditorias" },
       { label: "Atas de Reunião", path: "/atas-de-reuniao" },

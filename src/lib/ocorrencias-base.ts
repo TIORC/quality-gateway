@@ -27,7 +27,11 @@ import type {
   TipoCampo,
   TipoOcorrencia,
 } from "@/lib/ocorrencias";
-import { MACRO_ETAPA_LABELS, etapasPadrao } from "@/lib/ocorrencias";
+import { MACRO_ETAPA_LABELS, etapasPadrao, type ResultadoEficacia } from "@/lib/ocorrencias";
+
+function resultadoEficaciaDe(valor: unknown): ResultadoEficacia | null {
+  return valor === "eficaz" || valor === "nao_eficaz" || valor === "impedida" ? valor : null;
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface CloudLivre {
@@ -355,6 +359,10 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
       ? {
           prazoDias: num(avaliacaoRaw["prazoDias"], 30),
           verificacaoEm: str(avaliacaoRaw["verificacaoEm"]) || null,
+          resultado: resultadoEficaciaDe(avaliacaoRaw["resultado"]),
+          anexos: Array.isArray(avaliacaoRaw["anexos"])
+            ? (avaliacaoRaw["anexos"] as AnexoOcorrencia[])
+            : [],
           eficaz:
             typeof avaliacaoRaw["eficaz"] === "boolean"
               ? (avaliacaoRaw["eficaz"] as boolean)
@@ -370,6 +378,8 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
         ? (row["eficacia_prevista_em"] as string)
         : null,
     reaberturas: num(row["reaberturas"]),
+    impedidaEm: typeof row["impedida_em"] === "string" ? (row["impedida_em"] as string) : null,
+    impedidaMotivo: str(row["impedida_motivo"]),
     encerradaEm: typeof row["encerrada_em"] === "string" ? (row["encerrada_em"] as string) : null,
     createdAt: str(row["created_at"]),
     updatedAt: str(row["updated_at"]),

@@ -23,10 +23,13 @@ import {
   calcularPrazoEtapa,
   fluxoVazio,
   idCurto,
+  LIMITE_TEXTO_OCORRENCIA,
+  type ResultadoEficacia,
   nomeEtapaDoFluxo,
   nomeEtapaDoTipo,
   ocorrenciaAtrasada,
   ordenarSubetapas,
+  prefixoNumeroTipo,
   proximoNumero,
   slaDaEtapa,
   subetapaDe,
@@ -239,7 +242,7 @@ export async function abrirOcorrencia(
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<Ocorrencia> {
   const existentes = await loja.listarOcorrencias().catch(() => []);
-  const numero = proximoNumero(existentes);
+  const numero = proximoNumero(existentes, prefixoNumeroTipo(input.tipo));
   const autor = autorDe(sessao);
   const macro: MacroEtapa = "abertura";
   const o = await loja.inserirOcorrencia({
@@ -877,6 +880,86 @@ export async function definirPrioridade(
   );
 }
 
+/**
+ * Marca a etapa atual como impedida: o prazo para de contar até a retomada.
+ * Vale para qualquer etapa de uma ocorrência em andamento.
+ */
+export async function marcarImpedida(
+  o: Ocorrencia,
+  sessao: UserSession | null,
+  motivo: string,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const autor = autorDe(sessao);
+  if (o.status === "encerrada") throw new Error("A ocorrência já está encerrada.");
+  if (o.impedidaEm) throw new Error("Esta etapa já está impedida.");
+  const texto = motivo.trim();
+  if (!texto) throw new Error("Informe o motivo do impedimento.");
+  if (texto.length > LIMITE_TEXTO_OCORRENCIA) {
+    throw new Error(`O motivo deve ter no máximo ${LIMITE_TEXTO_OCORRENCIA} caracteres.`);
+  }
+  const agora = new Date().toISOString();
+  await loja.atualizarOcorrencia(o.id, { impedida_em: agora, impedida_motivo: texto });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Etapa impedida",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "Impedida",
+      comentario: texto,
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/**
+ * Retoma a etapa impedida: o tempo parado é somado ao prazo da etapa e à data
+ * prevista da eficácia, para que o impedimento não consuma o prazo.
+ */
+export async function retomarImpedida(
+  o: Ocorrencia,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const autor = autorDe(sessao);
+  if (!o.impedidaEm) throw new Error("Esta etapa não está impedida.");
+  const agora = new Date();
+  const pausadoMs = agora.getTime() - new Date(o.impedidaEm).getTime();
+  const diasPausados = Math.ceil(pausadoMs / 86_400_000);
+  const patch: Rec = { impedida_em: null, impedida_motivo: "" };
+  if (o.prazoEtapa) {
+    const prazo = new Date(`${o.prazoEtapa}T12:00:00`);
+    prazo.setDate(prazo.getDate() + diasPausados);
+    const mes = String(prazo.getMonth() + 1).padStart(2, "0");
+    const dia = String(prazo.getDate()).padStart(2, "0");
+    patch["prazo_etapa"] = `${prazo.getFullYear()}-${mes}-${dia}`;
+  }
+  if (o.eficaciaPrevistaEm) {
+    patch["eficacia_prevista_em"] = new Date(
+      new Date(o.eficaciaPrevistaEm).getTime() + pausadoMs,
+    ).toISOString();
+  }
+  await loja.atualizarOcorrencia(o.id, patch);
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Impedimento resolvido",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "Impedida",
+      para: `Prazo retomado (+${diasPausados} dia(s))`,
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
+}
+
 /** Puxa a ocorrência: a pessoa da Qualidade passa a responder por ela até o encerramento. */
 export async function assumirOcorrencia(
   o: Ocorrencia,
@@ -1006,8 +1089,10 @@ export async function salvarResultadosApuracao(
 /* -------------------------------------------------------------------------- */
 
 export interface AvaliacaoInput {
-  eficaz: boolean;
+  resultado: ResultadoEficacia;
   observacao: string;
+  /** Anexos já enviados ao Storage (fotos, vídeos, documentos). */
+  anexos?: AnexoOcorrencia[];
 }
 
 /** Etapa de plano de ação do tipo (por nome); sem ela, volta para a Apuração. */
@@ -1035,31 +1120,49 @@ export async function avaliarEficacia(
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
   const autor = autorDe(sessao);
+  if (input.observacao.length > LIMITE_TEXTO_OCORRENCIA) {
+    throw new Error(`A observação deve ter no máximo ${LIMITE_TEXTO_OCORRENCIA} caracteres.`);
+  }
+  if (!input.observacao.trim()) {
+    throw new Error("Informe a justificativa do relatório de eficácia.");
+  }
+  if (o.impedidaEm) {
+    throw new Error("Esta etapa está impedida. Retome-a antes de avaliar a eficácia.");
+  }
+  // Relatório de eficácia: registra o resultado e a justificativa, em qualquer caso.
+  const eficaz = input.resultado === "eficaz";
   await loja.atualizarOcorrencia(o.id, {
     avaliacao: {
       prazoDias: o.eficaciaDias,
       verificacaoEm: new Date().toISOString(),
-      eficaz: input.eficaz,
+      resultado: input.resultado,
+      eficaz: input.resultado === "impedida" ? null : eficaz,
       observacao: input.observacao,
+      anexos: input.anexos ?? [],
     },
   });
+
+  if (input.resultado === "impedida") {
+    await marcarImpedida(o, sessao, input.observacao, loja);
+    return;
+  }
 
   await registrarHistorico(
     o.id,
     autor,
     {
-      acao: input.eficaz ? "Avaliação de eficácia: eficaz" : "Avaliação de eficácia: INEFICAZ",
+      acao: eficaz ? "Avaliação de eficácia: eficaz" : "Avaliação de eficácia: não eficaz",
       macro: "avaliacao_eficacia",
       subetapa: "",
       de: "",
-      para: input.eficaz ? "Encerrada" : `Novo ciclo (${o.reaberturas + 2})`,
+      para: eficaz ? "Encerrada" : `Novo ciclo (${o.reaberturas + 2})`,
       comentario: input.observacao,
-      anexos: [],
+      anexos: input.anexos ?? [],
     },
     loja,
   );
 
-  if (input.eficaz) {
+  if (eficaz) {
     if (o.status !== "encerrada") {
       await encerrar(o, etapas, autor, input.observacao || "Eficácia confirmada.", loja);
     }

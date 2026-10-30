@@ -6,25 +6,26 @@
  *  - administrador: admin do sistema / nível Administrador — acompanha o
  *    andamento de todas as ocorrências em tempo real, em leitura (sem agir);
  *  - encarregado: responsável pela etapa atual — age somente nela;
+ *  - lider: líder de setor de quem abriu (ou de setor envolvido) — acompanha em leitura;
  *  - solicitante: quem abriu — vê a linha do metrô simplificada e o resultado
  *    do julgamento (procedente / não-procedente);
  *  - leitor: demais usuários — sem detalhes.
  */
 import type { UserSession } from "@/lib/auth";
 import { NIVEL_GESTOR_QUALIDADE, normalizarSetor } from "@/lib/niveis-acesso";
-import { ehAdministrador, ehUsuarioDaQualidade } from "@/lib/permissoes";
-import type { Ocorrencia } from "@/lib/ocorrencias";
+import { ehAdministrador, ehUsuarioDaQualidade, liderDoSetor } from "@/lib/permissoes";
+import { setoresEnvolvidosDe, type Ocorrencia } from "@/lib/ocorrencias";
 
 export type PapelOcorrencia =
-  "qualidade" | "administrador" | "encarregado" | "solicitante" | "leitor";
+  "qualidade" | "administrador" | "encarregado" | "lider" | "solicitante" | "leitor";
 
 /**
- * Opera as ocorrências (aprovar, reprovar, movimentar, avaliar eficácia): só o
- * Gestor da Qualidade e o setor da Qualidade. O Desenvolvedor do Sistema e os
- * administradores acompanham, mas não agem.
+ * Opera as ocorrências (puxar, aprovar, reprovar, movimentar, avaliar eficácia):
+ * o Gestor da Qualidade, o setor da Qualidade e o Desenvolvedor do Sistema.
  */
 export function podeOperarOcorrencias(sessao: UserSession | null | undefined): boolean {
-  if (!sessao || ehAdministrador(sessao)) return false;
+  if (!sessao) return false;
+  if (ehAdministrador(sessao)) return true;
   return (
     sessao.nivelAcesso === NIVEL_GESTOR_QUALIDADE || normalizarSetor(sessao.setor) === "qualidade"
   );
@@ -44,15 +45,25 @@ export function ehDonoDaOcorrencia(sessao: UserSession | null | undefined, o: Oc
 /**
  * Operadores da Qualidade só agem na ocorrência que assumiram ("puxar tarefa")
  * e a acompanham até o encerramento. Encerrada: segue como antes (qualquer operador).
+ * O Desenvolvedor do Sistema opera livremente, sem precisar puxar a tratativa.
  */
 function operaComoDono(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
-  return o.status === "encerrada" || ehDonoDaOcorrencia(sessao, o);
+  return o.status === "encerrada" || ehAdministrador(sessao) || ehDonoDaOcorrencia(sessao, o);
 }
 
 /** Pode puxar a ocorrência: operador da Qualidade, aberta e ainda sem dono (ou já é dele). */
 export function podeAssumirOcorrencia(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
   if (!podeOperarOcorrencias(sessao) || o.status === "encerrada") return false;
   return !o.donoQualidadeEmail || ehDonoDaOcorrencia(sessao, o);
+}
+
+/**
+ * Pode sugerir ação do plano de ação: a Qualidade (que valida e encaminha) e a liderança
+ * do setor de quem abriu. Sugestões do líder entram como "Sugestão do líder" até a validação.
+ */
+export function podeSugerirAcao(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
+  if (o.status === "encerrada") return false;
+  return podeOperarOcorrencias(sessao) || papelNaOcorrencia(sessao, o) === "lider";
 }
 
 /** Pode soltar a tratativa: só o dono, enquanto a ocorrência estiver aberta. */
@@ -73,6 +84,11 @@ export function papelNaOcorrencia(
     (!!o.responsavelEmail && o.responsavelEmail.toLowerCase() === email) ||
     (!!o.responsavelId && o.responsavelId === colaborador);
   if (ehResponsavel && o.status !== "encerrada") return "encarregado";
+  // Líder de setor acompanha (somente leitura) as ocorrências dos setores que lidera.
+  const ehLiderDaEquipe =
+    liderDoSetor(sessao, o.abertaPorSetor) ||
+    setoresEnvolvidosDe(o).some((s) => liderDoSetor(sessao, s));
+  if (ehLiderDaEquipe) return "lider";
   const ehSolicitante =
     (!!o.abertaPorEmail && o.abertaPorEmail.toLowerCase() === email) ||
     (!!o.abertaPorId && o.abertaPorId === colaborador);
@@ -80,10 +96,10 @@ export function papelNaOcorrencia(
   return "leitor";
 }
 
-/** Qualidade, administradores e encarregados veem a visão completa/detalhada. */
+/** Qualidade, administradores, encarregados e líderes da equipe veem a visão completa/detalhada. */
 export function veVisaoCompleta(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
   const papel = papelNaOcorrencia(sessao, o);
-  return papel === "qualidade" || papel === "administrador" || papel === "encarregado";
+  return papel === "qualidade" || papel === "administrador" || papel === "encarregado" || papel === "lider";
 }
 
 /** Pode agir (aprovar/reprovar/…) na etapa atual da ocorrência. */
@@ -118,7 +134,7 @@ export function podeDefinirPrioridade(sessao: UserSession | null | undefined): b
 /** Detalhes internos (respostas de etapa, histórico completo) — não para o solicitante. */
 export function podeVerInternos(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
   const papel = papelNaOcorrencia(sessao, o);
-  return papel === "qualidade" || papel === "administrador" || papel === "encarregado";
+  return papel === "qualidade" || papel === "administrador" || papel === "encarregado" || papel === "lider";
 }
 
 /**

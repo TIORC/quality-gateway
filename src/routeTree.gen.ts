@@ -17,6 +17,7 @@ import { Route as IndicadoresRouteImport } from './routes/indicadores'
 import { Route as LoadingRouteImport } from './routes/loading'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as MeuPerfilRouteImport } from './routes/meu-perfil'
+import { Route as MinhaEquipeRouteImport } from './routes/minha-equipe'
 import { Route as OcorrenciasRouteImport } from './routes/ocorrencias'
 import { Route as PainelRouteImport } from './routes/painel'
 import { Route as PesquisasDeSatisfacaoRouteImport } from './routes/pesquisas-de-satisfacao'
@@ -70,6 +71,11 @@ const LogsRoute = LogsRouteImport.update({
 const MeuPerfilRoute = MeuPerfilRouteImport.update({
   id: '/meu-perfil',
   path: '/meu-perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MinhaEquipeRoute = MinhaEquipeRouteImport.update({
+  id: '/minha-equipe',
+  path: '/minha-equipe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OcorrenciasRoute = OcorrenciasRouteImport.update({
@@ -153,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/loading': typeof LoadingRoute
   '/logs': typeof LogsRoute
   '/meu-perfil': typeof MeuPerfilRoute
+  '/minha-equipe': typeof MinhaEquipeRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
   '/pesquisas-de-satisfacao': typeof PesquisasDeSatisfacaoRoute
@@ -177,6 +184,7 @@ export interface FileRoutesByTo {
   '/loading': typeof LoadingRoute
   '/logs': typeof LogsRoute
   '/meu-perfil': typeof MeuPerfilRoute
+  '/minha-equipe': typeof MinhaEquipeRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
   '/pesquisas-de-satisfacao': typeof PesquisasDeSatisfacaoRoute
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/loading': typeof LoadingRoute
   '/logs': typeof LogsRoute
   '/meu-perfil': typeof MeuPerfilRoute
+  '/minha-equipe': typeof MinhaEquipeRoute
   '/ocorrencias': typeof OcorrenciasRoute
   '/painel': typeof PainelRoute
   '/pesquisas-de-satisfacao': typeof PesquisasDeSatisfacaoRoute
@@ -228,6 +237,7 @@ export interface FileRouteTypes {
     | '/loading'
     | '/logs'
     | '/meu-perfil'
+    | '/minha-equipe'
     | '/ocorrencias'
     | '/painel'
     | '/pesquisas-de-satisfacao'
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
     | '/loading'
     | '/logs'
     | '/meu-perfil'
+    | '/minha-equipe'
     | '/ocorrencias'
     | '/painel'
     | '/pesquisas-de-satisfacao'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/loading'
     | '/logs'
     | '/meu-perfil'
+    | '/minha-equipe'
     | '/ocorrencias'
     | '/painel'
     | '/pesquisas-de-satisfacao'
@@ -301,6 +313,7 @@ export interface RootRouteChildren {
   LoadingRoute: typeof LoadingRoute
   LogsRoute: typeof LogsRoute
   MeuPerfilRoute: typeof MeuPerfilRoute
+  MinhaEquipeRoute: typeof MinhaEquipeRoute
   OcorrenciasRoute: typeof OcorrenciasRoute
   PainelRoute: typeof PainelRoute
   PesquisasDeSatisfacaoRoute: typeof PesquisasDeSatisfacaoRoute
@@ -373,6 +386,13 @@ declare module '@tanstack/react-router' {
       path: '/meu-perfil'
       fullPath: '/meu-perfil'
       preLoaderRoute: typeof MeuPerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/minha-equipe': {
+      id: '/minha-equipe'
+      path: '/minha-equipe'
+      fullPath: '/minha-equipe'
+      preLoaderRoute: typeof MinhaEquipeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ocorrencias': {
@@ -485,6 +505,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoadingRoute: LoadingRoute,
   LogsRoute: LogsRoute,
   MeuPerfilRoute: MeuPerfilRoute,
+  MinhaEquipeRoute: MinhaEquipeRoute,
   OcorrenciasRoute: OcorrenciasRoute,
   PainelRoute: PainelRoute,
   PesquisasDeSatisfacaoRoute: PesquisasDeSatisfacaoRoute,
