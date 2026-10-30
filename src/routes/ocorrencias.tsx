@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  LayoutGrid,
   ClipboardList,
   List,
   Pencil,
@@ -80,6 +81,8 @@ import {
   setoresDoFormulario,
   setoresEnvolvidosDe,
   tituloDaOcorrencia,
+  ocorrenciaAtrasada,
+  formatarPrazo,
   iconeTipoOcorrencia,
   idCurto,
   nomeEtapaDoTipo,
@@ -128,6 +131,8 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   const sessaoCtx = usePanelSession();
   const session = getSession() ?? sessaoCtx;
   const [modo, setModo] = useState<"lista" | "configurar">("lista");
+  // Como as ocorrências aparecem nas abas: lista ou kanban.
+  const [visao, setVisao] = useState<"lista" | "kanban">("lista");
   const [refreshToken, setRefreshToken] = useState(0);
   const [abrirAberto, setAbrirAberto] = useState(false);
   const [tipoInicialId, setTipoInicialId] = useState<string | null>(null);
@@ -255,20 +260,38 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {podeConfigurar && (
-              <div className="flex items-center gap-1 rounded-lg border border-[#D9E0EA] bg-white p-1">
-                <button
-                  type="button"
-                  onClick={() => setModo("lista")}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition ${
-                    modo === "lista"
-                      ? "bg-[#1E3A8A] text-white"
-                      : "text-[#64748B] hover:bg-[#F1F5F9]"
-                  }`}
-                >
-                  <List className="h-3.5 w-3.5" />
-                  Lista
-                </button>
+            <div className="flex items-center gap-1 rounded-lg border border-[#D9E0EA] bg-white p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setModo("lista");
+                  setVisao("lista");
+                }}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition ${
+                  modo === "lista" && visao === "lista"
+                    ? "bg-[#1E3A8A] text-white"
+                    : "text-[#64748B] hover:bg-[#F1F5F9]"
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                Lista
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModo("lista");
+                  setVisao("kanban");
+                }}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition ${
+                  modo === "lista" && visao === "kanban"
+                    ? "bg-[#1E3A8A] text-white"
+                    : "text-[#64748B] hover:bg-[#F1F5F9]"
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Kanban
+              </button>
+              {podeConfigurar && (
                 <button
                   type="button"
                   onClick={() => setModo("configurar")}
@@ -281,8 +304,8 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                   <Settings2 className="h-3.5 w-3.5" />
                   Configurar
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -348,6 +371,12 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                         }}
                       />
                     )}
+                  />
+                ) : visao === "kanban" ? (
+                  <KanbanOcorrencias
+                    ocorrencias={porAba(aba.valor)}
+                    carregando={carregando}
+                    onDetalhar={(o) => setOcorrenciaSelecionada(o)}
                   />
                 ) : (
                   <ListaOcorrencias
@@ -528,6 +557,150 @@ function FundoAnimado({ variante }: { variante: number }) {
         style={CENTRO_FUNDO}
       />
     </motion.svg>
+  );
+}
+
+/** Colunas do kanban: cada uma reúne as etapas do metrô que ela representa. */
+const COLUNAS_KANBAN: { rotulo: string; etapas: string[] }[] = [
+  { rotulo: "Em aberto", etapas: ["abertura"] },
+  { rotulo: "Apuração", etapas: ["apuracao"] },
+  { rotulo: "Julgamento", etapas: ["julgamento"] },
+  { rotulo: "Plano de ação", etapas: ["plano_acao"] },
+  { rotulo: "Implementação", etapas: ["implementacao", "comunicacao", ETAPA_RETORNO_CLIENTE] },
+  { rotulo: "Finalização", etapas: ["fechamento"] },
+  { rotulo: "Eficácia", etapas: ["avaliacao_eficacia"] },
+];
+
+/** Cards visíveis por coluna do kanban; o resto fica atrás de "Mostrar mais". */
+const LIMITE_CARDS_COLUNA = 3;
+
+const COR_PRIORIDADE: Record<string, string> = {
+  alta: "#E11D48",
+  media: "#F59E0B",
+  baixa: "#2563EB",
+  a_definir: "#64748B",
+};
+
+function iniciaisDe(nome: string): string {
+  return nome
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p.charAt(0))
+    .join("")
+    .toUpperCase();
+}
+
+/** Visão "Todas as Ocorrências" em kanban, uma coluna por etapa. */
+function KanbanOcorrencias({
+  ocorrencias,
+  carregando,
+  onDetalhar,
+}: {
+  ocorrencias: Ocorrencia[];
+  carregando: boolean;
+  onDetalhar: (o: Ocorrencia) => void;
+}) {
+  const [expandidas, setExpandidas] = useState<Record<number, boolean>>({});
+  if (carregando) {
+    return <div className="py-12 text-center text-sm text-[#64748B]">Carregando ocorrências…</div>;
+  }
+  const colunaDe =(o: Ocorrencia) =>
+    COLUNAS_KANBAN.findIndex((c) => c.etapas.includes(o.macroAtual));
+  const porColuna = COLUNAS_KANBAN.map((_, i) =>
+    ocorrencias.filter((o) => colunaDe(o) === i),
+  );
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-4">
+      {COLUNAS_KANBAN.map((coluna, i) => {
+        const aberta = expandidas[i] === true;
+        const total = porColuna[i]?.length ?? 0;
+        const visiveis = aberta ? porColuna[i] ?? [] : (porColuna[i] ?? []).slice(0, LIMITE_CARDS_COLUNA);
+        return (
+        <div key={coluna.rotulo} className="flex w-72 shrink-0 flex-col rounded-2xl border border-[#D9E0EA] bg-white p-3 dark:border-transparent dark:bg-[#1E3A8A]">
+          <div className="mb-3 flex items-center justify-between px-1">
+            <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#1F2937] dark:text-white">
+              {coluna.rotulo}
+            </h3>
+            <span className="rounded-full bg-[#E2E8F0] px-2 py-0.5 text-[11px] font-bold text-[#1F2937] dark:bg-white/15 dark:text-white">
+              {porColuna[i]?.length ?? 0}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {visiveis.map((o) => {
+              const impedida = !!o.impedidaEm;
+              const encerrada = o.status === "encerrada";
+              const atrasada = ocorrenciaAtrasada(o);
+              const responsavel = o.responsavelNome || o.donoQualidadeNome || "—";
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => onDetalhar(o)}
+                  style={{ backgroundColor: o.tipoCor || "#1E293B" }}
+                  className="w-full rounded-xl p-3 text-left text-white shadow-sm transition hover:shadow-lg"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] text-[#94A3B8]">{o.numero}</span>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white"
+                      style={{ backgroundColor: COR_PRIORIDADE[o.prioridade] ?? "#64748B" }}
+                    >
+                      {PRIORIDADE_LABELS[o.prioridade]}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {encerrada ? (
+                      <span className="rounded-full bg-[#059669]/20 px-2 py-0.5 text-[10px] font-semibold text-[#6EE7B7]">
+                        Encerrada
+                      </span>
+                    ) : impedida ? (
+                      <span className="rounded-full bg-[#E11D48]/20 px-2 py-0.5 text-[10px] font-semibold text-[#FDA4AF]">
+                        Impedida
+                      </span>
+                    ) : o.macroAtual === "abertura" ? (
+                      <span className="rounded-full bg-[#2563EB]/20 px-2 py-0.5 text-[10px] font-semibold text-[#93C5FD]">
+                        Nova
+                      </span>
+                    ) : null}
+                    {atrasada && (
+                      <span className="rounded-full bg-[#E11D48]/20 px-2 py-0.5 text-[10px] font-semibold text-[#FDA4AF]">
+                        Atrasada
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-[13px] font-semibold leading-snug">{o.titulo}</p>
+                  <p className="mt-1 truncate text-[11px] text-[#94A3B8]">
+                    {o.tipoNome} · {o.abertaPorSetor || "—"}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-[#CBD5E1]">
+                      {encerrada ? "Concluído" : o.prazoEtapa ? `Prazo ${formatarPrazo(o.prazoEtapa)}` : ""}
+                    </span>
+                    <span
+                      title={responsavel}
+                      className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#334155] text-[10px] font-bold text-white"
+                    >
+                      {iniciaisDe(responsavel === "—" ? "?" : responsavel)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+            {total > LIMITE_CARDS_COLUNA && (
+              <button
+                type="button"
+                onClick={() => setExpandidas((atual) => ({ ...atual, [i]: !aberta }))}
+                className="w-full rounded-lg border border-dashed border-[#94A3B8] py-1.5 text-[12px] font-semibold text-[#334155] hover:bg-[#F1F5F9] dark:border-white/40 dark:text-white dark:hover:bg-white/10"
+              >
+                {aberta ? "Mostrar menos" : `Mostrar mais (${total - LIMITE_CARDS_COLUNA})`}
+              </button>
+            )}
+          </div>
+        </div>
+        );
+      })}
+    </div>
   );
 }
 
