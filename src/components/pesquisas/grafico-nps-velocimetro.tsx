@@ -123,6 +123,7 @@ export function GraficoNpsVelocimetro({ apuracao }: { apuracao: ApuracaoNps }) {
               fontSize="11"
               fontWeight="600"
               fill="#334155"
+              className="nps-rotulo-zona"
             >
               {z.rotulo}
             </text>

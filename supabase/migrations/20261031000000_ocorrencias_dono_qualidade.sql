@@ -7,3 +7,5 @@ alter table public.ocorrencias
   add column if not exists dono_qualidade_em timestamptz;
 
 comment on column public.ocorrencias.dono_qualidade_email is 'Pessoa da Qualidade que assumiu a tratativa (vazio = sem dono).';
+
+

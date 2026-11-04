@@ -435,6 +435,42 @@
   color: oklch(0.75 0.01 257); /* cinza escuro — títulos e rótulos */
 }
 
+/*
+ * Página pública de resposta da pesquisa de satisfação: o card é sempre
+ * branco (bg-white), então precisa ficar com tokens claros mesmo quando o
+ * app está no modo escuro. Sem isso, os textos #0F172A viram cinza-claro
+ * sobre o card branco e ficam invisíveis.
+ */
+.dark .pesquisa-publica {
+  color-scheme: light;
+  color: #0f172a;
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+}
+
+/* Rótulos das zonas no velocímetro NPS (SVG): branco no modo escuro */
+.dark .nps-rotulo-zona {
+  fill: #ffffff;
+}
+
+/* Textos da pesquisa pública: cores fixas, com mais especificidade que as regras .dark acima */
+.dark .pesquisa-publica .text-\[\#0F172A\],
+.dark .pesquisa-publica .text-\[\#1F2937\] {
+  color: #0f172a;
+}
+
+.dark .pesquisa-publica .text-\[\#64748B\],
+.dark .pesquisa-publica .text-\[\#475569\] {
+  color: #475569;
+}
+
 /* Página /pops — contraste dos textos no modo escuro ----------------- */
 /*
  * Na tela de POPs o azul escuro dos títulos ficava "apagado" sobre o

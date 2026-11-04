@@ -90,7 +90,7 @@ function ResponderPesquisa() {
 
   if (enviado) {
     return (
-      <main className="relative isolate overflow-hidden flex min-h-screen items-center justify-center bg-[#0B1F4B] px-4 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:bg-[url('/logo-orcoma-branca.png')] before:bg-[length:160px_auto] before:bg-repeat before:opacity-[0.08]">
+      <main className="pesquisa-publica relative isolate overflow-hidden flex min-h-screen items-center justify-center bg-[#0B1F4B] px-4 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:bg-[url('/logo-orcoma-branca.png')] before:bg-[length:160px_auto] before:bg-repeat before:opacity-[0.08]">
         <div className="max-w-md rounded-xl border border-[#E2E8F0] bg-white p-8 text-center">
           <h1 className="text-xl font-semibold text-[#0F172A]">Obrigado!</h1>
           <p className="mt-2 text-sm text-[#64748B]">Sua resposta foi registrada.</p>
@@ -100,7 +100,7 @@ function ResponderPesquisa() {
   }
 
   return (
-    <main className="relative isolate overflow-hidden min-h-screen bg-[#0B1F4B] px-4 py-10 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:bg-[url('/logo-orcoma-branca.png')] before:bg-[length:160px_auto] before:bg-repeat before:opacity-[0.08]">
+    <main className="pesquisa-publica relative isolate overflow-hidden min-h-screen bg-[#0B1F4B] px-4 py-10 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:bg-[url('/logo-orcoma-branca.png')] before:bg-[length:160px_auto] before:bg-repeat before:opacity-[0.08]">
       <form
         onSubmit={onSubmit}
         className="mx-auto flex w-full max-w-3xl flex-col gap-6 rounded-xl border border-t-4 border-[#E2E8F0] border-t-[#2563EB] bg-white p-6 sm:p-8 dark:border-t-[#93C5FD]"

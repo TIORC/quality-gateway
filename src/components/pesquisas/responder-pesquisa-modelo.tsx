@@ -16,7 +16,7 @@ import {
  * camada atrás do conteúdo (before), então não atrapalha a leitura.
  */
 const FUNDO_COM_LOGO =
-  "relative isolate overflow-hidden bg-[#0B1F4B] before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:bg-[url('/logo-orcoma-branca.png')] before:bg-[length:160px_auto] before:bg-repeat before:opacity-[0.08]";
+  "pesquisa-publica relative isolate overflow-hidden bg-[#0B1F4B] before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:content-[''] before:bg-[url('/logo-orcoma-branca.png')] before:bg-[length:160px_auto] before:bg-repeat before:opacity-[0.08]";
 
 const NOTAS = Array.from({ length: 10 }, (_, indice) => indice + 1);
 // NPS vai de 0 a 10. Os grupos (detratores, neutros, promotores) são só para o gráfico e não aparecem aqui.
