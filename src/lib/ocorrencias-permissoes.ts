@@ -45,10 +45,16 @@ export function ehDonoDaOcorrencia(sessao: UserSession | null | undefined, o: Oc
 /**
  * Operadores da Qualidade só agem na ocorrência que assumiram ("puxar tarefa")
  * e a acompanham até o encerramento. Encerrada: segue como antes (qualquer operador).
- * O Desenvolvedor do Sistema opera livremente, sem precisar puxar a tratativa.
+ * O Desenvolvedor do Sistema e o Gestor da Qualidade operam livremente, sem precisar
+ * puxar a tratativa.
  */
 function operaComoDono(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
-  return o.status === "encerrada" || ehAdministrador(sessao) || ehDonoDaOcorrencia(sessao, o);
+  return (
+    o.status === "encerrada" ||
+    ehAdministrador(sessao) ||
+    sessao?.nivelAcesso === NIVEL_GESTOR_QUALIDADE ||
+    ehDonoDaOcorrencia(sessao, o)
+  );
 }
 
 /** Pode puxar a ocorrência: operador da Qualidade, aberta e ainda sem dono (ou já é dele). */

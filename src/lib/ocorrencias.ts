@@ -268,7 +268,11 @@ export function etapasPadrao(): EtapaTipo[] {
  * Julgamento só existe para Reclamação de Cliente e Multa (7 etapas). Os demais
  * tipos seguem com 6 etapas, sem julgamento.
  */
-export function tipoTemJulgamento(tipo: { nome?: string } | null | undefined): boolean {
+export function tipoTemJulgamento(
+  tipo: { nome?: string; temJulgamento?: boolean | null } | null | undefined,
+): boolean {
+  // Configuração explícita do tipo vale primeiro; sem ela, a regra pelo nome.
+  if (typeof tipo?.temJulgamento === "boolean") return tipo.temJulgamento;
   if (!tipo?.nome) return true;
   const normalizado = tipo.nome
     .toLowerCase()
@@ -354,6 +358,20 @@ export interface TipoOcorrencia {
   eficaciaDias: number;
   /** Exige a etapa obrigatória de retorno ao cliente (não pode ser pulada). */
   retornoCliente: boolean;
+  /** Exige o parecer final ao concluir a Apuração. */
+  parecerApuracao: boolean;
+  /** Sigla do número (ex.: "NC"). Vazia = sigla padrão pelo nome do tipo. */
+  sigla: string;
+  /** Tem etapa de julgamento. Nulo = regra padrão pelo nome do tipo. */
+  temJulgamento: boolean | null;
+  /** Permite anexar arquivos nos comentários e evidências. */
+  permiteAnexos: boolean;
+  /** Link externo exibido no detalhe da ocorrência. Vazio = sem link. */
+  linkExterno: string;
+  /** Dono padrão da Qualidade atribuído a toda ocorrência nova deste tipo. */
+  donoPadraoId: string;
+  donoPadraoNome: string;
+  donoPadraoEmail: string;
   ativo: boolean;
   ordem: number;
 }
@@ -510,7 +528,11 @@ export function tituloDaOcorrencia(
  * RC (Reclamação de Cliente), MT (Multas), EO (Erro Operacional),
  * OM (Oportunidade de Melhoria). Tipos criados depois usam "OC".
  */
-export function prefixoNumeroTipo(tipo: Pick<TipoOcorrencia, "nome"> | null | undefined): string {
+export function prefixoNumeroTipo(
+  tipo: Pick<TipoOcorrencia, "nome"> & { sigla?: string } | null | undefined,
+): string {
+  const siglaConfigurada = (tipo?.sigla ?? "").trim().toUpperCase();
+  if (siglaConfigurada) return siglaConfigurada;
   const normalizado = (tipo?.nome ?? "")
     .toLowerCase()
     .normalize("NFD")
@@ -634,12 +656,16 @@ export function progressoOcorrencia(
   etapas: MacroFluxo[],
 ): number {
   if (o.status === "encerrada") return 100;
-  const ordenadas = ordenarSubetapas(etapas);
-  const total = ordenadas.length;
-  if (total === 0) return 0;
-  const idx = ordenadas.findIndex(
-    (x) => x.macro === o.macroAtual && x.subetapa.id === o.subetapaAtualId,
+  // Etapas sem subetapas também contam (ex.: Eficácia), com id vazio.
+  const posicoes = etapas.flatMap((e) =>
+    e.subetapas.length > 0
+      ? e.subetapas.map((s) => ({ macro: e.macro, id: s.id }))
+      : [{ macro: e.macro, id: "" }],
   );
+  const total = posicoes.length;
+  if (total === 0) return 0;
+  let idx = posicoes.findIndex((p) => p.macro === o.macroAtual && p.id === o.subetapaAtualId);
+  if (idx < 0) idx = posicoes.findIndex((p) => p.macro === o.macroAtual);
   return Math.round(((idx < 0 ? 0 : idx) / total) * 100);
 }
 
@@ -682,4 +708,218 @@ export function cienciasDe(o: Pick<Ocorrencia, "respostas">): Record<string, Cie
 export function setoresSemCiencia(o: Pick<Ocorrencia, "respostas">): string[] {
   const feitas = cienciasDe(o);
   return setoresEnvolvidosDe(o).filter((s) => !feitas[s]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ferramentas de apuração (Análise direta, 5 Porquês, Ishikawa 6M)            */
+/* -------------------------------------------------------------------------- */
+
+/** Chave em `respostas` onde fica a apuração da ocorrência. */
+export const CHAVE_FERRAMENTA_APURACAO = "__ferramenta_apuracao";
+
+export const FERRAMENTAS_APURACAO = ["analise_direta", "cinco_porques", "ishikawa"] as const;
+export type FerramentaApuracao = (typeof FERRAMENTAS_APURACAO)[number];
+
+export const FERRAMENTA_APURACAO_LABELS: Record<FerramentaApuracao, string> = {
+  analise_direta: "Análise direta",
+  cinco_porques: "5 Porquês",
+  ishikawa: "Ishikawa (6M)",
+};
+
+/** Os 6 Ms do diagrama de Ishikawa. */
+/**
+ * Categorias do Ishikawa, com id estável (o nome pode ser editado no diagrama).
+ * `lado` define se a categoria fica em cima ou embaixo da espinha.
+ */
+export const ISHIKAWA_CATEGORIAS = [
+  { id: "metodo", padrao: "Método", lado: "topo" },
+  { id: "mao_de_obra", padrao: "Mão de obra", lado: "topo" },
+  { id: "material", padrao: "Material", lado: "topo" },
+  { id: "medicao", padrao: "Medição", lado: "base" },
+  { id: "meio_ambiente", padrao: "Meio ambiente", lado: "base" },
+  { id: "maquina", padrao: "Máquina", lado: "base" },
+] as const;
+
+/** Máximo de causas por categoria no diagrama. */
+export const CAUSAS_ISHIKAWA_MAX = 4;
+
+/** Problema da cabeça do peixe começa vazio (o campo mostra "Problema" como dica). */
+export const EFEITO_ISHIKAWA_PADRAO = "";
+
+export interface IshikawaApuracao {
+  /** Texto da cabeça do peixe (o efeito/problema). */
+  efeito: string;
+  /** Nome exibido de cada categoria, por id. */
+  rotulos: Record<string, string>;
+  /** Causas de cada categoria, por id (uma por item). */
+  causas: Record<string, string[]>;
+  causaRaiz: string;
+}
+
+/** Quantidade de "Por quê" antes da causa raiz no 5 Porquês. */
+export const PORQUES_QTD = 4;
+
+export interface ApuracaoFerramentas {
+  /** Ferramenta escolhida pela Qualidade para esta apuração. */
+  metodo: FerramentaApuracao;
+  analiseDireta: { texto: string; causaRaiz: string };
+  cincoPorques: { porques: string[]; causaRaiz: string };
+  ishikawa: IshikawaApuracao;
+  /** Quem salvou por último e quando (preenchido ao salvar). */
+  salvoPorNome: string;
+  salvoEm: string | null;
+}
+
+export function ishikawaVazio(): IshikawaApuracao {
+  return {
+    efeito: EFEITO_ISHIKAWA_PADRAO,
+    rotulos: Object.fromEntries(ISHIKAWA_CATEGORIAS.map((c) => [c.id, c.padrao])),
+    causas: Object.fromEntries(ISHIKAWA_CATEGORIAS.map((c) => [c.id, [] as string[]])),
+    causaRaiz: "",
+  };
+}
+
+/**
+ * Normaliza o Ishikawa salvo. Aceita o formato antigo (causas por nome da categoria,
+ * em texto com uma causa por linha) e completa o que faltar com o padrão.
+ */
+function normalizarIshikawa(raw: unknown): IshikawaApuracao {
+  const base = ishikawaVazio();
+  if (!raw || typeof raw !== "object") return base;
+  const r = raw as {
+    efeito?: unknown;
+    rotulos?: Record<string, unknown>;
+    causas?: Record<string, unknown>;
+    causaRaiz?: unknown;
+  };
+  const rotulos: Record<string, string> = {};
+  const causas: Record<string, string[]> = {};
+  for (const c of ISHIKAWA_CATEGORIAS) {
+    const nome = r.rotulos?.[c.id];
+    rotulos[c.id] = typeof nome === "string" && nome.trim() ? nome : c.padrao;
+    const v = r.causas?.[c.id] ?? r.causas?.[c.padrao];
+    const itens: unknown[] = Array.isArray(v) ? v : typeof v === "string" ? v.split("\n") : [];
+    causas[c.id] = itens
+      .filter((s): s is string => typeof s === "string")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, CAUSAS_ISHIKAWA_MAX);
+  }
+  return {
+    // "EFEITO" era o texto fixo da versão anterior; não é um problema digitado.
+    efeito:
+      typeof r.efeito === "string" && r.efeito.trim() && r.efeito.trim() !== "EFEITO"
+        ? r.efeito
+        : base.efeito,
+    rotulos,
+    causas,
+    causaRaiz: typeof r.causaRaiz === "string" ? r.causaRaiz : "",
+  };
+}
+
+export function apuracaoFerramentasVazia(): ApuracaoFerramentas {
+  return {
+    metodo: "analise_direta",
+    analiseDireta: { texto: "", causaRaiz: "" },
+    cincoPorques: { porques: Array.from({ length: PORQUES_QTD }, () => ""), causaRaiz: "" },
+    ishikawa: ishikawaVazio(),
+    salvoPorNome: "",
+    salvoEm: null,
+  };
+}
+
+/** Apuração salva da ocorrência, completando campos ausentes com o padrão. */
+export function apuracaoFerramentasDe(o: Pick<Ocorrencia, "respostas">): ApuracaoFerramentas {
+  const base = apuracaoFerramentasVazia();
+  const salvo = o.respostas[CHAVE_FERRAMENTA_APURACAO] as Partial<ApuracaoFerramentas> | undefined;
+  if (!salvo || typeof salvo !== "object") return base;
+  return {
+    ...base,
+    ...salvo,
+    analiseDireta: { ...base.analiseDireta, ...salvo.analiseDireta },
+    cincoPorques: {
+      porques: Array.from({ length: PORQUES_QTD }, (_, i) => salvo.cincoPorques?.porques?.[i] ?? ""),
+      causaRaiz: salvo.cincoPorques?.causaRaiz ?? "",
+    },
+    ishikawa: normalizarIshikawa(salvo.ishikawa),
+  };
+}
+
+/** Causa raiz da ferramenta escolhida (é o que libera a saída da Apuração). */
+export function causaRaizDaApuracao(f: ApuracaoFerramentas): string {
+  if (f.metodo === "cinco_porques") return f.cincoPorques.causaRaiz;
+  if (f.metodo === "ishikawa") return f.ishikawa.causaRaiz;
+  return f.analiseDireta.causaRaiz;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Evidências levantadas (Apuração)                                            */
+/* -------------------------------------------------------------------------- */
+
+/** Chave em `respostas` onde ficam as evidências levantadas na Apuração. */
+export const CHAVE_EVIDENCIAS = "__evidencias_apuracao";
+
+export interface EvidenciaApuracao {
+  id: string;
+  /** O que é (ex.: e-mail do cliente, print do fluxo, ocorrências relacionadas). */
+  oQue: string;
+  /** O que a evidência comprova. */
+  evidencia: string;
+  /** Arquivo anexado, quando houver. */
+  anexo: AnexoOcorrencia | null;
+  /** Vínculo com outra(s) ocorrência(s), sem arquivo. */
+  vinculo: boolean;
+  criadoEm: string;
+}
+
+export function evidenciasDe(o: Pick<Ocorrencia, "respostas">): EvidenciaApuracao[] {
+  const v = o.respostas[CHAVE_EVIDENCIAS];
+  return Array.isArray(v) ? (v as EvidenciaApuracao[]) : [];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ações executadas (Eficácia)                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Chave em `respostas` das ações executadas para resolver a ocorrência. */
+export const CHAVE_ACOES_EXECUTADAS = "__acoes_executadas";
+
+export const STATUS_ACAO = ["pendente", "em_andamento", "pausada", "concluida"] as const;
+export type StatusAcao = (typeof STATUS_ACAO)[number];
+
+export const STATUS_ACAO_LABELS: Record<StatusAcao, string> = {
+  pendente: "Pendente",
+  em_andamento: "Em andamento",
+  pausada: "Pausada",
+  concluida: "Concluída",
+};
+
+export interface AcaoExecutada {
+  id: string;
+  descricao: string;
+  /** Área responsável pela ação (ex.: Qualidade, Contábil). */
+  area: string;
+  /** Prazo no formato AAAA-MM-DD, ou vazio. */
+  prazo: string;
+  status: StatusAcao;
+  criadoEm: string;
+}
+
+export function acoesExecutadasDe(o: Pick<Ocorrencia, "respostas">): AcaoExecutada[] {
+  const v = o.respostas[CHAVE_ACOES_EXECUTADAS];
+  return Array.isArray(v) ? (v as AcaoExecutada[]) : [];
+}
+
+/** Chave em `respostas` do parecer final registrado ao concluir a Apuração. */
+export const CHAVE_PARECER_APURACAO = "__parecer_apuracao";
+
+export interface ParecerApuracao {
+  texto: string;
+  salvoPorNome: string;
+  salvoEm: string;
+}
+
+export function parecerApuracaoDe(o: Pick<Ocorrencia, "respostas">): ParecerApuracao | null {
+  const v = o.respostas[CHAVE_PARECER_APURACAO] as ParecerApuracao | undefined;
+  return v && typeof v.texto === "string" ? v : null;
 }

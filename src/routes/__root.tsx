@@ -13,6 +13,7 @@ import { getCookie } from "@tanstack/react-start/server";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { Toaster } from "@/components/ui/sonner";
 import { THEME_KEY, THEME_COOKIE_MAX_AGE } from "@/lib/theme";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -154,6 +155,8 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      {/* Sem o Toaster montado, nenhum aviso de toast (sucesso ou erro) aparece no app. */}
+      <Toaster />
     </QueryClientProvider>
   );
 }

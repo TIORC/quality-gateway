@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  ExternalLink,
   Hand,
   MessageSquare,
   Paperclip,
@@ -30,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -64,11 +66,17 @@ import {
   desconsiderarOcorrencia,
   DESCONSIDERAR_MOTIVO_MIN,
   RESULTADOS_APURACAO_CHAVE,
-  RESULTADOS_APURACAO_MAX,
-  RESULTADOS_APURACAO_MIN,
-  salvarResultadosApuracao,
+  salvarFerramentaApuracao,
+  enviarRetornoParcial,
+  RETORNO_PARCIAL_ACAO,
+  salvarParecerApuracao,
 } from "@/lib/ocorrencias-crud";
-import { listarHistorico, listarOcorrencias } from "@/lib/ocorrencias-base";
+import {
+  definirParecerApuracaoTipo,
+  listarHistorico,
+  listarOcorrencias,
+  listarTipos,
+} from "@/lib/ocorrencias-base";
 import {
   podeAgir,
   podeAssumirOcorrencia,
@@ -86,7 +94,17 @@ import {
 } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
 import { normalizarSetor } from "@/lib/niveis-acesso";
-import { cienciasDe, setoresEnvolvidosDe } from "@/lib/ocorrencias";
+import {
+  causaRaizDaApuracao,
+  cienciasDe,
+  apuracaoFerramentasDe,
+  parecerApuracaoDe,
+  setoresEnvolvidosDe,
+  type TipoOcorrencia,
+} from "@/lib/ocorrencias";
+import { FerramentaApuracao } from "@/components/ocorrencias/ferramenta-apuracao";
+import { EvidenciasApuracao } from "@/components/ocorrencias/evidencias-apuracao";
+import { AcoesExecutadas } from "@/components/ocorrencias/acoes-executadas";
 import { marcarRetornoVisto } from "@/lib/ocorrencias-retorno";
 import { PlanoAcoesOcorrencia } from "@/components/ocorrencias/plano-acoes-ocorrencia";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
@@ -100,7 +118,7 @@ import {
   ehTipoNaoConformidade,
   formatarPrazo,
   nomeEtapaDoFluxo,
-  ordenarSubetapas,
+  type SubetapaFluxo,
   subetapaDe,
   textoResposta,
   type AcaoEtapa,
@@ -166,21 +184,69 @@ function DetalheCorpo({
   const [anexos, setAnexos] = useState<File[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  // Resultados da Apuração (Qualidade).
-  const salvosApuracao = o.respostas[RESULTADOS_APURACAO_CHAVE] as
-    | { texto?: string; anexos?: AnexoOcorrencia[] }
-    | undefined;
-  const [resultados, setResultados] = useState(salvosApuracao?.texto ?? "");
-  const [anexosSalvos, setAnexosSalvos] = useState<AnexoOcorrencia[]>(
-    salvosApuracao?.anexos ?? [],
-  );
-  const [novosAnexosResultado, setNovosAnexosResultado] = useState<File[]>([]);
-  const [salvandoResultados, setSalvandoResultados] = useState(false);
+  // Ferramenta de apuração (Qualidade). Anexos da versão antiga ficam só para leitura.
+  const anexosApuracaoAntiga =
+    (o.respostas[RESULTADOS_APURACAO_CHAVE] as { anexos?: AnexoOcorrencia[] } | undefined)?.anexos ??
+    [];
+  const [salvandoApuracao, setSalvandoApuracao] = useState(false);
+  // Tipo da ocorrência (define se o parecer final da Apuração é obrigatório).
+  const [tipoDaOcorrencia, setTipoDaOcorrencia] = useState<TipoOcorrencia | null>(null);
+  useEffect(() => {
+    let ativo = true;
+    listarTipos()
+      .then((lista) => {
+        if (ativo) setTipoDaOcorrencia(lista.find((t) => t.id === o.tipoId) ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [o.tipoId]);
+
+  // Parecer final da Apuração (texto livre; obrigatório conforme o tipo).
+  const parecerSalvo = parecerApuracaoDe(o);
+  const [textoParecer, setTextoParecer] = useState(parecerSalvo?.texto ?? "");
+  const [salvandoParecer, setSalvandoParecer] = useState(false);
+
+  /** Liga/desliga a exigência do parecer para o tipo (vale para todas as ocorrências dele). */
+  async function alternarParecerObrigatorio() {
+    if (!tipoDaOcorrencia) return;
+    const novo = !tipoDaOcorrencia.parecerApuracao;
+    try {
+      await definirParecerApuracaoTipo(tipoDaOcorrencia.id, novo);
+      setTipoDaOcorrencia({ ...tipoDaOcorrencia, parecerApuracao: novo });
+      toast.success(
+        novo ? "Parecer final passou a ser obrigatório neste tipo." : "Parecer final deixou de ser obrigatório.",
+      );
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    }
+  }
+
+  async function salvarParecer() {
+    setSalvandoParecer(true);
+    try {
+      await salvarParecerApuracao(o, textoParecer, session);
+      toast.success("Parecer final da apuração salvo.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvandoParecer(false);
+    }
+  }
+
+  // Retorno parcial ao solicitante (durante a Apuração).
+  const [retornoParcialAberto, setRetornoParcialAberto] = useState(false);
+  const [textoRetornoParcial, setTextoRetornoParcial] = useState("");
+  const [enviandoRetornoParcial, setEnviandoRetornoParcial] = useState(false);
 
   // Avaliação de eficácia (diálogo da Qualidade).
   const [avaliacaoAberta, setAvaliacaoAberta] = useState(false);
   const [resultado, setResultado] = useState<ResultadoEficacia>("eficaz");
   const [observacao, setObservacao] = useState("");
+  // Ocorrências agrupadas no novo plano (só quando a eficácia não é confirmada).
+  const [agrupadasTexto, setAgrupadasTexto] = useState("");
   const [novosAnexosEficacia, setNovosAnexosEficacia] = useState<File[]>([]);
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false);
   // Marcar a etapa como impedida (o prazo para de contar).
@@ -309,11 +375,18 @@ function DetalheCorpo({
     if (
       o.macroAtual === "apuracao" &&
       macro !== "apuracao" &&
-      (salvosApuracao?.texto?.trim().length ?? 0) < RESULTADOS_APURACAO_MIN
+      !causaRaizDaApuracao(apuracaoFerramentasDe(o)).trim()
     ) {
-      toast.error(
-        `Salve os Resultados da Etapa (mínimo de ${RESULTADOS_APURACAO_MIN} caracteres) antes de sair da Apuração.`,
-      );
+      toast.error("Salve a causa raiz na ferramenta de apuração antes de sair da Apuração.");
+      return;
+    }
+    if (
+      o.macroAtual === "apuracao" &&
+      macro !== "apuracao" &&
+      tipoDaOcorrencia?.parecerApuracao &&
+      !parecerApuracaoDe(o)
+    ) {
+      toast.error("Registre o parecer final da Apuração antes de sair dela (exigido neste tipo).");
       return;
     }
     try {
@@ -342,22 +415,31 @@ function DetalheCorpo({
     }
   }
 
-  async function salvarResultados() {
-    setSalvandoResultados(true);
+  async function enviarRetornoParcialAgora() {
+    setEnviandoRetornoParcial(true);
     try {
-      const enviados = [...anexosSalvos];
-      for (const arquivo of novosAnexosResultado) {
-        enviados.push(await enviarAnexo(o.id, arquivo));
-      }
-      await salvarResultadosApuracao(o, resultados, enviados, session);
-      setAnexosSalvos(enviados);
-      setNovosAnexosResultado([]);
-      toast.success("Resultados da etapa salvos.");
+      await enviarRetornoParcial(o, textoRetornoParcial, session);
+      toast.success("Retorno enviado ao solicitante.");
+      setTextoRetornoParcial("");
+      setRetornoParcialAberto(false);
       await recarregar();
     } catch (e) {
       toast.error(traduzErro(e).message);
     } finally {
-      setSalvandoResultados(false);
+      setEnviandoRetornoParcial(false);
+    }
+  }
+
+  async function salvarApuracao(apuracao: Parameters<typeof salvarFerramentaApuracao>[1]) {
+    setSalvandoApuracao(true);
+    try {
+      await salvarFerramentaApuracao(o, apuracao, session);
+      toast.success("Apuração salva.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvandoApuracao(false);
     }
   }
 
@@ -376,7 +458,18 @@ function DetalheCorpo({
       await avaliarEficacia(
         o,
         etapas,
-        { resultado, observacao: observacao.trim(), anexos },
+        {
+          resultado,
+          observacao: observacao.trim(),
+          anexos,
+          agrupadas:
+            resultado === "nao_eficaz"
+              ? agrupadasTexto
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [],
+        },
         session,
       );
       setNovosAnexosEficacia([]);
@@ -510,7 +603,12 @@ function DetalheCorpo({
   }
 
   const mostraAbertura = verInternos || ehSolicitante;
-  const moverOpcoes = ordenarSubetapas(etapas);
+  // Etapas sem subetapas configuradas também aparecem (movem para a etapa inteira).
+  const moverOpcoes = etapas.flatMap((e): { macro: MacroEtapa; subetapa: SubetapaFluxo | null }[] =>
+    e.subetapas.length > 0
+      ? e.subetapas.map((s) => ({ macro: e.macro, subetapa: s }))
+      : [{ macro: e.macro, subetapa: null }],
+  );
   const mostraAvaliacao =
     gerencia && (o.macroAtual === "avaliacao_eficacia" || o.status !== "em_andamento");
   const mostraDecisao =
@@ -558,6 +656,18 @@ function DetalheCorpo({
           {o.responsavelNome || "a definir"}
         </DialogDescription>
       </DialogHeader>
+
+      {tipoDaOcorrencia?.linkExterno && (
+        <a
+          href={tipoDaOcorrencia.linkExterno}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-3 inline-flex items-center gap-1.5 self-start rounded-lg border border-[#D9E0EA] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#1E3A8A] hover:bg-[#F8FAFC]"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Abrir link externo
+        </a>
+      )}
 
       {carregando ? (
         <div className="py-12 text-center text-sm text-[#64748B]">Carregando a viagem…</div>
@@ -838,64 +948,191 @@ function DetalheCorpo({
             </section>
           )}
 
-          {podeMover && o.status !== "encerrada" && o.macroAtual === "apuracao" && (
+          {verInternos && o.macroAtual === "apuracao" && (
             <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Resultados da Etapa (Qualidade)
+                Retorno para quem abriu
               </h3>
-              <Textarea
-                className="mt-2 min-h-[160px]"
-                maxLength={RESULTADOS_APURACAO_MAX}
-                placeholder="Descreva os resultados da apuração (mínimo de 100 caracteres)…"
-                value={resultados}
-                onChange={(e) => setResultados(e.target.value)}
-              />
-              <p
-                className={`mt-1 text-[11px] ${
-                  resultados.trim().length < RESULTADOS_APURACAO_MIN
-                    ? "text-[#E11D48]"
-                    : "text-[#64748B]"
-                }`}
-              >
-                {resultados.trim().length}/{RESULTADOS_APURACAO_MAX} caracteres · mínimo{" "}
-                {RESULTADOS_APURACAO_MIN}
+              <p className="mt-1 text-[13px] text-[#64748B]">
+                Envia um recado parcial ao solicitante agora. O retorno final segue na finalização.
               </p>
-              {anexosSalvos.length > 0 && (
-                <div className="mt-3">
-                  <AnexosVisualizador anexos={anexosSalvos} />
+              {eventos.some((ev) => ev.acao === RETORNO_PARCIAL_ACAO) && (
+                <ul className="mt-3 space-y-2">
+                  {eventos
+                    .filter((ev) => ev.acao === RETORNO_PARCIAL_ACAO)
+                    .map((ev) => (
+                      <li key={ev.id} className="rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
+                        <p className="whitespace-pre-wrap">{ev.comentario}</p>
+                        <p className="mt-1 text-[11px] text-[#94A3B8]">
+                          {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
+                        </p>
+                      </li>
+                    ))}
+                </ul>
+              )}
+              {podeMover &&
+                o.status !== "encerrada" &&
+                (retornoParcialAberto ? (
+                  <div className="mt-3 space-y-2">
+                    <Textarea
+                      className="min-h-[100px]"
+                      maxLength={LIMITE_TEXTO_OCORRENCIA}
+                      placeholder="Escreva o recado para quem abriu…"
+                      value={textoRetornoParcial}
+                      onChange={(e) => setTextoRetornoParcial(e.target.value)}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setRetornoParcialAberto(false);
+                          setTextoRetornoParcial("");
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={enviandoRetornoParcial || !textoRetornoParcial.trim()}
+                        className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                        onClick={() => void enviarRetornoParcialAgora()}
+                      >
+                        {enviandoRetornoParcial ? "Enviando…" : "Enviar retorno"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setRetornoParcialAberto(true)}
+                    className="mt-3 w-full rounded-lg border border-[#D9E0EA] px-4 py-3 text-left text-[14px] font-semibold text-[#1E3A8A] hover:bg-[#F8FAFC]"
+                  >
+                    + Escrever retorno parcial
+                  </button>
+                ))}
+            </section>
+          )}
+
+          {verInternos && o.macroAtual === "apuracao" && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Parecer final
+                </h3>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!tipoDaOcorrencia?.parecerApuracao}
+                  disabled={!podeOperarOcorrencias(session) || !tipoDaOcorrencia}
+                  onClick={() => void alternarParecerObrigatorio()}
+                  className="inline-flex items-center gap-2 text-[12px] text-[#334155] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      tipoDaOcorrencia?.parecerApuracao ? "bg-[#1E3A8A]" : "bg-[#CBD5E1]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        tipoDaOcorrencia?.parecerApuracao ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </span>
+                  Obrigatório neste tipo
+                </button>
+              </div>
+              <p className="mt-1 text-[12px] text-[#64748B]">
+                Quando ativo, a Apuração só avança com o parecer registrado. Alterável pela Qualidade e pelo Desenvolvedor do Sistema; vale para todas as ocorrências deste tipo.
+              </p>
+              {podeMover && o.status !== "encerrada" ? (
+                <div className="mt-3 space-y-2">
+                  <Textarea
+                    className="min-h-[110px]"
+                    maxLength={LIMITE_TEXTO_OCORRENCIA}
+                    placeholder="Escreva o parecer final da apuração…"
+                    value={textoParecer}
+                    onChange={(e) => setTextoParecer(e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] text-[#64748B]">
+                      {parecerSalvo
+                        ? `Último registro: ${parecerSalvo.salvoPorNome || "—"} · ${formatarDataHoraBrasilia(parecerSalvo.salvoEm)}`
+                        : "Ainda não registrado."}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={salvandoParecer || !textoParecer.trim()}
+                      className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                      onClick={() => void salvarParecer()}
+                    >
+                      {salvandoParecer ? "Salvando…" : "Salvar parecer"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 whitespace-pre-wrap rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
+                  {parecerSalvo?.texto || "Não registrado."}
+                </p>
+              )}
+            </section>
+          )}
+
+          {verInternos && o.macroAtual === "avaliacao_eficacia" && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Ações que foram executadas
+              </h3>
+              <div className="mt-2">
+                <AcoesExecutadas
+                  key={o.id}
+                  ocorrencia={o}
+                  editavel={podeMover && o.status !== "encerrada"}
+                  onAlterada={recarregar}
+                />
+              </div>
+            </section>
+          )}
+
+          {verInternos && o.macroAtual === "apuracao" && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Evidências levantadas
+              </h3>
+              <div className="mt-2">
+                <EvidenciasApuracao
+                  key={o.id}
+                  ocorrencia={o}
+                  editavel={podeMover && o.status !== "encerrada"}
+                  permiteAnexos={tipoDaOcorrencia?.permiteAnexos !== false}
+                  onAlterada={recarregar}
+                />
+              </div>
+            </section>
+          )}
+
+          {verInternos && o.macroAtual === "apuracao" && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Ferramenta de apuração
+              </h3>
+              <FerramentaApuracao
+                key={o.id}
+                ocorrencia={o}
+                editavel={podeMover && o.status !== "encerrada"}
+                salvando={salvandoApuracao}
+                onSalvar={salvarApuracao}
+              />
+              {anexosApuracaoAntiga.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[12px] text-[#64748B]">Anexos da apuração anterior</p>
+                  <AnexosVisualizador anexos={anexosApuracaoAntiga} />
                 </div>
               )}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]">
-                  <Paperclip className="h-3.5 w-3.5" />
-                  {novosAnexosResultado.length > 0
-                    ? `${novosAnexosResultado.length} arquivo(s) a enviar`
-                    : "Anexar imagens, vídeos ou documentos"}
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-                    className="hidden"
-                    onChange={(e) =>
-                      setNovosAnexosResultado((atual) => [
-                        ...atual,
-                        ...Array.from(e.target.files ?? []),
-                      ])
-                    }
-                  />
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={
-                    salvandoResultados || resultados.trim().length < RESULTADOS_APURACAO_MIN
-                  }
-                  className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                  onClick={() => void salvarResultados()}
-                >
-                  {salvandoResultados ? "Salvando…" : "Salvar resultados"}
-                </Button>
-              </div>
             </section>
           )}
 
@@ -938,10 +1175,12 @@ function DetalheCorpo({
                       ) : (
                         moverOpcoes.map(({ macro, subetapa }) => (
                           <SelectItem
-                            key={`${macro}::${subetapa.id}`}
-                            value={`${macro}::${subetapa.id}`}
+                            key={`${macro}::${subetapa?.id ?? ""}`}
+                            value={`${macro}::${subetapa?.id ?? ""}`}
                           >
-                            {nomeEtapaDoFluxo(etapas, macro)} › {subetapa.nome}
+                            {subetapa
+                              ? `${nomeEtapaDoFluxo(etapas, macro)} › ${subetapa.nome}`
+                              : nomeEtapaDoFluxo(etapas, macro)}
                           </SelectItem>
                         ))
                       )}
@@ -1117,7 +1356,10 @@ function DetalheCorpo({
                   onChange={(e) => setComentario(e.target.value)}
                 />
                 <div className="flex flex-col gap-2">
-                  <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]">
+                  <label
+                    hidden={tipoDaOcorrencia?.permiteAnexos === false}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]"
+                  >
                     <Paperclip className="h-3.5 w-3.5" />
                     {anexos.length > 0 ? `${anexos.length} anexo(s)` : "Anexar"}
                     <input
@@ -1312,6 +1554,21 @@ function DetalheCorpo({
               </p>
             </div>
 
+            {resultado === "nao_eficaz" && (
+              <div className="space-y-1.5">
+                <Label className="text-[13px]">Ocorrências a agrupar no novo plano (opcional)</Label>
+                <Input
+                  maxLength={300}
+                  placeholder="Ex.: ANC-1252"
+                  value={agrupadasTexto}
+                  onChange={(e) => setAgrupadasTexto(e.target.value)}
+                />
+                <p className="text-[11px] text-[#94A3B8]">
+                  Separe por vírgula. Elas ficam vinculadas ao plano que começa agora.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-[13px]">Fotos, vídeos e documentos (opcional)</Label>
               <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]">
@@ -1411,7 +1668,9 @@ function DetalheCorpo({
               <section className="space-y-2">
                 <h3 className="text-[15px] font-bold text-[#1F2937]">O que foi identificado:</h3>
                 <p className="whitespace-pre-wrap rounded-xl bg-[#F8FAFC] p-4 text-[14px] leading-relaxed text-[#334155]">
-                  {salvosApuracao?.texto?.trim() || "Não registrado."}
+                  {causaRaizDaApuracao(apuracaoFerramentasDe(o)).trim() ||
+                    (o.respostas[RESULTADOS_APURACAO_CHAVE] as { texto?: string } | undefined)?.texto?.trim() ||
+                    "Não registrado."}
                 </p>
               </section>
             )}

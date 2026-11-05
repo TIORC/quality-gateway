@@ -35,6 +35,20 @@ import {
   subetapaDe,
   type AnexoOcorrencia,
   type AcaoEtapa,
+  type ApuracaoFerramentas,
+  apuracaoFerramentasDe,
+  CAUSAS_ISHIKAWA_MAX,
+  EFEITO_ISHIKAWA_PADRAO,
+  ISHIKAWA_CATEGORIAS,
+  CHAVE_FERRAMENTA_APURACAO,
+  causaRaizDaApuracao,
+  FERRAMENTA_APURACAO_LABELS,
+  CHAVE_EVIDENCIAS,
+  CHAVE_PARECER_APURACAO,
+  CHAVE_ACOES_EXECUTADAS,
+  type AcaoExecutada,
+  type ParecerApuracao,
+  type EvidenciaApuracao,
   type CampoFormulario,
   type MacroEtapa,
   type MacroFluxo,
@@ -268,6 +282,10 @@ export async function abrirOcorrencia(
     // Regra do portal: toda ocorrência (qualquer tipo) é do setor Qualidade.
     responsavel_nome: SETOR_RESPONSAVEL_OCORRENCIAS,
     responsavel_email: "",
+    // Dono padrão configurado no tipo (vazio = sem dono até a Qualidade assumir).
+    dono_qualidade_id: input.tipo.donoPadraoId ?? "",
+    dono_qualidade_nome: input.tipo.donoPadraoNome ?? "",
+    dono_qualidade_email: (input.tipo.donoPadraoEmail ?? "").toLowerCase(),
     prazo_etapa: calcularPrazoEtapa(slaDaEtapa(input.tipo, macro)),
     etapa_entrou_em: new Date().toISOString(),
   });
@@ -490,10 +508,11 @@ async function encerrar(
     },
     loja,
   );
-  // Retorno ao solicitante: inclui o resultado da apuração, quando registrado.
-  const resultadosApuracao = (
-    o.respostas[RESULTADOS_APURACAO_CHAVE] as { texto?: string } | undefined
-  )?.texto?.trim();
+  // Retorno ao solicitante: inclui a causa raiz da apuração, quando registrada.
+  const causaApuracao = causaRaizDaApuracao(apuracaoFerramentasDe(o)).trim();
+  const resultadosApuracao = causaApuracao
+    ? `Causa raiz: ${causaApuracao}`
+    : (o.respostas[RESULTADOS_APURACAO_CHAVE] as { texto?: string } | undefined)?.texto?.trim();
   await notificar(
     [
       {
@@ -1047,38 +1066,219 @@ export async function desconsiderarOcorrencia(
 }
 
 /** Resultados da etapa de Apuração (Qualidade): texto + evidências. */
-export const RESULTADOS_APURACAO_CHAVE = "__resultados_apuracao";
-export const RESULTADOS_APURACAO_MIN = 100;
-export const RESULTADOS_APURACAO_MAX = 12000;
-
-export async function salvarResultadosApuracao(
+/** Grava a lista de ações executadas (Eficácia) e registra a ação no histórico. */
+export async function salvarAcoesExecutadas(
   o: Ocorrencia,
-  texto: string,
-  anexos: AnexoOcorrencia[],
+  lista: AcaoExecutada[],
+  acao: string,
+  comentario: string,
   sessao: UserSession | null,
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
-  const limpo = texto.trim();
-  if (limpo.length < RESULTADOS_APURACAO_MIN) {
-    throw new Error(`Os resultados devem ter ao menos ${RESULTADOS_APURACAO_MIN} caracteres.`);
-  }
-  if (limpo.length > RESULTADOS_APURACAO_MAX) {
-    throw new Error(`Os resultados podem ter no máximo ${RESULTADOS_APURACAO_MAX} caracteres.`);
-  }
   await loja.atualizarOcorrencia(o.id, {
-    respostas: { ...o.respostas, [RESULTADOS_APURACAO_CHAVE]: { texto: limpo, anexos } },
+    respostas: { ...o.respostas, [CHAVE_ACOES_EXECUTADAS]: lista },
   });
   await registrarHistorico(
     o.id,
     autorDe(sessao),
     {
-      acao: "Resultados da apuração registrados",
+      acao,
       macro: o.macroAtual,
       subetapa: o.subetapaAtualNome,
       de: "",
       para: "",
-      comentario: "",
-      anexos,
+      comentario,
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/** Registra o parecer final da Apuração (texto livre, com autor e data). */
+export async function salvarParecerApuracao(
+  o: Ocorrencia,
+  texto: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpo = texto.trim();
+  if (!limpo) throw new Error("Escreva o parecer final antes de salvar.");
+  if (limpo.length > LIMITE_TEXTO_OCORRENCIA) {
+    throw new Error(`O parecer pode ter no máximo ${LIMITE_TEXTO_OCORRENCIA} caracteres.`);
+  }
+  const autor = autorDe(sessao);
+  const parecer: ParecerApuracao = {
+    texto: limpo,
+    salvoPorNome: autor.autor_nome,
+    salvoEm: new Date().toISOString(),
+  };
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [CHAVE_PARECER_APURACAO]: parecer },
+  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Parecer final da apuração registrado",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "",
+      comentario: limpo,
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/** Grava a lista de evidências da Apuração e registra a ação no histórico. */
+export async function salvarEvidencias(
+  o: Ocorrencia,
+  lista: EvidenciaApuracao[],
+  acao: string,
+  comentario: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [CHAVE_EVIDENCIAS]: lista },
+  });
+  await registrarHistorico(
+    o.id,
+    autorDe(sessao),
+    {
+      acao,
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "",
+      comentario,
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/** Ação registrada no histórico quando um retorno parcial é enviado ao solicitante. */
+export const RETORNO_PARCIAL_ACAO = "Retorno parcial enviado ao solicitante";
+
+/** Chave da versão antiga ("Resultados da Etapa"); mantida só para ler registros antigos. */
+export const RESULTADOS_APURACAO_CHAVE = "__resultados_apuracao";
+
+/**
+ * Envia um retorno parcial a quem abriu a ocorrência. Não muda a etapa nem encerra:
+ * fica registrado no histórico e avisa o solicitante pelo sino.
+ */
+export async function enviarRetornoParcial(
+  o: Ocorrencia,
+  texto: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpo = texto.trim();
+  if (!limpo) throw new Error("Escreva o retorno antes de enviar.");
+  if (limpo.length > LIMITE_TEXTO_OCORRENCIA) {
+    throw new Error(`O retorno pode ter no máximo ${LIMITE_TEXTO_OCORRENCIA} caracteres.`);
+  }
+  const autor = autorDe(sessao);
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: RETORNO_PARCIAL_ACAO,
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "",
+      comentario: limpo,
+      anexos: [],
+    },
+    loja,
+  );
+  await notificar(
+    [
+      {
+        email: o.abertaPorEmail,
+        nome: o.abertaPorNome,
+        titulo: `Retorno parcial sobre ${o.numero}`,
+        mensagem: `${o.titulo} · ${limpo}`,
+      },
+    ],
+    autor,
+    loja,
+  ).catch(() => undefined);
+}
+
+/**
+ * Salva a ferramenta de apuração (Análise direta, 5 Porquês ou Ishikawa 6M).
+ * Exige a causa raiz da ferramenta escolhida. Quem pode editar é decidido na tela
+ * (Qualidade e Desenvolvedor do Sistema).
+ */
+export async function salvarFerramentaApuracao(
+  o: Ocorrencia,
+  apuracao: ApuracaoFerramentas,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpar = (t: string) => t.trim();
+  const causa = limpar(causaRaizDaApuracao(apuracao));
+  if (!causa) {
+    throw new Error("Informe a causa raiz antes de salvar a apuração.");
+  }
+  const todosOsTextos = [
+    apuracao.analiseDireta.texto,
+    apuracao.analiseDireta.causaRaiz,
+    apuracao.cincoPorques.causaRaiz,
+    apuracao.ishikawa.causaRaiz,
+    ...apuracao.cincoPorques.porques,
+    apuracao.ishikawa.efeito,
+    ...Object.values(apuracao.ishikawa.rotulos),
+    ...Object.values(apuracao.ishikawa.causas).flat(),
+  ];
+  if (todosOsTextos.some((t) => t.trim().length > LIMITE_TEXTO_OCORRENCIA)) {
+    throw new Error(`Cada campo da apuração pode ter no máximo ${LIMITE_TEXTO_OCORRENCIA} caracteres.`);
+  }
+  const autor = autorDe(sessao);
+  const salvo: ApuracaoFerramentas = {
+    metodo: apuracao.metodo,
+    analiseDireta: {
+      texto: limpar(apuracao.analiseDireta.texto),
+      causaRaiz: limpar(apuracao.analiseDireta.causaRaiz),
+    },
+    cincoPorques: {
+      porques: apuracao.cincoPorques.porques.map(limpar),
+      causaRaiz: limpar(apuracao.cincoPorques.causaRaiz),
+    },
+    ishikawa: {
+      efeito: limpar(apuracao.ishikawa.efeito) || EFEITO_ISHIKAWA_PADRAO,
+      rotulos: Object.fromEntries(
+        ISHIKAWA_CATEGORIAS.map((c) => [c.id, limpar(apuracao.ishikawa.rotulos[c.id] ?? "") || c.padrao]),
+      ),
+      causas: Object.fromEntries(
+        ISHIKAWA_CATEGORIAS.map((c) => [
+          c.id,
+          (apuracao.ishikawa.causas[c.id] ?? []).map(limpar).filter(Boolean).slice(0, CAUSAS_ISHIKAWA_MAX),
+        ]),
+      ),
+      causaRaiz: limpar(apuracao.ishikawa.causaRaiz),
+    },
+    salvoPorNome: autor.autor_nome,
+    salvoEm: new Date().toISOString(),
+  };
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [CHAVE_FERRAMENTA_APURACAO]: salvo },
+  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: `Apuração registrada (${FERRAMENTA_APURACAO_LABELS[salvo.metodo]})`,
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "",
+      comentario: `Causa raiz: ${causa}`,
+      anexos: [],
     },
     loja,
   );
@@ -1093,7 +1293,12 @@ export interface AvaliacaoInput {
   observacao: string;
   /** Anexos já enviados ao Storage (fotos, vídeos, documentos). */
   anexos?: AnexoOcorrencia[];
+  /** Ocorrências (ex.: ANC-1252) agrupadas no novo plano quando não é eficaz. */
+  agrupadas?: string[];
 }
+
+/** Chave em `respostas` das ocorrências agrupadas em cada plano de ação. */
+export const CHAVE_AGRUPADAS_PLANO = "__agrupadas_plano";
 
 /** Etapa de plano de ação do tipo (por nome); sem ela, volta para a Apuração. */
 function etapaDoPlanoDeAcao(etapas: MacroFluxo[]): MacroFluxo | undefined {
@@ -1169,9 +1374,21 @@ export async function avaliarEficacia(
     return;
   }
 
-  // Novo ciclo: reincidência volta para o plano de ação (e exige novo retorno ao cliente).
+  // Novo ciclo: reincidência volta para o plano de ação como "Plano N" (exige novo retorno ao
+  // cliente). Respostas, ações executadas e histórico continuam; agrupadas entram no plano.
   const { __retorno_cliente: _retorno, ...respostasCiclo } = o.respostas;
   void _retorno;
+  const numeroPlano = o.reaberturas + 2;
+  const agrupadas = (input.agrupadas ?? []).map((n) => n.trim()).filter(Boolean);
+  if (agrupadas.length > 0) {
+    const anteriores = Array.isArray(respostasCiclo[CHAVE_AGRUPADAS_PLANO])
+      ? (respostasCiclo[CHAVE_AGRUPADAS_PLANO] as unknown[])
+      : [];
+    respostasCiclo[CHAVE_AGRUPADAS_PLANO] = [
+      ...anteriores,
+      { plano: numeroPlano, numeros: agrupadas, em: new Date().toISOString() },
+    ];
+  }
   await loja.atualizarOcorrencia(o.id, {
     respostas: respostasCiclo,
     status: "reaberta",
@@ -1186,14 +1403,23 @@ export async function avaliarEficacia(
     eficaciaPrevistaEm: null,
   };
   const destino = etapaDoPlanoDeAcao(etapas);
+  const subPadrao = destino?.subetapas[0] ?? null;
+  // A etapa passa a se chamar "Plano N" (Plano 2 na primeira reincidência).
+  const subPlano = subPadrao ? { ...subPadrao, nome: `Plano ${numeroPlano}` } : null;
+  const comentarioCiclo = [
+    input.observacao || "A ação não resolveu o problema.",
+    agrupadas.length > 0 ? `Agrupadas no Plano ${numeroPlano}: ${agrupadas.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   await entrarEm(
     base,
     etapas,
     destino?.macro ?? "apuracao",
-    destino?.subetapas[0] ?? null,
+    subPlano,
     autor,
-    `Novo ciclo ${o.reaberturas + 2} (reincidência)`,
-    input.observacao || "A ação não resolveu o problema.",
+    `Novo ciclo ${numeroPlano} (reincidência)`,
+    comentarioCiclo,
     [],
     loja,
   );

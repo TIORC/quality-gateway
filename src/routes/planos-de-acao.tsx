@@ -1,5 +1,7 @@
 import { createFileRoute, getRouteApi } from "@tanstack/react-router";
-import { LayoutGrid, Plus, Search, Table2 } from "lucide-react";
+import { CalendarRange, Columns3, LayoutGrid, Plus, Search, Table2 } from "lucide-react";
+import { KanbanPlanos } from "@/components/planos-kanban";
+import { CronogramaPlanos } from "@/components/planos-cronograma";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelShell, usePanelSession } from "@/components/panel-shell";
 import { Button } from "@/components/ui/button";
@@ -70,7 +72,7 @@ function PlanosDeAcao() {
   const podeGerenciar = podeGerenciarConteudo(sessao);
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIAIS);
   const [aba, setAba] = useState<Aba>("minhas");
-  const [vista, setVista] = useState<"lista" | "tabela">("lista");
+  const [vista, setVista] = useState<"lista" | "tabela" | "kanban" | "cronograma">("lista");
   const [planos, setPlanos] = useState<PlanoAcao[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
@@ -153,6 +155,14 @@ function PlanosDeAcao() {
               className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium ${vista === "tabela" ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#64748B]"}`}>
               <Table2 className="h-3.5 w-3.5" /> Tabela
             </button>
+            <button type="button" onClick={() => setVista("kanban")}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium ${vista === "kanban" ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#64748B]"}`}>
+              <Columns3 className="h-3.5 w-3.5" /> Kanban
+            </button>
+            <button type="button" onClick={() => setVista("cronograma")}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium ${vista === "cronograma" ? "bg-[#EEF2FF] text-[#4F46E5]" : "text-[#64748B]"}`}>
+              <CalendarRange className="h-3.5 w-3.5" /> Cronograma
+            </button>
           </div>
           {podeGerenciar ? (
             <Button className="shrink-0" onClick={() => setNovoPlanoAberto(true)}>
@@ -184,6 +194,7 @@ function PlanosDeAcao() {
               carregando={carregando}
               erro={erro}
               planos={filtrados}
+              todas={filtrarPlanos(planos, filtros, "organizacao", sessao)}
               vista={vista}
               podeGerenciar={podeGerenciar}
               onFiltroChange={atualizarFiltro}
@@ -266,7 +277,9 @@ interface ListaAcoesProps {
   carregando: boolean;
   erro: string;
   planos: PlanoAcao[];
-  vista: "lista" | "tabela";
+  /** Todas as ações da organização (com os filtros de busca), usadas no Kanban. */
+  todas: PlanoAcao[];
+  vista: "lista" | "tabela" | "kanban" | "cronograma";
   podeGerenciar: boolean;
   onFiltroChange: (campo: keyof Filtros, valor: string) => void;
   onNovoPlano: () => void;
@@ -275,7 +288,7 @@ interface ListaAcoesProps {
 }
 
 function ListaAcoes(props: ListaAcoesProps) {
-  const { filtros, setores, origens, carregando, erro, planos, vista } = props;
+  const { filtros, setores, origens, carregando, erro, planos, todas, vista } = props;
   const { onFiltroChange, onNovoPlano, onAbrir, onRecarregar, podeGerenciar } = props;
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
@@ -348,6 +361,10 @@ function ListaAcoes(props: ListaAcoesProps) {
         </div>
       ) : vista === "lista" ? (
         <CartaoLista planos={planos} onAbrir={onAbrir} />
+      ) : vista === "kanban" ? (
+        <KanbanPlanos planos={todas} onAbrir={onAbrir} />
+      ) : vista === "cronograma" ? (
+        <CronogramaPlanos planos={todas} onAbrir={onAbrir} />
       ) : (
         <TabelaPlanos planos={planos} onAbrir={onAbrir} />
       )}

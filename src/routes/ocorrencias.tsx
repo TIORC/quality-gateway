@@ -43,6 +43,7 @@ import { FormBuilder } from "@/components/ocorrencias/form-builder";
 import { FlowBuilder } from "@/components/ocorrencias/flow-builder";
 import { FormatadorSla } from "@/components/ocorrencias/formatador-sla";
 import { DetalheOcorrenciaDialog } from "@/components/ocorrencias/detalhe-ocorrencia-dialog";
+import { DashboardOcorrencias } from "@/components/ocorrencias/dashboard-ocorrencias";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
   ESTADO_NC_VAZIO,
@@ -73,6 +74,7 @@ import {
   PROCEDENCIA_LABELS,
   PRIORIDADE_LABELS,
   alinharFluxoAoTipo,
+  tipoTemJulgamento,
   ehTipoNaoConformidade,
   etapasDoTipo,
   PRAZOS_EFICACIA,
@@ -117,6 +119,7 @@ const ABAS = [
   { valor: "todas", rotulo: "Todas as Ocorrências" },
   { valor: "abri", rotulo: "Que eu abri" },
   { valor: "equipe", rotulo: "Minha equipe" },
+  { valor: "dashboard", rotulo: "Dashboard" },
 ] as const;
 
 /** Página "Minha equipe": mesma lista, só com as ocorrências dos setores que a pessoa lidera. */
@@ -190,6 +193,8 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   const abasVisiveis = ABAS.filter((aba) => {
     if (equipe) return aba.valor === "equipe";
     if (aba.valor === "equipe") return ehLiderDeSetor;
+    // Dashboard e lista "Todas" mostram tudo: só para quem opera as ocorrências.
+    if (aba.valor === "dashboard") return veTodasAsOcorrencias(session);
     return aba.valor !== "todas" || veTodasAsOcorrencias(session);
   });
 
@@ -339,7 +344,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                 return (
                   <TabsTrigger key={aba.valor} value={aba.valor} className="gap-1.5">
                     {aba.rotulo}
-                    {aba.valor !== "abertura" && (
+                    {aba.valor !== "abertura" && aba.valor !== "dashboard" && (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
                         {total}
                       </span>
@@ -371,6 +376,11 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                         }}
                       />
                     )}
+                  />
+                ) : aba.valor === "dashboard" ? (
+                  <DashboardOcorrencias
+                    ocorrencias={lista}
+                    tipos={tipos.data ?? []}
                   />
                 ) : visao === "kanban" ? (
                   <KanbanOcorrencias
@@ -1796,9 +1806,23 @@ function TipoDialog({
   );
   const [eficaciaDias, setEficaciaDias] = useState(tipo?.eficaciaDias ?? 30);
   const [retornoCliente, setRetornoCliente] = useState(tipo?.retornoCliente ?? false);
+  const [parecerApuracao, setParecerApuracao] = useState(tipo?.parecerApuracao ?? false);
   const [ativo, setAtivo] = useState(tipo?.ativo ?? true);
   const [ordem, setOrdem] = useState(tipo?.ordem ?? 0);
   const [salvando, setSalvando] = useState(false);
+  // Configuração extra do tipo.
+  const catalogoTipo = useCatalogoOrganizacional();
+  const [sigla, setSigla] = useState(tipo?.sigla ?? "");
+  const [linkExterno, setLinkExterno] = useState(tipo?.linkExterno ?? "");
+  const [donoPadraoId, setDonoPadraoId] = useState(tipo?.donoPadraoId ?? "");
+  const [permiteAnexos, setPermiteAnexos] = useState(tipo?.permiteAnexos ?? true);
+  const [julgamentoModo, setJulgamentoModo] = useState<"auto" | "sim" | "nao">(
+    tipo?.temJulgamento === null || tipo?.temJulgamento === undefined
+      ? "auto"
+      : tipo.temJulgamento
+        ? "sim"
+        : "nao",
+  );
 
   function atualizarEtapa(id: string, patch: Partial<EtapaTipo>) {
     setEtapas((atual) => atual.map((e) => (e.id === id ? { ...e, ...patch } : e)));
@@ -1827,6 +1851,18 @@ function TipoDialog({
       nome: e.nome.trim() || "Etapa",
       slaDias: Math.max(1, Number(e.slaDias) || 5),
     }));
+    // Etapa de julgamento: conforme a opção do tipo (automático = pelo nome).
+    const temJulgamento =
+      julgamentoModo === "auto" ? tipoTemJulgamento({ nome: nome.trim() }) : julgamentoModo === "sim";
+    const julgamentoExistente = etapasSalvas.find((e) => e.id === "julgamento");
+    if (!temJulgamento) {
+      etapasSalvas = etapasSalvas.filter((e) => e.id !== "julgamento");
+    } else if (!julgamentoExistente) {
+      const pos = etapasSalvas.findIndex((e) => e.id === "apuracao");
+      const julgamento: EtapaTipo = { id: "julgamento", nome: "Julgamento", slaDias: 5 };
+      const idx = pos < 0 ? 0 : pos + 1;
+      etapasSalvas = [...etapasSalvas.slice(0, idx), julgamento, ...etapasSalvas.slice(idx)];
+    }
     // Retorno ao cliente: etapa obrigatória antes do fechamento (criada/removida pela opção).
     etapasSalvas = etapasSalvas.filter((e) => e.id !== ETAPA_RETORNO_CLIENTE);
     if (retornoCliente) {
@@ -1851,6 +1887,15 @@ function TipoDialog({
         etapas: etapasSalvas,
         eficaciaDias,
         retornoCliente,
+        parecerApuracao,
+        sigla: sigla.trim().toUpperCase(),
+        temJulgamento: julgamentoModo === "auto" ? null : julgamentoModo === "sim",
+        permiteAnexos,
+        linkExterno: linkExterno.trim(),
+        donoPadraoId,
+        donoPadraoNome: catalogoTipo.colaboradores.find((c) => c.id === donoPadraoId)?.nome ?? "",
+        donoPadraoEmail:
+          catalogoTipo.colaboradores.find((c) => c.id === donoPadraoId)?.email ?? "",
         ativo,
         ordem,
       });
@@ -2010,6 +2055,82 @@ function TipoDialog({
             </p>
           </Campo>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label className="text-[12px]">Sigla</Label>
+              <Input
+                className="mt-1"
+                maxLength={6}
+                placeholder="Ex.: NC"
+                value={sigla}
+                onChange={(e) => setSigla(e.target.value.toUpperCase())}
+              />
+              <p className="mt-1 text-[11px] text-[#64748B]">
+                Início do número (ex.: NC-2026-001). Vazio usa a sigla padrão do nome do tipo.
+              </p>
+            </div>
+            <div>
+              <Label className="text-[12px]">Link externo</Label>
+              <Input
+                className="mt-1"
+                placeholder="https://…"
+                value={linkExterno}
+                onChange={(e) => setLinkExterno(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-[#64748B]">Aparece no detalhe da ocorrência.</p>
+            </div>
+            <div>
+              <Label className="text-[12px]">Dono padrão da Qualidade</Label>
+              <Select
+                value={donoPadraoId || "_nenhum"}
+                onValueChange={(v) => setDonoPadraoId(v === "_nenhum" ? "" : v)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_nenhum">Sem dono padrão</SelectItem>
+                  {catalogoTipo.colaboradores.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-[12px]">Etapa de julgamento</Label>
+              <Select
+                value={julgamentoModo}
+                onValueChange={(v) => setJulgamentoModo(v as "auto" | "sim" | "nao")}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Automático (pelo nome do tipo)</SelectItem>
+                  <SelectItem value="sim">Sim</SelectItem>
+                  <SelectItem value="nao">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#334155]">
+            <input
+              type="checkbox"
+              checked={permiteAnexos}
+              onChange={(e) => setPermiteAnexos(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[#1E3A8A]"
+            />
+            <span>
+              Permite anexos
+              <span className="block text-[12px] text-[#64748B]">
+                Libera anexar arquivos em comentários e evidências.
+              </span>
+            </span>
+          </label>
+
           <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#334155]">
             <input
               type="checkbox"
@@ -2022,6 +2143,21 @@ function TipoDialog({
               <span className="block text-[12px] text-[#64748B]">
                 Cria a etapa obrigatória “Retorno ao cliente” antes do fechamento. Ela não pode ser
                 pulada e exige o registro do que foi retornado.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#334155]">
+            <input
+              type="checkbox"
+              checked={parecerApuracao}
+              onChange={(e) => setParecerApuracao(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[#1E3A8A]"
+            />
+            <span>
+              Obrigatório neste tipo: parecer final da Apuração
+              <span className="block text-[12px] text-[#64748B]">
+                A Apuração só pode ser concluída depois que o parecer final for registrado.
               </span>
             </span>
           </label>

@@ -82,6 +82,15 @@ export function tipoDoRow(row: Linha): TipoOcorrencia {
     etapas: etapasDoRow(row),
     eficaciaDias: num(row["eficacia_dias"], 30),
     retornoCliente: Boolean(row["exige_retorno_cliente"]),
+    parecerApuracao: Boolean(row["exige_parecer_apuracao"]),
+    sigla: str(row["sigla"]),
+    temJulgamento:
+      typeof row["tem_julgamento"] === "boolean" ? (row["tem_julgamento"] as boolean) : null,
+    permiteAnexos: row["permite_anexos"] === undefined ? true : Boolean(row["permite_anexos"]),
+    linkExterno: str(row["link_externo"]),
+    donoPadraoId: str(row["dono_padrao_id"]),
+    donoPadraoNome: str(row["dono_padrao_nome"]),
+    donoPadraoEmail: str(row["dono_padrao_email"]),
     ativo: row["ativo"] === undefined ? true : Boolean(row["ativo"]),
     ordem: num(row["ordem"]),
   };
@@ -104,6 +113,15 @@ export async function listarTipos(): Promise<TipoOcorrencia[]> {
   }
 }
 
+/** Liga/desliga só a exigência do parecer final do tipo (sem mexer no resto do tipo). */
+export async function definirParecerApuracaoTipo(tipoId: string, exige: boolean): Promise<void> {
+  const { error } = await cloud()
+    .from("ocorrencia_tipos")
+    .update({ exige_parecer_apuracao: exige })
+    .eq("id", tipoId);
+  if (error) throw traduzErro(error);
+}
+
 export async function salvarTipo(
   tipo: Partial<TipoOcorrencia> & { nome: string },
 ): Promise<TipoOcorrencia> {
@@ -118,6 +136,14 @@ export async function salvarTipo(
     etapas: tipo.etapas ?? [],
     eficacia_dias: tipo.eficaciaDias ?? 30,
     exige_retorno_cliente: tipo.retornoCliente ?? false,
+    exige_parecer_apuracao: tipo.parecerApuracao ?? false,
+    sigla: (tipo.sigla ?? "").trim().toUpperCase(),
+    tem_julgamento: tipo.temJulgamento ?? null,
+    permite_anexos: tipo.permiteAnexos ?? true,
+    link_externo: (tipo.linkExterno ?? "").trim(),
+    dono_padrao_id: tipo.donoPadraoId ?? "",
+    dono_padrao_nome: tipo.donoPadraoNome ?? "",
+    dono_padrao_email: (tipo.donoPadraoEmail ?? "").trim().toLowerCase(),
     ativo: tipo.ativo ?? true,
     ordem: tipo.ordem ?? 0,
   };

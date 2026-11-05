@@ -4,9 +4,19 @@
  * (sem botão direito/download pelo player). Outros formatos abrem em nova aba.
  * Começa recolhido: só o cabeçalho aparece até o operador clicar para abrir.
  */
-import { ChevronDown, ChevronUp, ExternalLink, FileText, Film, ImageIcon, Loader2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileText,
+  Film,
+  ImageIcon,
+  Loader2,
+  Maximize2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { PdfProtegido } from "@/components/pdf-protegido";
 import { urlAssinada, type OtimizacaoImagem } from "@/lib/ocorrencias-crud";
 import type { AnexoOcorrencia } from "@/lib/ocorrencias";
@@ -35,6 +45,7 @@ function AnexoItem({ anexo }: { anexo: AnexoOcorrencia }) {
   const Icone = ICONES[categoria];
   const ehImagem = categoria === "imagem";
   const [expandido, setExpandido] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [erro, setErro] = useState("");
 
@@ -99,14 +110,40 @@ function AnexoItem({ anexo }: { anexo: AnexoOcorrencia }) {
             <Loader2 className="h-4 w-4 animate-spin" /> Abrindo arquivo…
           </div>
         ) : categoria === "imagem" ? (
-          <div className="flex justify-center bg-[#F1F5F9] p-2">
-            <img
-              src={url}
-              alt={anexo.nome}
-              decoding="async"
-              draggable={false}
-              className="max-h-[65vh] max-w-full select-none object-contain"
-            />
+          <div className="bg-[#F1F5F9] p-2">
+            <div className="mb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setTelaCheia(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[#D9E0EA] bg-white px-2.5 py-1.5 text-[12px] font-semibold text-[#1E3A8A] hover:bg-[#F8FAFC]"
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+                Tela cheia
+              </button>
+            </div>
+            <div className="relative h-[65vh] min-h-[320px] w-full overflow-hidden rounded-md bg-white">
+              <img
+                src={url}
+                alt={anexo.nome}
+                decoding="async"
+                draggable={false}
+                className="absolute inset-0 h-full w-full select-none object-contain"
+              />
+            </div>
+            <Dialog open={telaCheia} onOpenChange={setTelaCheia}>
+              <DialogContent className="left-0 top-0 h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 bg-black/95 p-4 sm:max-w-none">
+                <DialogTitle className="sr-only">{anexo.nome}</DialogTitle>
+                <div className="flex h-full w-full items-center justify-center">
+                  <img
+                    src={url}
+                    alt={anexo.nome}
+                    decoding="async"
+                    draggable={false}
+                    className="max-h-full max-w-full select-none object-contain"
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         ) : categoria === "video" ? (
           <video

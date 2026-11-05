@@ -8,6 +8,7 @@ const STATUS_CLS: Record<string, string> = {
   em_andamento: "bg-amber-100 text-amber-800",
   concluida: "bg-emerald-100 text-emerald-700",
   atrasada: "bg-rose-100 text-rose-700",
+  impedida: "bg-orange-100 text-orange-800",
   cancelado: "bg-slate-200 text-slate-500 line-through",
 };
 
