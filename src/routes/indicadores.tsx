@@ -136,7 +136,7 @@ function cardsDeTarefas(m: MetricasTarefas): {
 }[] {
   const p = (n: number) => pct(n, m.total);
   return [
-    { chave: "total", label: "Total de tarefas", valor: String(m.total), cor: "#1F2937", rodape: "vencimento no mês" },
+    { chave: "total", label: "Total de tarefas", valor: String(m.total), cor: "#1F2937", rodape: "competência no mês" },
     { chave: "concluidas", label: "% concluídas", valor: p(m.concluidas), cor: "#1F2937", rodape: `${m.concluidas} tarefas` },
     { chave: "noPrazo", label: "% concluídas no prazo", valor: p(m.noPrazo), cor: "#059669", rodape: `${m.noPrazo} tarefas` },
     { chave: "foraDoPrazo", label: "% concluídas fora do prazo", valor: p(m.foraDoPrazo), cor: "#D97706", rodape: `${m.foraDoPrazo} tarefas` },
@@ -154,7 +154,7 @@ function cardsDeTarefas(m: MetricasTarefas): {
       label: "Tarefas Acumuladas",
       valor: String(m.acumuladasAnteriores),
       cor: "#1F2937",
-      rodape: "vencimento em meses anteriores",
+      rodape: "atrasadas da competência do mês",
     },
   ];
 }
@@ -898,7 +898,7 @@ function Indicadores() {
     setoresDoEscopo,
     sessao?.nome,
   ]);
-  /** Registro de Orientação: tarefas do departamento "Orientação ao Cliente" com vencimento no mês, respeitando os filtros. */
+  /** Registro de Orientação: tarefas do departamento "Orientação ao Cliente" da competência do mês, respeitando os filtros. */
   // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
   const tarefasOrientacao = tarefasDoIndicador(
     tarefasFiltradas.filter((t) => normalizarSetor(t.departamento) === "orientacao ao cliente"),
@@ -1288,7 +1288,7 @@ function Indicadores() {
           titulo={zerarAlvo === "mes" ? `Zerar ${rotuloMesLongo(mesEscolhido)}?` : "Zerar todas as tarefas?"}
           descricao={
             zerarAlvo === "mes"
-              ? `Todas as tarefas com vencimento em ${rotuloMesLongo(mesEscolhido)} serão apagadas do sistema. Essa ação não pode ser desfeita.`
+              ? `Todas as tarefas da competência de ${rotuloMesLongo(mesEscolhido)} serão apagadas do sistema. Essa ação não pode ser desfeita.`
               : "Todas as tarefas importadas do Gestta serão apagadas do sistema. Indicadores e apurações são mantidos. Essa ação não pode ser desfeita."
           }
           textoConfirmar={zerarAlvo === "mes" ? "Zerar mês" : "Zerar tudo"}

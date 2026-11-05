@@ -3,7 +3,8 @@
  * de Indicadores (Por Setor / Por Colaborador / Por Célula).
  *
  * Regras (mês escolhido = mês do Vencimento da tarefa):
- *  - Total de tarefas: tarefas com vencimento no mês.
+ *  - Mês de cada tarefa do Gestta: a Competência (sem Competência, o mês do vencimento).
+ *  - Total de tarefas: tarefas do Gestta da competência do mês.
  *  - % concluídas: status CONCLUIDO ÷ total.
  *  - No prazo / fora do prazo (excludentes, somam % concluídas):
  *    conclusão <= vencimento (inclui as antecipadas) / conclusão > vencimento.
@@ -273,7 +274,7 @@ export function unificarSetor(nome: string): string {
 
 const COLUNAS_SELECT =
   "id,nome,tipo,status,cliente,departamento,responsavel,vencimento,data_conclusao,competencia,cnpj_cpf,data_legal,feito_atrasado,feito_com_multa,baixado,origem";
-const PAGINAS_SIMULTANEAS = 6;
+const PAGINAS_SIMULTANEAS = 3;
 
 let cacheTarefas: TarefaGestta[] | null = null;
 
@@ -315,9 +316,14 @@ export async function carregarTarefas(): Promise<TarefaGestta[]> {
     const trabalhador = async () => {
       while (proximo < restantes.length) {
         const i = proximo++;
-        const { data, error } = await consultaPagina(restantes[i]!);
-        if (error) throw traduzErro(error);
-        resultados[i] = (data ?? []) as Record<string, string | null>[];
+        // Páginas profundas podem estourar o tempo do servidor sob carga (erro 500): tenta de novo antes de desistir.
+        let resposta = await consultaPagina(restantes[i]!);
+        for (let tentativa = 1; resposta.error && tentativa < 3; tentativa++) {
+          await new Promise((r) => setTimeout(r, 700 * tentativa));
+          resposta = await consultaPagina(restantes[i]!);
+        }
+        if (resposta.error) throw traduzErro(resposta.error);
+        resultados[i] = (resposta.data ?? []) as Record<string, string | null>[];
       }
     };
     await Promise.all(Array.from({ length: Math.min(PAGINAS_SIMULTANEAS, restantes.length) }, trabalhador));
@@ -483,7 +489,7 @@ export async function importarTarefas(
     : "";
   const contagemMes = new Map<string, number>();
   for (const t of tarefas) {
-    const m = t.vencimento?.slice(0, 7);
+    const m = mesDoGestta(t);
     if (m) contagemMes.set(m, (contagemMes.get(m) ?? 0) + 1);
   }
   const mesPredominante = [...contagemMes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
@@ -491,7 +497,7 @@ export async function importarTarefas(
 }
 
 /**
- * Apaga tarefas importadas. Com `mes` (AAAA-MM), apaga só as com vencimento nesse mês;
+ * Apaga tarefas importadas. Com `mes` (AAAA-MM), apaga só as desse mês (Competência; acumuladas e complementares pelo critério do card);
  * sem `mes`, apaga todas. Não mexe em indicadores nem em apurações.
  */
 export async function zerarTarefas(mes?: string): Promise<void> {
@@ -501,21 +507,15 @@ export async function zerarTarefas(mes?: string): Promise<void> {
     if (error) throw traduzErro(error);
     return;
   }
-  // Acumuladas pertencem à competência do relatório (não ao vencimento): apaga pelo mês da competência.
-  const idsAcumuladas = (await carregarTarefas())
-    .filter((t) => t.origem === "acumulada" && mesDaCompetencia(t.competencia) === mes)
+  // Mesmas regras de mês dos cards: cada origem tem o seu critério.
+  const idsDoMes = (await carregarTarefas())
+    .filter((t) => {
+      if (t.origem === "acumulada") return mesDaCompetencia(t.competencia) === mes;
+      if (t.origem === "complementar") return !!t.dataConclusao && t.dataConclusao.slice(0, 7) === mes;
+      return mesDoGestta(t) === mes;
+    })
     .map((t) => t.id);
-  await apagarTarefasPorId(idsAcumuladas);
-
-  const [ano, numeroMes] = mes.split("-").map(Number);
-  const proximo = new Date(Date.UTC(ano!, numeroMes!, 1)).toISOString().slice(0, 10);
-  const { error } = await cliente
-    .from(TABELA)
-    .delete()
-    .gte("vencimento", `${mes}-01`)
-    .lt("vencimento", proximo)
-    .or("origem.is.null,origem.neq.acumulada");
-  if (error) throw traduzErro(error);
+  await apagarTarefasPorId(idsDoMes);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -582,6 +582,14 @@ export function mesDaCompetencia(texto: string, hoje: string = hojeIso()): strin
   return `${anoNumero}-${String(numero).padStart(2, "0")}`;
 }
 
+/**
+ * Mês de uma tarefa do Gestta: a Competência (mês da obrigação). Sem Competência,
+ * usa o mês do vencimento.
+ */
+export function mesDoGestta(t: TarefaGestta): string {
+  return mesDaCompetencia(t.competencia) || t.vencimento?.slice(0, 7) || "";
+}
+
 export function calcularMetricas(
   tarefas: TarefaGestta[],
   mes: string,
@@ -604,17 +612,17 @@ export function calcularMetricas(
     if (ehComplementarDoMes(t, mes)) m.concluidasNoMes += 1;
     if (ehAcumulada(t, mes)) m.acumuladasAnteriores += 1;
     if (t.origem !== "gestta") continue;
-    if (!t.vencimento || t.vencimento.slice(0, 7) !== mes) continue;
+    if (mesDoGestta(t) !== mes) continue;
     m.total += 1;
     if (concluida) {
       m.concluidas += 1;
-      if (t.dataConclusao) {
+      if (t.dataConclusao && t.vencimento) {
         if (t.dataConclusao > t.vencimento) m.foraDoPrazo += 1;
         else m.noPrazo += 1;
       }
     } else if (t.status === "IMPEDIMENTO") {
       m.impedimento += 1;
-    } else if (t.vencimento < hoje) {
+    } else if (t.vencimento && t.vencimento < hoje) {
       m.abertasEmAtraso += 1;
     }
   }
@@ -644,20 +652,20 @@ export function tarefasDoIndicador(
     if (chave === "concluidasNoMes") return ehComplementarDoMes(t, mes);
     if (chave === "acumuladasAnteriores") return ehAcumulada(t, mes);
     if (t.origem !== "gestta") return false;
-    if (!t.vencimento || t.vencimento.slice(0, 7) !== mes) return false;
+    if (mesDoGestta(t) !== mes) return false;
     switch (chave) {
       case "total":
         return true;
       case "concluidas":
         return concluida;
       case "noPrazo":
-        return concluida && !!t.dataConclusao && t.dataConclusao <= t.vencimento;
+        return concluida && !!t.dataConclusao && !!t.vencimento && t.dataConclusao <= t.vencimento;
       case "foraDoPrazo":
-        return concluida && !!t.dataConclusao && t.dataConclusao > t.vencimento;
+        return concluida && !!t.dataConclusao && !!t.vencimento && t.dataConclusao > t.vencimento;
       case "impedimento":
         return t.status === "IMPEDIMENTO";
       case "abertasEmAtraso":
-        return !concluida && t.status !== "IMPEDIMENTO" && t.vencimento < hoje;
+        return !concluida && t.status !== "IMPEDIMENTO" && !!t.vencimento && t.vencimento < hoje;
     }
   });
 }
