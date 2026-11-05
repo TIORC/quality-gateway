@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   buscarModeloPesquisa,
+  prazoEncerrado,
   registrarRespostaModelo,
   type ModeloPesquisa,
   type PerguntaModelo,
@@ -85,6 +86,11 @@ export function ResponderPesquisaModelo({ id }: { id: string }) {
   async function onSubmit(evento: FormEvent) {
     evento.preventDefault();
     if (!modelo) return;
+    if (prazoEncerrado(modelo)) {
+      // Prazo passou com a página aberta: força nova renderização, que mostra a tela de encerrada.
+      setModelo({ ...modelo });
+      return;
+    }
     const respostas: RespostaPesquisa = {};
     for (const pergunta of modelo.perguntas) {
       const resposta = montarResposta(pergunta, escolhas[pergunta.id]);
@@ -124,6 +130,19 @@ export function ResponderPesquisaModelo({ id }: { id: string }) {
           <p className="mt-2 text-sm text-[#64748B]">Sua resposta foi registrada.</p>
         </div>
       </main>
+    );
+  }
+
+  if (prazoEncerrado(modelo)) {
+    return (
+      <Tela>
+        <h1 className="text-lg font-semibold text-[#0F172A]">{modelo.titulo}</h1>
+        <p className="mt-2">
+          Esta pesquisa não aceita mais respostas.
+          {modelo.prazoRespostas &&
+            ` O prazo terminou em ${new Date(modelo.prazoRespostas).toLocaleString("pt-BR")}.`}
+        </p>
+      </Tela>
     );
   }
 

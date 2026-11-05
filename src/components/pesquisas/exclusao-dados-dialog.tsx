@@ -3,13 +3,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -29,33 +23,41 @@ import {
   type RespostaModelo,
 } from "@/lib/pesquisas-modelos";
 
-interface ExclusaoDadosDialogProps {
-  aberto: boolean;
-  onAbertoChange: (aberto: boolean) => void;
+interface ExclusaoPorPerguntaProps {
   modelos: ModeloPesquisa[];
   respostasPorModelo: Record<string, RespostaModelo[]>;
   /** Chamado depois de qualquer exclusão, para a página recarregar os dados. */
   onAlterado: () => void;
 }
 
-/** Ação pendente de confirmação: a pergunta inteira ou só as respostas de uma empresa + pessoa. */
+/** Uma linha da lista: empresa + pessoa que respondeu a pergunta. */
+interface Grupo {
+  chave: string;
+  empresa: string;
+  pessoa: string;
+  ids: string[];
+  valores: string[];
+}
+
+/** Ação pendente de confirmação: a pergunta inteira ou as respostas de uma ou mais linhas. */
 type Acao =
-  { tipo: "pergunta" } | { tipo: "resposta"; empresa: string; pessoa: string; ids: string[] };
+  | { tipo: "pergunta" }
+  | { tipo: "resposta"; descricao: string; ids: string[]; quantidade: number };
 
 function formatarValor(valor: unknown): string {
   if (Array.isArray(valor)) return valor.join(", ");
   return String(valor ?? "");
 }
 
-export function ExclusaoDadosDialog({
-  aberto,
-  onAbertoChange,
+/** Exclusão de respostas por pergunta (aba "Pergunta" de Configurações). */
+export function ExclusaoPorPergunta({
   modelos,
   respostasPorModelo,
   onAlterado,
-}: ExclusaoDadosDialogProps) {
+}: ExclusaoPorPerguntaProps) {
   const [modeloId, setModeloId] = useState("");
   const [perguntaId, setPerguntaId] = useState("");
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [acao, setAcao] = useState<Acao | null>(null);
   const [excluindo, setExcluindo] = useState(false);
 
@@ -67,21 +69,18 @@ export function ExclusaoDadosDialog({
   );
 
   // Uma linha por empresa + pessoa que respondeu esta pergunta.
-  const grupos = useMemo(() => {
+  const grupos = useMemo<Grupo[]>(() => {
     if (!modelo || !pergunta) return [];
     const chaveEmpresa = chaveEmpresaDo(modelo.perguntas);
     const chaveNome = chaveNomeDo(modelo.perguntas);
-    const mapa = new Map<
-      string,
-      { empresa: string; pessoa: string; ids: string[]; valores: string[] }
-    >();
+    const mapa = new Map<string, Grupo>();
     for (const resposta of respostas) {
       const valor = resposta.respostas[pergunta.id];
       if (valor === undefined || valor === "") continue;
       const empresa = empresaDaResposta(resposta, chaveEmpresa) || "Empresa não informada";
       const pessoa = textoDaResposta(resposta, chaveNome) || "Pessoa não informada";
       const chave = `${empresa}\u0000${pessoa}`;
-      const grupo = mapa.get(chave) ?? { empresa, pessoa, ids: [], valores: [] };
+      const grupo = mapa.get(chave) ?? { chave, empresa, pessoa, ids: [], valores: [] };
       grupo.ids.push(resposta.id);
       grupo.valores.push(formatarValor(valor));
       mapa.set(chave, grupo);
@@ -89,13 +88,21 @@ export function ExclusaoDadosDialog({
     return [...mapa.values()];
   }, [modelo, pergunta, respostas]);
 
-  function fechar(proximo: boolean) {
-    if (excluindo) return;
-    if (!proximo) {
-      setModeloId("");
-      setPerguntaId("");
-    }
-    onAbertoChange(proximo);
+  // Só mantém na seleção as linhas que ainda existem nesta pergunta.
+  const selecionadasVisiveis = grupos.filter((g) => selecionadas.has(g.chave));
+  const todasMarcadas = grupos.length > 0 && selecionadasVisiveis.length === grupos.length;
+
+  function alternarLinha(chave: string, marcada: boolean) {
+    setSelecionadas((atual) => {
+      const proximo = new Set(atual);
+      if (marcada) proximo.add(chave);
+      else proximo.delete(chave);
+      return proximo;
+    });
+  }
+
+  function alternarTodas(marcada: boolean) {
+    setSelecionadas(marcada ? new Set(grupos.map((g) => g.chave)) : new Set());
   }
 
   async function confirmar() {
@@ -105,10 +112,16 @@ export function ExclusaoDadosDialog({
       if (acao.tipo === "pergunta") {
         await excluirPerguntaDaPesquisa(modelo, pergunta.id);
         setPerguntaId("");
+        setSelecionadas(new Set());
         toast.success("Pergunta excluída e respostas dela apagadas.");
       } else {
         await removerRespostasDaPergunta(modelo.id, pergunta.id, acao.ids);
-        toast.success(`Resposta de ${acao.empresa} · ${acao.pessoa} apagada.`);
+        setSelecionadas(new Set());
+        toast.success(
+          acao.quantidade === 1
+            ? `Resposta de ${acao.descricao} apagada.`
+            : `${acao.quantidade} respostas apagadas.`,
+        );
       }
       setAcao(null);
       onAlterado();
@@ -119,18 +132,30 @@ export function ExclusaoDadosDialog({
     }
   }
 
+  /** Ação de exclusão para uma lista de linhas (uma ou várias). */
+  function pedirExclusao(lista: Grupo[]) {
+    const ids = lista.flatMap((g) => g.ids);
+    const [unica] = lista;
+    const descricao =
+      lista.length === 1 && unica
+        ? `${unica.empresa} (${unica.pessoa})`
+        : `${lista.length} respostas`;
+    setAcao({ tipo: "resposta", descricao, ids, quantidade: lista.length });
+  }
+
+  const textoConfirmacao = (() => {
+    if (acao?.tipo === "pergunta") {
+      return `A pergunta "${pergunta?.texto ?? ""}" será removida da pesquisa e as respostas dela em todas as empresas serão apagadas. Não pode ser desfeito.`;
+    }
+    if (acao?.tipo === "resposta" && acao.quantidade > 1) {
+      return `As respostas de ${acao.quantidade} empresas/pessoas para esta pergunta serão apagadas. As demais respostas ficam. Não pode ser desfeito.`;
+    }
+    return `A resposta de ${acao?.descricao} para esta pergunta será apagada. As demais respostas dessa empresa ficam. Não pode ser desfeito.`;
+  })();
+
   return (
     <>
-      <Dialog open={aberto} onOpenChange={fechar}>
-        <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Exclusão de Dados</DialogTitle>
-            <DialogDescription>
-              Escolha a pesquisa e a pergunta. Você pode excluir a pergunta inteira ou apenas a
-              resposta de uma empresa e pessoa nessa pergunta.
-            </DialogDescription>
-          </DialogHeader>
-
+      <div className="grid gap-4">
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label>Pesquisa</Label>
@@ -139,6 +164,7 @@ export function ExclusaoDadosDialog({
                 onValueChange={(valor) => {
                   setModeloId(valor);
                   setPerguntaId("");
+                  setSelecionadas(new Set());
                 }}
               >
                 <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
@@ -155,7 +181,14 @@ export function ExclusaoDadosDialog({
             </div>
             <div className="grid gap-1.5">
               <Label>Pergunta</Label>
-              <Select value={perguntaId} onValueChange={setPerguntaId} disabled={!modelo}>
+              <Select
+                value={perguntaId}
+                onValueChange={(valor) => {
+                  setPerguntaId(valor);
+                  setSelecionadas(new Set());
+                }}
+                disabled={!modelo}
+              >
                 <SelectTrigger className="w-full min-w-0 [&>span]:truncate">
                   <SelectValue placeholder="Selecione a pergunta" />
                 </SelectTrigger>
@@ -187,51 +220,79 @@ export function ExclusaoDadosDialog({
                 </Button>
               </div>
 
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                Respostas desta pergunta ({grupos.length})
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                  Respostas desta pergunta ({grupos.length})
+                </h3>
+                {grupos.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-[#64748B]">
+                      <Checkbox
+                        checked={todasMarcadas}
+                        disabled={excluindo}
+                        onCheckedChange={(marcada) => alternarTodas(marcada === true)}
+                        aria-label="Selecionar todas as respostas"
+                      />
+                      Selecionar todas
+                    </label>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={excluindo || selecionadasVisiveis.length === 0}
+                      onClick={() => pedirExclusao(selecionadasVisiveis)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Excluir selecionadas ({selecionadasVisiveis.length})
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               {grupos.length === 0 ? (
                 <p className="text-sm text-[#64748B]">Nenhuma resposta para esta pergunta.</p>
               ) : (
                 <ul className="grid gap-2">
-                  {grupos.map((grupo) => (
-                    <li
-                      key={`${grupo.empresa}|${grupo.pessoa}`}
-                      className="flex items-center justify-between gap-3 rounded-md border border-[#E2E8F0] p-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[#0F172A]">
-                          {grupo.empresa}
-                        </p>
-                        <p className="truncate text-xs text-[#64748B]">
-                          {grupo.pessoa} · {grupo.valores.join(" | ")}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0 text-[#DC2626] hover:text-[#DC2626]"
-                        disabled={excluindo}
-                        aria-label="Excluir resposta desta empresa e pessoa"
-                        onClick={() =>
-                          setAcao({
-                            tipo: "resposta",
-                            empresa: grupo.empresa,
-                            pessoa: grupo.pessoa,
-                            ids: grupo.ids,
-                          })
-                        }
+                  {grupos.map((grupo) => {
+                    const marcada = selecionadas.has(grupo.chave);
+                    return (
+                      <li
+                        key={grupo.chave}
+                        className={`flex items-center gap-3 rounded-md border p-3 ${
+                          marcada ? "border-[#DC2626] bg-rose-50/40" : "border-[#E2E8F0]"
+                        }`}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </li>
-                  ))}
+                        <Checkbox
+                          checked={marcada}
+                          disabled={excluindo}
+                          onCheckedChange={(valor) => alternarLinha(grupo.chave, valor === true)}
+                          aria-label={`Selecionar resposta de ${grupo.empresa} · ${grupo.pessoa}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#0F172A]">
+                            {grupo.empresa}
+                          </p>
+                          <p className="truncate text-xs text-[#64748B]">
+                            {grupo.pessoa} · {grupo.valores.join(" | ")}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 text-[#DC2626] hover:text-[#DC2626]"
+                          disabled={excluindo}
+                          aria-label="Excluir resposta desta empresa e pessoa"
+                          onClick={() => pedirExclusao([grupo])}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+      </div>
 
       <ConfirmarDialog
         open={acao !== null}
@@ -239,12 +300,14 @@ export function ExclusaoDadosDialog({
           if (!proximo && !excluindo) setAcao(null);
         }}
         tom="danger"
-        titulo={acao?.tipo === "pergunta" ? "Excluir esta pergunta?" : "Excluir esta resposta?"}
-        descricao={
+        titulo={
           acao?.tipo === "pergunta"
-            ? `A pergunta "${pergunta?.texto ?? ""}" será removida da pesquisa e as respostas dela em todas as empresas serão apagadas. Não pode ser desfeito.`
-            : `A resposta de ${acao?.empresa} (${acao?.pessoa}) para esta pergunta será apagada. As demais respostas dessa empresa ficam. Não pode ser desfeito.`
+            ? "Excluir esta pergunta?"
+            : acao && acao.quantidade > 1
+              ? `Excluir ${acao.quantidade} respostas?`
+              : "Excluir esta resposta?"
         }
+        descricao={textoConfirmacao}
         textoConfirmar="Excluir"
         carregando={excluindo}
         onConfirmar={() => void confirmar()}

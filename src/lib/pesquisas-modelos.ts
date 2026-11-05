@@ -38,6 +38,8 @@ export interface DadosModeloPesquisa {
   titulo: string;
   descricao: string;
   perguntas: PerguntaModelo[];
+  /** Data/hora (ISO) até a qual a pesquisa aceita respostas. Null = sem prazo. */
+  prazoRespostas: string | null;
 }
 
 export interface ModeloPesquisa extends DadosModeloPesquisa {
@@ -51,7 +53,29 @@ function paraJson(dados: DadosModeloPesquisa) {
     titulo: dados.titulo,
     descricao: dados.descricao,
     perguntas: dados.perguntas as unknown as Json,
+    prazo_respostas: dados.prazoRespostas,
   };
+}
+
+/** Verdadeiro quando o prazo da pesquisa já passou (sem prazo = nunca encerra). */
+export function prazoEncerrado(modelo: Pick<ModeloPesquisa, "prazoRespostas">, agora = new Date()) {
+  return modelo.prazoRespostas !== null && agora.getTime() >= new Date(modelo.prazoRespostas).getTime();
+}
+
+/** Valor ISO para o campo `datetime-local` (horário local, sem fuso). */
+export function paraCampoDataHora(iso: string | null): string {
+  if (!iso) return "";
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}T${pad(data.getHours())}:${pad(data.getMinutes())}`;
+}
+
+/** Converte o valor do `datetime-local` (horário local) para ISO. Vazio vira null. */
+export function doCampoDataHora(valor: string): string | null {
+  if (!valor) return null;
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime()) ? null : data.toISOString();
 }
 
 /** Pergunta que traz a razão social de quem respondeu (pelo texto da pergunta). */
@@ -92,6 +116,7 @@ export async function listarModelosPesquisa(): Promise<ModeloPesquisa[]> {
     titulo: row.titulo,
     descricao: row.descricao,
     perguntas: (Array.isArray(row.perguntas) ? row.perguntas : []) as unknown as PerguntaModelo[],
+    prazoRespostas: row.prazo_respostas,
   }));
 }
 
@@ -193,6 +218,7 @@ export async function buscarModeloPesquisa(id: string): Promise<ModeloPesquisa |
     titulo: data.titulo,
     descricao: data.descricao,
     perguntas: (Array.isArray(data.perguntas) ? data.perguntas : []) as unknown as PerguntaModelo[],
+    prazoRespostas: data.prazo_respostas,
   };
 }
 
@@ -241,6 +267,22 @@ export async function removerRespostasDaPergunta(
   if (falha?.error) throw new Error(falha.error.message);
 }
 
+/**
+ * Apaga envios inteiros (uma linha de `pesquisas_respostas` cada) e as notas NPS deles.
+ * Usado pelo menu Configurações ao excluir todas as respostas de uma pessoa.
+ */
+export async function excluirRespostasPorIds(ids: string[]): Promise<void> {
+  const cliente = exigirCloud();
+  const TAMANHO_LOTE = 100;
+  for (let inicio = 0; inicio < ids.length; inicio += TAMANHO_LOTE) {
+    const lote = ids.slice(inicio, inicio + TAMANHO_LOTE);
+    const { error: erroNps } = await cliente.from("nps_respostas").delete().in("resposta_id", lote);
+    if (erroNps) throw new Error(erroNps.message);
+    const { error } = await cliente.from("pesquisas_respostas").delete().in("id", lote);
+    if (error) throw new Error(error.message);
+  }
+}
+
 /** Remove uma pergunta do modelo e apaga o valor dela em todas as respostas. */
 export async function excluirPerguntaDaPesquisa(
   modelo: ModeloPesquisa,
@@ -251,6 +293,7 @@ export async function excluirPerguntaDaPesquisa(
     titulo: modelo.titulo,
     descricao: modelo.descricao,
     perguntas: modelo.perguntas.filter((p) => p.id !== perguntaId),
+    prazoRespostas: modelo.prazoRespostas,
   });
   await removerRespostasDaPergunta(modelo.id, perguntaId);
 }

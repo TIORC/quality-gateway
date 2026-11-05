@@ -1,5 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, ChevronDown, Copy, FileText, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  FileText,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Settings,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -17,7 +27,7 @@ import { GraficoNpsVelocimetro } from "@/components/pesquisas/grafico-nps-veloci
 import { GraficosPerguntas } from "@/components/pesquisas/graficos-perguntas";
 import { RespostasPesquisa } from "@/components/pesquisas/respostas-pesquisa";
 import { PanelShell } from "@/components/panel-shell";
-import { ExclusaoDadosDialog } from "@/components/pesquisas/exclusao-dados-dialog";
+import { ConfiguracoesPesquisasDialog } from "@/components/pesquisas/configuracoes-pesquisas-dialog";
 import { getSession } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -73,7 +83,7 @@ function PesquisasDeSatisfacao() {
   // Pesquisa aguardando confirmação de exclusão, e se a exclusão está em andamento.
   const [modeloParaExcluir, setModeloParaExcluir] = useState<ModeloPesquisa | null>(null);
   const [excluindo, setExcluindo] = useState(false);
-  const [exclusaoAberta, setExclusaoAberta] = useState(false);
+  const [configuracoesAberta, setConfiguracoesAberta] = useState(false);
   // Notas NPS de todas as pesquisas, com a razão social de quem respondeu.
   const [registrosNps, setRegistrosNps] = useState<RegistroNps[]>([]);
   // Respostas de cada pesquisa criada, indexadas pelo id da pesquisa.
@@ -173,12 +183,6 @@ function PesquisasDeSatisfacao() {
     return [...nomes].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [modelos, respostasPorModelo, registrosNps]);
 
-  // Total de respostas das pesquisas criadas, com os filtros aplicados.
-  const totalRespostas = modelos.reduce(
-    (total, modelo) => total + respostasDaPesquisa(modelo).length,
-    0,
-  );
-
   /** Respostas de uma pesquisa criada, filtradas pela razão social e pela pessoa. */
   function respostasDaPesquisa(modelo: ModeloPesquisa): RespostaModelo[] {
     const todas = respostasPorModelo[modelo.id] ?? [];
@@ -189,6 +193,18 @@ function PesquisasDeSatisfacao() {
       (resposta) =>
         (!empresaFiltro || empresaDaResposta(resposta, chaveEmpresa) === empresaFiltro) &&
         (!pessoaFiltro || textoDaResposta(resposta, chaveNome) === pessoaFiltro),
+    );
+  }
+
+  /** Notas das perguntas NPS de uma pesquisa, com os mesmos filtros da página. */
+  function notasNpsDaPesquisa(modelo: ModeloPesquisa): number[] {
+    const idsNps = modelo.perguntas.filter((p) => p.tipo === "nps").map((p) => p.id);
+    if (idsNps.length === 0) return [];
+    return respostasDaPesquisa(modelo).flatMap((resposta) =>
+      idsNps.flatMap((id) => {
+        const valor = resposta.respostas[id];
+        return typeof valor === "number" ? [valor] : [];
+      }),
     );
   }
 
@@ -261,13 +277,14 @@ function PesquisasDeSatisfacao() {
             Gestão
           </p>
           <h1 className="text-2xl font-semibold text-[#0F172A]">Pesquisas de Satisfação</h1>
-          <p className="mt-1 text-sm text-[#64748B]">
-            {totalRespostas} {totalRespostas === 1 ? "resposta" : "respostas"} recebidas
-            {empresaFiltro ? ` de ${empresaFiltro}` : ""}. Notas de 1 (abaixo do esperado) a 10
-            (excelente).
-          </p>
         </div>
         <div className="flex gap-2">
+          {podeGerenciar && (
+            <Button variant="outline" onClick={() => setConfiguracoesAberta(true)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Configurações
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={() => {
@@ -295,13 +312,14 @@ function PesquisasDeSatisfacao() {
           )}
         </div>
         {podeGerenciar && (
-          <ExclusaoDadosDialog
-            aberto={exclusaoAberta}
-            onAbertoChange={setExclusaoAberta}
+          <ConfiguracoesPesquisasDialog
+            aberto={configuracoesAberta}
+            onAbertoChange={setConfiguracoesAberta}
             modelos={modelos}
             respostasPorModelo={respostasPorModelo}
             onAlterado={() => {
               void carregarModelos();
+              void carregarRegistrosNps();
               void carregarRespostas(modelos);
             }}
           />
@@ -352,15 +370,6 @@ function PesquisasDeSatisfacao() {
             ))}
           </SelectContent>
         </Select>
-        {podeGerenciar && (
-          <Button
-            className="bg-[#DC2626] text-white hover:bg-[#B91C1C]"
-            onClick={() => setExclusaoAberta(true)}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Exclusão de Dados
-          </Button>
-        )}
         {(empresaFiltro || pessoaFiltro) && (
           <Button
             variant="ghost"
@@ -455,6 +464,17 @@ function PesquisasDeSatisfacao() {
                   </div>
                   {aberto && (
                     <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-6">
+                      {notasNpsDaPesquisa(modelo).length > 0 && (
+                        <div>
+                          <h3 className="mb-1 text-sm font-semibold text-[#0F172A]">NPS desta pesquisa</h3>
+                          <p className="mb-3 text-xs text-[#64748B]">
+                            Soma das respostas das perguntas NPS desta pesquisa.
+                          </p>
+                          <GraficoNpsVelocimetro
+                            apuracao={apurarNps(notasNpsDaPesquisa(modelo))}
+                          />
+                        </div>
+                      )}
                       <GraficosPerguntas modelo={modelo} respostas={respostasDaPesquisa(modelo)} />
                       <div>
                         <h3 className="mb-3 text-sm font-semibold text-[#0F172A]">Respostas</h3>

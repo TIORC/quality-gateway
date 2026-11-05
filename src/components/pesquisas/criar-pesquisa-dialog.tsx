@@ -23,7 +23,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   atualizarModeloPesquisa,
   criarModeloPesquisa,
+  doCampoDataHora,
   linkDaPesquisa,
+  paraCampoDataHora,
   TIPOS_COM_OPCOES,
   TIPOS_RESPOSTA,
   type ModeloPesquisa,
@@ -60,6 +62,7 @@ export function CriarPesquisaDialog({
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
   const [perguntas, setPerguntas] = useState<PerguntaModelo[]>([novaPergunta()]);
+  const [prazo, setPrazo] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -70,6 +73,7 @@ export function CriarPesquisaDialog({
     setTitulo(modelo?.titulo ?? "");
     setDescricao(modelo?.descricao ?? "");
     setPerguntas(modelo?.perguntas.length ? modelo.perguntas : [novaPergunta()]);
+    setPrazo(paraCampoDataHora(modelo?.prazoRespostas ?? null));
   }, [aberto, modelo]);
 
   async function copiarLink() {
@@ -163,6 +167,7 @@ export function CriarPesquisaDialog({
     const dados = {
       titulo: titulo.trim(),
       descricao: descricao.trim(),
+      prazoRespostas: doCampoDataHora(prazo),
       perguntas: perguntas
         .filter((p) => p.texto.trim())
         .map((p) => ({
@@ -234,6 +239,30 @@ export function CriarPesquisaDialog({
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
             />
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border border-[#E2E8F0] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#0F172A]">Prazo para respostas</p>
+              <p className="text-xs text-[#64748B]">
+                Depois dessa data e hora, a pesquisa deixa de aceitar respostas. Sem prazo, aceita
+                sem limite.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Input
+                type="datetime-local"
+                aria-label="Prazo para respostas"
+                className="w-auto"
+                value={prazo}
+                onChange={(e) => setPrazo(e.target.value)}
+              />
+              {prazo && (
+                <Button variant="ghost" size="sm" onClick={() => setPrazo("")}>
+                  Remover prazo
+                </Button>
+              )}
+            </div>
           </div>
 
           {perguntas.map((pergunta, numero) => (

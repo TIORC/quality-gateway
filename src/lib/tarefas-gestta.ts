@@ -12,7 +12,8 @@
  *  - Concluídas no mês: linhas da planilha complementar com data de conclusão no mês
  *    (qualquer vencimento; todas as linhas contam, inclusive Ids repetidos).
  *  - Acumuladas: linhas do relatório de atrasadas (origem "acumulada") cuja Competência
- *    é o mês escolhido, sem filtrar por status. Cada importação substitui o relatório anterior.
+ *    é o mês escolhido, sem filtrar por status. Cada importação substitui só as acumuladas
+ *    da(s) competência(s) do arquivo; os demais meses são preservados.
  */
 import { tabelaAusente, traduzErro } from "@/lib/organizacao";
 import { clienteLivre } from "@/lib/supabase-livro";
@@ -350,6 +351,17 @@ export async function carregarTarefas(): Promise<TarefaGestta[]> {
   return todas;
 }
 
+const LOTE_EXCLUSAO = 200;
+
+/** Apaga tarefas pelo Id, em lotes (evita URL longa). */
+async function apagarTarefasPorId(ids: string[]): Promise<void> {
+  const cliente = clienteLivre();
+  for (let i = 0; i < ids.length; i += LOTE_EXCLUSAO) {
+    const { error } = await cliente.from(TABELA).delete().in("id", ids.slice(i, i + LOTE_EXCLUSAO));
+    if (error) throw traduzErro(error);
+  }
+}
+
 /**
  * Grava as tarefas sem duplicar: o Id é a chave. Tarefas novas são inseridas;
  * as que já existem são sempre regravadas (status, conclusão etc.).
@@ -407,8 +419,12 @@ export async function importarTarefas(
 
   const cliente = clienteLivre();
   if (substituirAcumuladas) {
-    const { error: erroApagar } = await cliente.from(TABELA).delete().eq("origem", "acumulada");
-    if (erroApagar) throw traduzErro(erroApagar);
+    // Só substitui as acumuladas das competências presentes no arquivo: os outros meses ficam intactos.
+    const mesesDoArquivo = new Set(tarefas.map((t) => mesDaCompetencia(t.competencia)));
+    const idsDosMeses = jaGravadas
+      .filter((t) => t.origem === "acumulada" && mesesDoArquivo.has(mesDaCompetencia(t.competencia)))
+      .map((t) => t.id);
+    await apagarTarefasPorId(idsDosMeses);
   }
   if (substituirComplementares) {
     const datas = tarefas.map((t) => t.dataConclusao).filter((d): d is string => !!d).sort();
@@ -479,13 +495,26 @@ export async function importarTarefas(
  * sem `mes`, apaga todas. Não mexe em indicadores nem em apurações.
  */
 export async function zerarTarefas(mes?: string): Promise<void> {
-  let filtrada = clienteLivre().from(TABELA).delete().not("id", "is", null);
-  if (mes) {
-    const [ano, numeroMes] = mes.split("-").map(Number);
-    const proximo = new Date(Date.UTC(ano!, numeroMes!, 1)).toISOString().slice(0, 10);
-    filtrada = filtrada.gte("vencimento", `${mes}-01`).lt("vencimento", proximo);
+  const cliente = clienteLivre();
+  if (!mes) {
+    const { error } = await cliente.from(TABELA).delete().not("id", "is", null);
+    if (error) throw traduzErro(error);
+    return;
   }
-  const { error } = await filtrada;
+  // Acumuladas pertencem à competência do relatório (não ao vencimento): apaga pelo mês da competência.
+  const idsAcumuladas = (await carregarTarefas())
+    .filter((t) => t.origem === "acumulada" && mesDaCompetencia(t.competencia) === mes)
+    .map((t) => t.id);
+  await apagarTarefasPorId(idsAcumuladas);
+
+  const [ano, numeroMes] = mes.split("-").map(Number);
+  const proximo = new Date(Date.UTC(ano!, numeroMes!, 1)).toISOString().slice(0, 10);
+  const { error } = await cliente
+    .from(TABELA)
+    .delete()
+    .gte("vencimento", `${mes}-01`)
+    .lt("vencimento", proximo)
+    .or("origem.is.null,origem.neq.acumulada");
   if (error) throw traduzErro(error);
 }
 

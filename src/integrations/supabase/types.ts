@@ -1228,6 +1228,7 @@ export type Database = {
           descricao: string
           id: string
           perguntas: Json
+          prazo_respostas: string | null
           titulo: string
         }
         Insert: {
@@ -1236,6 +1237,7 @@ export type Database = {
           descricao?: string
           id?: string
           perguntas?: Json
+          prazo_respostas?: string | null
           titulo?: string
         }
         Update: {
@@ -1244,6 +1246,7 @@ export type Database = {
           descricao?: string
           id?: string
           perguntas?: Json
+          prazo_respostas?: string | null
           titulo?: string
         }
         Relationships: []

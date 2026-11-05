@@ -97,7 +97,9 @@ function CartaoPergunta({
       </h3>
       {pergunta.subtitulo && <p className="mt-1 text-xs text-[#64748B]">{pergunta.subtitulo}</p>}
       <p className="mb-3 text-xs text-[#64748B]">
-        {valores.length} {valores.length === 1 ? "resposta" : "respostas"}
+        {valores.length} {valores.length === 1 ? "resposta recebida" : "respostas recebidas"}
+        {pergunta.tipo === "escala" &&
+          ". Notas de 1 (abaixo do esperado) a 10 (excelente)."}
       </p>
       {pergunta.tipo === "escala" && <GraficoEscala pares={pares} />}
       {pergunta.tipo === "nps" && <GraficoNps pares={pares} />}

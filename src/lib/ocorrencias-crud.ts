@@ -1221,10 +1221,25 @@ export async function enviarAnexo(ocorrenciaId: string, arquivo: File): Promise<
   };
 }
 
-export async function urlAssinada(caminho: string): Promise<string> {
+/** Redimensiona a imagem no servidor (Supabase), para visualização mais leve. */
+export interface OtimizacaoImagem {
+  largura: number;
+  qualidade: number;
+}
+
+export async function urlAssinada(
+  caminho: string,
+  otimizacao?: OtimizacaoImagem,
+): Promise<string> {
   const { data, error } = await cloud()
     .storage.from(BUCKET)
-    .createSignedUrl(caminho, 60 * 5);
+    .createSignedUrl(
+      caminho,
+      60 * 5,
+      otimizacao
+        ? { transform: { width: otimizacao.largura, quality: otimizacao.qualidade } }
+        : undefined,
+    );
   if (error) throw traduzErro(error);
   if (!data) throw new Error("Não foi possível abrir o anexo.");
   return data.signedUrl;
