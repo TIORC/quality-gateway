@@ -2000,7 +2000,15 @@ function ImportadorTarefas({
       );
       setProgresso({ etapa: "Atualizando os números...", valor: 95 });
       setResultado(r);
-      aoConcluir(r, await carregarTarefas());
+      aoConcluir(
+        r,
+        await carregarTarefas((feitas, total) =>
+          setProgresso({
+            etapa: `Atualizando os números: ${feitas} de ${total} tarefas`,
+            valor: 95 + Math.round((total === 0 ? 1 : feitas / total) * 4),
+          }),
+        ),
+      );
       setArquivo(null);
       toast.success("Importação concluída.");
     } catch (e) {

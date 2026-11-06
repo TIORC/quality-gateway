@@ -284,7 +284,9 @@ export function tarefasEmCache(): TarefaGestta[] | null {
 }
 
 /** Todas as tarefas já gravadas, buscando várias páginas ao mesmo tempo. */
-export async function carregarTarefas(): Promise<TarefaGestta[]> {
+export async function carregarTarefas(
+  aoProgredir?: (carregadas: number, total: number) => void,
+): Promise<TarefaGestta[]> {
   const cliente = clienteLivre();
   let colunas = COLUNAS_SELECT;
   const consultaPagina = (de: number) =>
@@ -309,6 +311,9 @@ export async function carregarTarefas(): Promise<TarefaGestta[]> {
   ];
   if (paginas[0]!.length === TAMANHO_PAGINA) {
     const { count } = await cliente.from(TABELA).select("id", { count: "exact", head: true });
+    const total = count ?? 0;
+    let carregadas = paginas[0]!.length;
+    aoProgredir?.(carregadas, total);
     const restantes: number[] = [];
     for (let de = TAMANHO_PAGINA; de < (count ?? 0); de += TAMANHO_PAGINA) restantes.push(de);
     let proximo = 0;
@@ -324,6 +329,8 @@ export async function carregarTarefas(): Promise<TarefaGestta[]> {
         }
         if (resposta.error) throw traduzErro(resposta.error);
         resultados[i] = (resposta.data ?? []) as Record<string, string | null>[];
+        carregadas += resultados[i]!.length;
+        aoProgredir?.(carregadas, total);
       }
     };
     await Promise.all(Array.from({ length: Math.min(PAGINAS_SIMULTANEAS, restantes.length) }, trabalhador));
