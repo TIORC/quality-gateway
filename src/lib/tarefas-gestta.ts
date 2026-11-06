@@ -377,6 +377,43 @@ async function apagarTarefasPorId(ids: string[]): Promise<void> {
   }
 }
 
+const LOTE_IDS = 200;
+
+/** Ids do arquivo que já existem no banco, com a origem de cada um (consulta só esses Ids). */
+async function origensExistentes(ids: string[]): Promise<Map<string, string>> {
+  const cliente = clienteLivre();
+  const mapa = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += LOTE_IDS) {
+    const lote = ids.slice(i, i + LOTE_IDS);
+    let { data, error } = await cliente.from(TABELA).select("id,origem").in("id", lote);
+    if (error && /origem/i.test(error.message ?? "")) {
+      // Migration da coluna "origem" ainda não aplicada.
+      ({ data, error } = await cliente.from(TABELA).select("id").in("id", lote));
+    }
+    if (error) {
+      if (tabelaAusente(error)) return mapa;
+      throw traduzErro(error);
+    }
+    for (const r of (data ?? []) as Record<string, string | null>[]) {
+      mapa.set(r.id ?? "", r.origem ?? "gestta");
+    }
+  }
+  return mapa;
+}
+
+/** Quais nomes de responsável já existem na tabela (uma consulta leve por nome). */
+async function responsaveisExistem(nomes: string[]): Promise<Set<string>> {
+  const cliente = clienteLivre();
+  const achados = await Promise.all(
+    nomes.map(async (n) => {
+      const { data, error } = await cliente.from(TABELA).select("responsavel").eq("responsavel", n).limit(1);
+      if (error) throw traduzErro(error);
+      return (data ?? []).length > 0 ? n : null;
+    }),
+  );
+  return new Set(achados.filter((n): n is string => n !== null));
+}
+
 /**
  * Grava as tarefas sem duplicar: o Id é a chave. Tarefas novas são inseridas;
  * as que já existem são sempre regravadas (status, conclusão etc.).
@@ -387,11 +424,16 @@ export async function importarTarefas(
   aoProgredir?: (feito: number, total: number) => void,
   apenasNovas = false,
 ): Promise<ResultadoImportacao> {
-  const jaGravadas = await carregarTarefas();
-  const existentes = new Map(jaGravadas.map((t) => [t.id, t]));
+  // Só consulta os Ids do arquivo (antes baixava a tabela inteira a cada importação).
+  const existentes = await origensExistentes(tarefas.map((t) => t.id));
   if (apenasNovas) {
     // Relatórios com nome abreviado ("Ramon S"): usa o nome completo já cadastrado, sem criar colaborador novo.
-    const nomes = [...new Set(jaGravadas.map((t) => t.responsavel).filter(Boolean))];
+    const distintos = [...new Set(tarefas.map((t) => t.responsavel).filter(Boolean))];
+    const existem = await responsaveisExistem(distintos);
+    const nomes =
+      existem.size === distintos.length
+        ? distintos
+        : [...new Set((tarefasEmCache() ?? (await carregarTarefas())).map((t) => t.responsavel).filter(Boolean))];
     for (const t of tarefas) {
       if (!t.responsavel || nomes.includes(t.responsavel)) continue;
       const prefixo = semAcento(t.responsavel);
@@ -412,7 +454,7 @@ export async function importarTarefas(
   for (const t of tarefas) {
     const atual = existentes.get(t.id);
     // A planilha principal não mexe em tarefas acumuladas: elas só mudam pelo relatório de acumuladas.
-    if (atual?.origem === "acumulada" && t.origem === "gestta") {
+    if (atual === "acumulada" && t.origem === "gestta") {
       ignoradas += 1;
       continue;
     }
@@ -420,7 +462,7 @@ export async function importarTarefas(
       // Relatórios substitutivos: o que havia é apagado antes, então toda linha é nova.
       novas += 1;
       gravar.push(t);
-    } else if (!atual) {
+    } else if (atual === undefined) {
       novas += 1;
       gravar.push(t);
     } else if (!apenasNovas) {
@@ -436,6 +478,7 @@ export async function importarTarefas(
   if (substituirAcumuladas) {
     // Só substitui as acumuladas das competências presentes no arquivo: os outros meses ficam intactos.
     const mesesDoArquivo = new Set(tarefas.map((t) => mesDaCompetencia(t.competencia)));
+    const jaGravadas = await carregarTarefas();
     const idsDosMeses = jaGravadas
       .filter((t) => t.origem === "acumulada" && mesesDoArquivo.has(mesDaCompetencia(t.competencia)))
       .map((t) => t.id);
