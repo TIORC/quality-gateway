@@ -405,17 +405,18 @@ async function origensExistentes(ids: string[]): Promise<Map<string, string>> {
   return mapa;
 }
 
-/** Quais nomes de responsável já existem na tabela (uma consulta leve por nome). */
+/**
+ * Quais nomes de responsável já existem na tabela. Uma consulta por vez (consultas em paralelo sem
+ * índice em `responsavel` estouravam o tempo do servidor). Erro numa consulta = nome não confirmado.
+ */
 async function responsaveisExistem(nomes: string[]): Promise<Set<string>> {
   const cliente = clienteLivre();
-  const achados = await Promise.all(
-    nomes.map(async (n) => {
-      const { data, error } = await cliente.from(TABELA).select("responsavel").eq("responsavel", n).limit(1);
-      if (error) throw traduzErro(error);
-      return (data ?? []).length > 0 ? n : null;
-    }),
-  );
-  return new Set(achados.filter((n): n is string => n !== null));
+  const achados = new Set<string>();
+  for (const n of nomes) {
+    const { data, error } = await cliente.from(TABELA).select("responsavel").eq("responsavel", n).limit(1);
+    if (!error && (data ?? []).length > 0) achados.add(n);
+  }
+  return achados;
 }
 
 /**
