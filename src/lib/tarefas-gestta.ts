@@ -216,7 +216,11 @@ export async function lerPlanilhaAtrasadas(
     // Repetições entram como linhas próprias (chave Id + "#n"). Concluídas complementares usam
     // o prefixo "c:" para não colidir com a mesma tarefa já gravada pela planilha do Gestta.
     // Acumuladas usam "a:" pelo mesmo motivo: a leitura é independente das demais planilhas.
-    const base = origem === "complementar" ? `c:${id}` : `a:${id}`;
+    // A competência entra na chave: a mesma tarefa aberta em janeiro e em fevereiro é duas linhas,
+    // e não pode sobrescrever a de janeiro ao importar fevereiro.
+    const competencia = competenciaDoRelatorio(pega(linha, "competencia"));
+    const base =
+      origem === "complementar" ? `c:${id}` : `a:${mesDaCompetencia(competencia) || "sem-competencia"}:${id}`;
     const chave = n > 1 ? `${base}#${n}` : base;
     porId.set(chave, {
       id: chave,
@@ -228,7 +232,7 @@ export async function lerPlanilhaAtrasadas(
       responsavel: textoCelula(pega(linha, "responsavel")),
       vencimento: paraData(pega(linha, "vencimento")),
       dataConclusao: paraData(pega(linha, "dataConclusao")),
-      competencia: competenciaDoRelatorio(pega(linha, "competencia")),
+      competencia,
       cnpjCpf: "",
       dataLegal: null,
       feitoAtrasado: "",
