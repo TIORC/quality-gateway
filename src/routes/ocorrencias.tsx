@@ -104,7 +104,11 @@ import {
   liderDoSetor,
   setoresLiderados,
 } from "@/lib/permissoes";
-import { podeConfigurarOcorrencias, veTodasAsOcorrencias } from "@/lib/ocorrencias-permissoes";
+import {
+  podeConfigurarOcorrencias,
+  podeVerDashboardOcorrencias,
+  veTodasAsOcorrencias,
+} from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
 
 export const Route = createFileRoute("/ocorrencias")({
@@ -194,7 +198,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
     if (equipe) return aba.valor === "equipe";
     if (aba.valor === "equipe") return ehLiderDeSetor;
     // Dashboard e lista "Todas" mostram tudo: só para quem opera as ocorrências.
-    if (aba.valor === "dashboard") return veTodasAsOcorrencias(session);
+    if (aba.valor === "dashboard") return podeVerDashboardOcorrencias(session);
     return aba.valor !== "todas" || veTodasAsOcorrencias(session);
   });
 

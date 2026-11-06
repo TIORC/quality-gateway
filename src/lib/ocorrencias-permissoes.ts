@@ -168,3 +168,11 @@ export function podeConfigurarOcorrencias(sessao: UserSession | null | undefined
     sessao.nivelAcesso === "Desenvolvedor do Sistema"
   );
 }
+
+/**
+ * Dashboard de ocorrências: só o Gestor da Qualidade, o setor da Qualidade e o
+ * Desenvolvedor do Sistema. Os demais perfis não veem a aba nem os números.
+ */
+export function podeVerDashboardOcorrencias(sessao: UserSession | null | undefined): boolean {
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
+}

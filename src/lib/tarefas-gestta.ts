@@ -274,7 +274,8 @@ export function unificarSetor(nome: string): string {
 
 const COLUNAS_SELECT =
   "id,nome,tipo,status,cliente,departamento,responsavel,vencimento,data_conclusao,competencia,cnpj_cpf,data_legal,feito_atrasado,feito_com_multa,baixado,origem";
-const PAGINAS_SIMULTANEAS = 3;
+// Quantas páginas (de 1000) são buscadas ao mesmo tempo. Erros 500 sob carga já são tentados de novo.
+const PAGINAS_SIMULTANEAS = 6;
 
 let cacheTarefas: TarefaGestta[] | null = null;
 
@@ -296,7 +297,9 @@ export async function carregarTarefas(
       .order("id")
       .range(de, de + TAMANHO_PAGINA - 1);
 
-  let primeira = await consultaPagina(0);
+  // Primeira página e contagem em paralelo (antes eram duas viagens em série).
+  const contagemPromise = cliente.from(TABELA).select("id", { count: "exact", head: true });
+  let [primeira, { count }] = await Promise.all([consultaPagina(0), contagemPromise]);
   if (primeira.error && !tabelaAusente(primeira.error)) {
     // Migration da coluna "origem" ainda não aplicada: carrega sem ela.
     colunas = COLUNAS_SELECT.replace(",origem", "");
@@ -310,7 +313,6 @@ export async function carregarTarefas(
     (primeira.data ?? []) as Record<string, string | null>[],
   ];
   if (paginas[0]!.length === TAMANHO_PAGINA) {
-    const { count } = await cliente.from(TABELA).select("id", { count: "exact", head: true });
     const total = count ?? 0;
     let carregadas = paginas[0]!.length;
     aoProgredir?.(carregadas, total);
