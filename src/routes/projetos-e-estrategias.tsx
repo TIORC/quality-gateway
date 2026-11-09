@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
-import { podeGerenciarConteudo } from "@/lib/permissoes";
+import { ehAdministrador, podeGerenciarConteudo } from "@/lib/permissoes";
 import type { Colaborador } from "@/lib/dados";
 import { mascaraDataBr } from "@/lib/utils";
 import { criarProjeto } from "@/lib/projetos-crud";
@@ -43,7 +43,8 @@ export const Route = createFileRoute("/projetos-e-estrategias")({
 function ProjetosEEstrategias() {
   const catalogo = useCatalogoOrganizacional();
   const sessao = usePanelSession();
-  const podeGerenciar = podeGerenciarConteudo(sessao);
+  // Qualidade/liderança da Qualidade + Desenvolvedor do Sistema (só nesta tela).
+  const podeGerenciar = podeGerenciarConteudo(sessao) || ehAdministrador(sessao);
   const [novoProjetoAberto, setNovoProjetoAberto] = useState(false);
   const [projetos, setProjetos] = useState<ProjetoEstrategico[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -106,6 +107,15 @@ function ProjetosEEstrategias() {
           className="max-w-md bg-white"
         />
         <span className="text-[12px] text-[#64748B]">{filtrados.length} projeto(s)</span>
+        {podeGerenciar ? (
+          <button
+            type="button"
+            onClick={() => setNovoProjetoAberto(true)}
+            className="inline-flex items-center gap-1 rounded-full bg-[#4F46E5] px-4 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-[#4338CA] sm:ml-auto"
+          >
+            Add +
+          </button>
+        ) : null}
       </div>
 
       {carregando ? (
