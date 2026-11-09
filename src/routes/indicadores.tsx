@@ -906,11 +906,7 @@ function Indicadores() {
   ]);
   /** Registro de Orientação: tarefas do departamento "Orientação ao Cliente" da competência do mês, respeitando os filtros. */
   // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
-  const tarefasOrientacao = tarefasDoIndicador(
-    tarefasFiltradas.filter((t) => normalizarSetor(t.departamento) === "orientacao ao cliente"),
-    mesEscolhido,
-    "total",
-  );
+  const tarefasOrientacao = tarefasDoIndicador(tarefasFiltradas, mesEscolhido, "orientacao");
   const orientacoesNoMes = tarefasOrientacao.length;
 
   /** Retrabalho Escrituração/Conciliação Contábil: só quando o setor Contábil está selecionado na tela. */

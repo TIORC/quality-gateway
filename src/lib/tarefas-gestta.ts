@@ -685,6 +685,9 @@ export function mesDoGestta(t: TarefaGestta): string {
   return t.vencimento?.slice(0, 7) || mesDaCompetencia(t.competencia) || "";
 }
 
+/** "Orientação ao Cliente" é tipo de tarefa (Registro de Orientação), não setor: fica fora dos totais de tarefas. */
+const ehOrientacao = (t: TarefaGestta) => semAcento(t.departamento) === "orientacao ao cliente";
+
 export function calcularMetricas(
   tarefas: TarefaGestta[],
   mes: string,
@@ -708,6 +711,7 @@ export function calcularMetricas(
     if (ehAcumulada(t, mes)) m.acumuladasAnteriores += 1;
     if (t.origem !== "gestta") continue;
     if (mesDoGestta(t) !== mes) continue;
+    if (ehOrientacao(t)) continue;
     m.total += 1;
     if (concluida) {
       m.concluidas += 1;
@@ -732,7 +736,8 @@ export type ChaveIndicador =
   | "impedimento"
   | "abertasEmAtraso"
   | "concluidasNoMes"
-  | "acumuladasAnteriores";
+  | "acumuladasAnteriores"
+  | "orientacao";
 
 /** Tarefas que compõem cada card (mesmas regras de `calcularMetricas`). */
 export function tarefasDoIndicador(
@@ -748,6 +753,8 @@ export function tarefasDoIndicador(
     if (chave === "acumuladasAnteriores") return ehAcumulada(t, mes);
     if (t.origem !== "gestta") return false;
     if (mesDoGestta(t) !== mes) return false;
+    if (chave === "orientacao") return ehOrientacao(t);
+    if (ehOrientacao(t)) return false;
     switch (chave) {
       case "total":
         return true;
