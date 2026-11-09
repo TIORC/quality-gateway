@@ -80,13 +80,12 @@ import {
   agruparMetricas,
   calcularMetricas,
   carregarTarefas,
-  carregarTarefasDoMes,
-  tarefasDoMesEmCache,
   importarTarefas,
   lerPlanilhaAtrasadas,
   lerPlanilhaTarefas,
   pct,
   tarefasDoIndicador,
+  tarefasEmCache,
   unificarSetor,
   zerarTarefas,
   type ChaveIndicador,
@@ -661,7 +660,7 @@ function Indicadores() {
     setZerando(true);
     try {
       await zerarTarefas(zerarAlvo === "mes" ? mesEscolhido : undefined);
-      setTarefas(await carregarTarefasDoMes(mesEscolhido));
+      setTarefas(await carregarTarefas());
       toast.success(
         zerarAlvo === "mes"
           ? `Tarefas de ${rotuloMesLongo(mesEscolhido)} apagadas.`
@@ -710,18 +709,12 @@ function Indicadores() {
   const todosColaboradores = escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro === "todos";
 
   useEffect(() => {
-    let ativo = true;
-    const emCache = tarefasDoMesEmCache(mesEscolhido);
+    const emCache = tarefasEmCache();
     if (emCache) setTarefas(emCache);
-    carregarTarefasDoMes(mesEscolhido)
-      .then((lista) => {
-        if (ativo) setTarefas(lista);
-      })
+    carregarTarefas()
+      .then(setTarefas)
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));
-    return () => {
-      ativo = false;
-    };
-  }, [mesEscolhido]);
+  }, []);
 
   const controleImport = useMemo(
     () => [0, 1, 2].map(() => ({ current: null }) as MutableRefObject<(() => Promise<void>) | null>),
@@ -751,7 +744,7 @@ function Indicadores() {
     setAtualizando(true);
     try {
       const [lista, departamentos, porColaborador, celulasAtuais] = await Promise.all([
-        carregarTarefasDoMes(mesEscolhido),
+        carregarTarefas(),
         carregarAtendimentos(),
         carregarAtendimentosColaborador(),
         carregarCelulas(),
@@ -926,17 +919,9 @@ function Indicadores() {
     "total",
   );
 
-  /** Números dos cards no setor: só o próprio departamento (igual à planilha); a lista mantém as orientações. */
-  const tarefasDosNumeros = useMemo(
-    () =>
-      escopo !== "proprio" && secao === "por-setor" && setorFiltro !== "todos"
-        ? tarefasFiltradas.filter((t) => t.departamento === setorFiltro)
-        : tarefasFiltradas,
-    [tarefasFiltradas, escopo, secao, setorFiltro],
-  );
   const metricasTarefas = useMemo(
-    () => calcularMetricas(tarefasDosNumeros, mesEscolhido),
-    [tarefasDosNumeros, mesEscolhido],
+    () => calcularMetricas(tarefasFiltradas, mesEscolhido),
+    [tarefasFiltradas, mesEscolhido],
   );
   const gruposTarefas = useMemo(
     () =>

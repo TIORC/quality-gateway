@@ -292,21 +292,18 @@ export function tarefasEmCache(): TarefaGestta[] | null {
 /** Todas as tarefas já gravadas, buscando várias páginas ao mesmo tempo. */
 export async function carregarTarefas(
   aoProgredir?: (carregadas: number, total: number) => void,
-  mes?: string,
 ): Promise<TarefaGestta[]> {
   const cliente = clienteLivre();
   let colunas = COLUNAS_SELECT;
-  const filtro = mes ? filtroDoMes(mes) : null;
-  const consultaPagina = (de: number) => {
-    let q = cliente.from(TABELA).select(colunas);
-    if (filtro) q = q.or(filtro);
-    return q.order("id").range(de, de + TAMANHO_PAGINA - 1);
-  };
+  const consultaPagina = (de: number) =>
+    cliente
+      .from(TABELA)
+      .select(colunas)
+      .order("id")
+      .range(de, de + TAMANHO_PAGINA - 1);
 
   // Primeira página e contagem em paralelo (antes eram duas viagens em série).
-  let contagem = cliente.from(TABELA).select("id", { count: "exact", head: true });
-  if (filtro) contagem = contagem.or(filtro);
-  const contagemPromise = contagem;
+  const contagemPromise = cliente.from(TABELA).select("id", { count: "exact", head: true });
   let [primeira, { count }] = await Promise.all([consultaPagina(0), contagemPromise]);
   if (primeira.error && !tabelaAusente(primeira.error)) {
     // Migration da coluna "origem" ainda não aplicada: carrega sem ela.
@@ -370,42 +367,8 @@ export async function carregarTarefas(
       });
     }
   }
-  if (mes) cacheMes.set(mes, todas);
-  else cacheTarefas = todas;
+  cacheTarefas = todas;
   return todas;
-}
-
-const cacheMes = new Map<string, TarefaGestta[]>();
-
-/** Já carregadas nesta sessão para o mês (abre a tela na hora). */
-export function tarefasDoMesEmCache(mes: string): TarefaGestta[] | null {
-  return cacheMes.get(mes) ?? null;
-}
-
-/**
- * Filtro no banco: tudo que pode cair no mês por qualquer regra (vencimento, conclusão ou
- * competência). As regras exatas de cada card continuam sendo aplicadas na tela.
- */
-export function filtroDoMes(mes: string): string {
-  const [ano, m] = mes.split("-").map(Number);
-  const inicio = `${mes}-01`;
-  const prox = m === 12 ? `${ano! + 1}-01-01` : `${ano}-${String(m! + 1).padStart(2, "0")}-01`;
-  const nome = MESES_COMPETENCIA[m! - 1]!.slice(0, 3);
-  return [
-    `and(vencimento.gte.${inicio},vencimento.lt.${prox})`,
-    `and(data_conclusao.gte.${inicio},data_conclusao.lt.${prox})`,
-    `competencia.like.${mes}*`,
-    `competencia.ilike.${nome}*`,
-    `competencia.like.${String(m).padStart(2, "0")}/${ano}`,
-  ].join(",");
-}
-
-/** Só as tarefas que podem entrar no mês escolhido (bem mais leve que a base inteira). */
-export function carregarTarefasDoMes(
-  mes: string,
-  aoProgredir?: (carregadas: number, total: number) => void,
-): Promise<TarefaGestta[]> {
-  return carregarTarefas(aoProgredir, mes);
 }
 
 const LOTE_EXCLUSAO = 200;
