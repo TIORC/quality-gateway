@@ -80,6 +80,8 @@ import {
   agruparMetricas,
   calcularMetricas,
   carregarTarefas,
+  carregarTarefasDoMes,
+  tarefasDoMesEmCache,
   importarTarefas,
   lerPlanilhaAtrasadas,
   lerPlanilhaTarefas,
@@ -660,7 +662,7 @@ function Indicadores() {
     setZerando(true);
     try {
       await zerarTarefas(zerarAlvo === "mes" ? mesEscolhido : undefined);
-      setTarefas(await carregarTarefas());
+      setTarefas(await carregarTarefasDoMes(mesEscolhido));
       toast.success(
         zerarAlvo === "mes"
           ? `Tarefas de ${rotuloMesLongo(mesEscolhido)} apagadas.`
@@ -709,12 +711,18 @@ function Indicadores() {
   const todosColaboradores = escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro === "todos";
 
   useEffect(() => {
-    const emCache = tarefasEmCache();
+    let ativo = true;
+    const emCache = tarefasDoMesEmCache(mesEscolhido);
     if (emCache) setTarefas(emCache);
-    carregarTarefas()
-      .then(setTarefas)
+    carregarTarefasDoMes(mesEscolhido)
+      .then((lista) => {
+        if (ativo) setTarefas(lista);
+      })
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));
-  }, []);
+    return () => {
+      ativo = false;
+    };
+  }, [mesEscolhido]);
 
   const controleImport = useMemo(
     () => [0, 1, 2].map(() => ({ current: null }) as MutableRefObject<(() => Promise<void>) | null>),
@@ -744,7 +752,7 @@ function Indicadores() {
     setAtualizando(true);
     try {
       const [lista, departamentos, porColaborador, celulasAtuais] = await Promise.all([
-        carregarTarefas(),
+        carregarTarefasDoMes(mesEscolhido),
         carregarAtendimentos(),
         carregarAtendimentosColaborador(),
         carregarCelulas(),
