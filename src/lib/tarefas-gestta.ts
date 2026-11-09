@@ -509,10 +509,21 @@ export async function importarTarefas(
   if (substituirAcumuladas) {
     // Só substitui as acumuladas das competências presentes no arquivo: os outros meses ficam intactos.
     const mesesDoArquivo = new Set(tarefas.map((t) => mesDaCompetencia(t.competencia)));
-    const jaGravadas = await carregarTarefas();
-    const idsDosMeses = jaGravadas
-      .filter((t) => t.origem === "acumulada" && mesesDoArquivo.has(mesDaCompetencia(t.competencia)))
-      .map((t) => t.id);
+    // Só as acumuladas (poucas), em vez da tabela inteira.
+    const idsDosMeses: string[] = [];
+    for (let de = 0; ; de += TAMANHO_PAGINA) {
+      const { data, error } = await cliente
+        .from(TABELA)
+        .select("id,competencia")
+        .eq("origem", "acumulada")
+        .order("id")
+        .range(de, de + TAMANHO_PAGINA - 1);
+      if (error) throw traduzErro(error);
+      for (const r of data ?? []) {
+        if (mesesDoArquivo.has(mesDaCompetencia(r.competencia ?? ""))) idsDosMeses.push(r.id);
+      }
+      if ((data ?? []).length < TAMANHO_PAGINA) break;
+    }
     await apagarTarefasPorId(idsDosMeses);
   }
   if (substituirComplementares) {

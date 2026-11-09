@@ -1436,6 +1436,7 @@ function Indicadores() {
               titulo="Tarefas - Gestta"
               descricao="Envie a planilha de tarefas exportada do Gestta (.xlsx). Tarefas já importadas (mesmo Id) não são duplicadas: se algo mudou, como status ou data de conclusão, a tarefa é atualizada."
               totalImportadas={tarefas.length}
+              mes={mesEscolhido}
               aoConcluir={(r, lista) => {
                 setTarefas(lista);
                 if (r.mesPredominante) setMesEscolhido(r.mesPredominante);
@@ -1449,6 +1450,7 @@ function Indicadores() {
               atrasadas
               origemRelatorio="complementar"
               totalImportadas={tarefas.length}
+              mes={mesEscolhido}
               aoConcluir={(_, lista) => setTarefas(lista)}
             />
             <ImportadorTarefas
@@ -1458,6 +1460,7 @@ function Indicadores() {
               descricao="Envie o Relatório de tarefas atrasadas (.xlsx, tarefas abertas e em impedimento). Substitui apenas as acumuladas da mesma competência do arquivo: os outros meses são mantidos. Todas as linhas entram, inclusive Ids repetidos, e as tarefas que já estavam no Total saem dele."
               atrasadas
               totalImportadas={tarefas.length}
+              mes={mesEscolhido}
               aoConcluir={(r, lista) => {
                 setTarefas(lista);
                 if (r.mesCompetencia) setMesEscolhido(r.mesCompetencia);
@@ -1959,7 +1962,9 @@ function ImportadorTarefas({
   origemRelatorio = "acumulada",
   controle,
   aoMudarArquivo,
+  mes,
 }: {
+  mes?: string;
   atrasadas?: boolean;
   origemRelatorio?: "complementar" | "acumulada";
   controle?: MutableRefObject<(() => Promise<void>) | null>;
@@ -2013,6 +2018,7 @@ function ImportadorTarefas({
             etapa: `Atualizando os números: ${feitas} de ${total} tarefas`,
             valor: 95 + Math.round((total === 0 ? 1 : feitas / total) * 4),
           }),
+          r.mesPredominante || r.mesCompetencia || mes,
         ),
       );
       setArquivo(null);
