@@ -282,28 +282,53 @@ const COLUNAS_SELECT =
 // Quantas páginas (de 1000) são buscadas ao mesmo tempo. Erros 500 sob carga já são tentados de novo.
 const PAGINAS_SIMULTANEAS = 6;
 
-let cacheTarefas: TarefaGestta[] | null = null;
+const cacheTarefas = new Map<string, TarefaGestta[]>();
 
 /** Devolve o que já foi carregado nesta sessão (abre a tela na hora; atualize em segundo plano). */
-export function tarefasEmCache(): TarefaGestta[] | null {
-  return cacheTarefas;
+export function tarefasEmCache(mes?: string): TarefaGestta[] | null {
+  return cacheTarefas.get(mes ?? "*") ?? null;
+}
+
+/** Primeiro dia do mês seguinte (YYYY-MM-01). */
+function inicioMesSeguinte(mes: string): string {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(Date.UTC(a!, m!, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/**
+ * Filtro do banco que traz só o que pode entrar nos cards do mês (mesmas regras de mês):
+ * Gestta pelo vencimento (ou sem vencimento), complementar pela conclusão, acumuladas todas (são poucas).
+ */
+function filtroDoMes(mes: string): string {
+  const de = `${mes}-01`;
+  const ate = inicioMesSeguinte(mes);
+  return [
+    `and(origem.eq.gestta,vencimento.gte.${de},vencimento.lt.${ate})`,
+    "and(origem.eq.gestta,vencimento.is.null)",
+    `and(origem.eq.complementar,data_conclusao.gte.${de},data_conclusao.lt.${ate})`,
+    "origem.eq.acumulada",
+  ].join(",");
 }
 
 /** Todas as tarefas já gravadas, buscando várias páginas ao mesmo tempo. */
 export async function carregarTarefas(
   aoProgredir?: (carregadas: number, total: number) => void,
+  mes?: string,
 ): Promise<TarefaGestta[]> {
   const cliente = clienteLivre();
   let colunas = COLUNAS_SELECT;
-  const consultaPagina = (de: number) =>
-    cliente
-      .from(TABELA)
-      .select(colunas)
-      .order("id")
-      .range(de, de + TAMANHO_PAGINA - 1);
+  const filtro = mes && /^\d{4}-\d{2}$/.test(mes) ? filtroDoMes(mes) : null;
+  const consultaPagina = (de: number) => {
+    let q = cliente.from(TABELA).select(colunas);
+    if (filtro && colunas.includes("origem")) q = q.or(filtro);
+    return q.order("id").range(de, de + TAMANHO_PAGINA - 1);
+  };
 
   // Primeira página e contagem em paralelo (antes eram duas viagens em série).
-  const contagemPromise = cliente.from(TABELA).select("id", { count: "exact", head: true });
+  let contagem = cliente.from(TABELA).select("id", { count: "exact", head: true });
+  if (filtro) contagem = contagem.or(filtro);
+  const contagemPromise = contagem;
   let [primeira, { count }] = await Promise.all([consultaPagina(0), contagemPromise]);
   if (primeira.error && !tabelaAusente(primeira.error)) {
     // Migration da coluna "origem" ainda não aplicada: carrega sem ela.
@@ -367,7 +392,7 @@ export async function carregarTarefas(
       });
     }
   }
-  cacheTarefas = todas;
+  cacheTarefas.set(filtro ? mes! : "*", todas);
   return todas;
 }
 
@@ -566,7 +591,7 @@ export async function zerarTarefas(mes?: string): Promise<void> {
     return;
   }
   // Mesmas regras de mês dos cards: cada origem tem o seu critério.
-  const idsDoMes = (await carregarTarefas())
+  const idsDoMes = (await carregarTarefas(undefined, mes))
     .filter((t) => {
       if (t.origem === "acumulada") return mesDaCompetencia(t.competencia) === mes;
       if (t.origem === "complementar") return !!t.dataConclusao && t.dataConclusao.slice(0, 7) === mes;
