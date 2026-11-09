@@ -1,0 +1,2 @@
+create index if not exists tarefas_gestta_origem_venc_idx on public.tarefas_gestta (origem, vencimento);
+create index if not exists tarefas_gestta_origem_conc_idx on public.tarefas_gestta (origem, data_conclusao);
