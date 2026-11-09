@@ -137,7 +137,6 @@ function cardsDeTarefas(m: MetricasTarefas): {
   const p = (n: number) => pct(n, m.total);
   return [
     { chave: "total", label: "Total de tarefas", valor: String(m.total), cor: "#1F2937", rodape: "competência no mês" },
-    { chave: "concluidas", label: "% concluídas", valor: p(m.concluidas), cor: "#1F2937", rodape: `${m.concluidas} tarefas` },
     { chave: "noPrazo", label: "% concluídas no prazo", valor: p(m.noPrazo), cor: "#059669", rodape: `${m.noPrazo} tarefas` },
     { chave: "foraDoPrazo", label: "% concluídas fora do prazo", valor: p(m.foraDoPrazo), cor: "#D97706", rodape: `${m.foraDoPrazo} tarefas` },
     { chave: "impedimento", label: "% em impedimento", valor: p(m.impedimento), cor: "#D97706", rodape: `${m.impedimento} tarefas` },

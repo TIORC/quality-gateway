@@ -3,7 +3,7 @@
  * de Indicadores (Por Setor / Por Colaborador / Por Célula).
  *
  * Regras (mês escolhido = mês do Vencimento da tarefa):
- *  - Mês de cada tarefa do Gestta: a Competência (sem Competência, o mês do vencimento).
+ *  - Mês de cada tarefa do Gestta: o mês do Vencimento (sem Vencimento, a Competência).
  *  - Total de tarefas: tarefas do Gestta da competência do mês.
  *  - % concluídas: status CONCLUIDO ÷ total.
  *  - No prazo / fora do prazo (excludentes, somam % concluídas):
@@ -134,7 +134,8 @@ export async function lerPlanilhaTarefas(
       responsavel: textoCelula(pega(linha, "responsavel")),
       vencimento: paraData(pega(linha, "vencimento")),
       dataConclusao: paraData(pega(linha, "dataConclusao")),
-      competencia: textoCelula(pega(linha, "competencia")),
+      // Competência pode vir como data do Excel (serial numérico): converte como no relatório de atrasadas.
+      competencia: competenciaDoRelatorio(pega(linha, "competencia")),
       cnpjCpf: textoCelula(pega(linha, "cnpjCpf")),
       dataLegal: paraData(pega(linha, "dataLegal")),
       feitoAtrasado: textoCelula(pega(linha, "feitoAtrasado")),
@@ -628,6 +629,8 @@ const MESES_COMPETENCIA = [
 export function mesDaCompetencia(texto: string, hoje: string = hojeIso()): string {
   const iso = /^(\d{4})-(\d{2})/.exec(texto.trim());
   if (iso) return `${iso[1]}-${iso[2]}`;
+  const numerico = /^(\d{1,2})\/(\d{4})$/.exec(texto.trim());
+  if (numerico) return `${numerico[2]}-${numerico[1]!.padStart(2, "0")}`;
   const [mes = "", ano = ""] = semAcento(texto).split(/[\s/-]+/).filter(Boolean);
   // Pelas três primeiras letras: "set" e "setembro" são o mesmo mês.
   const numero = MESES_COMPETENCIA.findIndex((nome) => mes.length >= 3 && mes.slice(0, 3) === nome.slice(0, 3)) + 1;
@@ -640,11 +643,10 @@ export function mesDaCompetencia(texto: string, hoje: string = hojeIso()): strin
 }
 
 /**
- * Mês de uma tarefa do Gestta: a Competência (mês da obrigação). Sem Competência,
- * usa o mês do vencimento.
+ * Mês de uma tarefa do Gestta: o mês do Vencimento. Sem Vencimento, usa a Competência.
  */
 export function mesDoGestta(t: TarefaGestta): string {
-  return mesDaCompetencia(t.competencia) || t.vencimento?.slice(0, 7) || "";
+  return t.vencimento?.slice(0, 7) || mesDaCompetencia(t.competencia) || "";
 }
 
 export function calcularMetricas(
