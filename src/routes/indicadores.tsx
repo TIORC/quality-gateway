@@ -87,7 +87,6 @@ import {
   lerPlanilhaTarefas,
   pct,
   tarefasDoIndicador,
-  tarefasEmCache,
   unificarSetor,
   zerarTarefas,
   type ChaveIndicador,
@@ -927,9 +926,17 @@ function Indicadores() {
     "total",
   );
 
+  /** Números dos cards no setor: só o próprio departamento (igual à planilha); a lista mantém as orientações. */
+  const tarefasDosNumeros = useMemo(
+    () =>
+      escopo !== "proprio" && secao === "por-setor" && setorFiltro !== "todos"
+        ? tarefasFiltradas.filter((t) => t.departamento === setorFiltro)
+        : tarefasFiltradas,
+    [tarefasFiltradas, escopo, secao, setorFiltro],
+  );
   const metricasTarefas = useMemo(
-    () => calcularMetricas(tarefasFiltradas, mesEscolhido),
-    [tarefasFiltradas, mesEscolhido],
+    () => calcularMetricas(tarefasDosNumeros, mesEscolhido),
+    [tarefasDosNumeros, mesEscolhido],
   );
   const gruposTarefas = useMemo(
     () =>
