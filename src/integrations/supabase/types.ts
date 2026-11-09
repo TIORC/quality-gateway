@@ -313,6 +313,51 @@ export type Database = {
           },
         ]
       }
+      atendimentos_colaborador: {
+        Row: {
+          colaborador: string
+          departamento: string
+          importado_em: string
+          mes: string
+          total: number
+        }
+        Insert: {
+          colaborador: string
+          departamento?: string
+          importado_em?: string
+          mes: string
+          total?: number
+        }
+        Update: {
+          colaborador?: string
+          departamento?: string
+          importado_em?: string
+          mes?: string
+          total?: number
+        }
+        Relationships: []
+      }
+      atendimentos_departamento: {
+        Row: {
+          departamento: string
+          importado_em: string
+          mes: string
+          total: number
+        }
+        Insert: {
+          departamento: string
+          importado_em?: string
+          mes: string
+          total?: number
+        }
+        Update: {
+          departamento?: string
+          importado_em?: string
+          mes?: string
+          total?: number
+        }
+        Relationships: []
+      }
       auditorias: {
         Row: {
           auditados: Json
@@ -1089,6 +1134,10 @@ export type Database = {
           cor: string
           created_at: string
           descricao: string
+          eficacia_dias: number
+          etapas: Json
+          exige_parecer_apuracao: boolean
+          exige_retorno_cliente: boolean
           icone: string
           id: string
           nome: string
@@ -1102,6 +1151,10 @@ export type Database = {
           cor?: string
           created_at?: string
           descricao?: string
+          eficacia_dias?: number
+          etapas?: Json
+          exige_parecer_apuracao?: boolean
+          exige_retorno_cliente?: boolean
           icone?: string
           id?: string
           nome: string
@@ -1115,6 +1168,10 @@ export type Database = {
           cor?: string
           created_at?: string
           descricao?: string
+          eficacia_dias?: number
+          etapas?: Json
+          exige_parecer_apuracao?: boolean
+          exige_retorno_cliente?: boolean
           icone?: string
           id?: string
           nome?: string
@@ -1133,13 +1190,23 @@ export type Database = {
           aberta_por_setor: string
           avaliacao: Json | null
           created_at: string
+          dono_qualidade_em: string | null
+          dono_qualidade_email: string
+          dono_qualidade_id: string
+          dono_qualidade_nome: string
+          eficacia_dias: number
+          eficacia_prevista_em: string | null
           encerrada_em: string | null
           etapa_entrou_em: string
           fluxo_versao: number
           formulario_versao: number
           id: string
+          impedida_em: string | null
+          impedida_motivo: string
           macro_atual: string
           numero: string
+          parecer_em: string | null
+          parecer_final: string
           prazo_etapa: string | null
           prioridade: string
           procedencia: string
@@ -1164,13 +1231,23 @@ export type Database = {
           aberta_por_setor?: string
           avaliacao?: Json | null
           created_at?: string
+          dono_qualidade_em?: string | null
+          dono_qualidade_email?: string
+          dono_qualidade_id?: string
+          dono_qualidade_nome?: string
+          eficacia_dias?: number
+          eficacia_prevista_em?: string | null
           encerrada_em?: string | null
           etapa_entrou_em?: string
           fluxo_versao?: number
           formulario_versao?: number
           id?: string
+          impedida_em?: string | null
+          impedida_motivo?: string
           macro_atual?: string
           numero?: string
+          parecer_em?: string | null
+          parecer_final?: string
           prazo_etapa?: string | null
           prioridade?: string
           procedencia?: string
@@ -1195,13 +1272,23 @@ export type Database = {
           aberta_por_setor?: string
           avaliacao?: Json | null
           created_at?: string
+          dono_qualidade_em?: string | null
+          dono_qualidade_email?: string
+          dono_qualidade_id?: string
+          dono_qualidade_nome?: string
+          eficacia_dias?: number
+          eficacia_prevista_em?: string | null
           encerrada_em?: string | null
           etapa_entrou_em?: string
           fluxo_versao?: number
           formulario_versao?: number
           id?: string
+          impedida_em?: string | null
+          impedida_motivo?: string
           macro_atual?: string
           numero?: string
+          parecer_em?: string | null
+          parecer_final?: string
           prazo_etapa?: string | null
           prioridade?: string
           procedencia?: string
@@ -1975,8 +2062,8 @@ export type Database = {
           created_at: string
           criado_por: string
           criado_por_nome: string
-          data_revisao: string
           data_publicacao: string | null
+          data_revisao: string
           data_vencimento: string | null
           departamento: string
           descricao: string
@@ -2023,8 +2110,8 @@ export type Database = {
           created_at?: string
           criado_por?: string
           criado_por_nome?: string
-          data_revisao?: string
           data_publicacao?: string | null
+          data_revisao?: string
           data_vencimento?: string | null
           departamento?: string
           descricao?: string
@@ -2071,8 +2158,8 @@ export type Database = {
           created_at?: string
           criado_por?: string
           criado_por_nome?: string
-          data_revisao?: string
           data_publicacao?: string | null
+          data_revisao?: string
           data_vencimento?: string | null
           departamento?: string
           descricao?: string
