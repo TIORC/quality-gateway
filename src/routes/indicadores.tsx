@@ -660,7 +660,7 @@ function Indicadores() {
     setZerando(true);
     try {
       await zerarTarefas(zerarAlvo === "mes" ? mesEscolhido : undefined);
-      setTarefas(await carregarTarefas(undefined, mesEscolhido));
+      setTarefas(await carregarTarefas());
       toast.success(
         zerarAlvo === "mes"
           ? `Tarefas de ${rotuloMesLongo(mesEscolhido)} apagadas.`
@@ -709,19 +709,12 @@ function Indicadores() {
   const todosColaboradores = escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro === "todos";
 
   useEffect(() => {
-    // Só as tarefas do mês escolhido (antes vinham todas as ~400 mil de uma vez).
-    let ativo = true;
-    const emCache = tarefasEmCache(mesEscolhido);
-    setTarefas(emCache ?? []);
-    carregarTarefas(undefined, mesEscolhido)
-      .then((lista) => {
-        if (ativo) setTarefas(lista);
-      })
+    const emCache = tarefasEmCache();
+    if (emCache) setTarefas(emCache);
+    carregarTarefas()
+      .then(setTarefas)
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));
-    return () => {
-      ativo = false;
-    };
-  }, [mesEscolhido]);
+  }, []);
 
   const controleImport = useMemo(
     () => [0, 1, 2].map(() => ({ current: null }) as MutableRefObject<(() => Promise<void>) | null>),
@@ -751,7 +744,7 @@ function Indicadores() {
     setAtualizando(true);
     try {
       const [lista, departamentos, porColaborador, celulasAtuais] = await Promise.all([
-        carregarTarefas(undefined, mesEscolhido),
+        carregarTarefas(),
         carregarAtendimentos(),
         carregarAtendimentosColaborador(),
         carregarCelulas(),
@@ -1436,7 +1429,6 @@ function Indicadores() {
               titulo="Tarefas - Gestta"
               descricao="Envie a planilha de tarefas exportada do Gestta (.xlsx). Tarefas já importadas (mesmo Id) não são duplicadas: se algo mudou, como status ou data de conclusão, a tarefa é atualizada."
               totalImportadas={tarefas.length}
-              mes={mesEscolhido}
               aoConcluir={(r, lista) => {
                 setTarefas(lista);
                 if (r.mesPredominante) setMesEscolhido(r.mesPredominante);
@@ -1450,7 +1442,6 @@ function Indicadores() {
               atrasadas
               origemRelatorio="complementar"
               totalImportadas={tarefas.length}
-              mes={mesEscolhido}
               aoConcluir={(_, lista) => setTarefas(lista)}
             />
             <ImportadorTarefas
@@ -1460,7 +1451,6 @@ function Indicadores() {
               descricao="Envie o Relatório de tarefas atrasadas (.xlsx, tarefas abertas e em impedimento). Substitui apenas as acumuladas da mesma competência do arquivo: os outros meses são mantidos. Todas as linhas entram, inclusive Ids repetidos, e as tarefas que já estavam no Total saem dele."
               atrasadas
               totalImportadas={tarefas.length}
-              mes={mesEscolhido}
               aoConcluir={(r, lista) => {
                 setTarefas(lista);
                 if (r.mesCompetencia) setMesEscolhido(r.mesCompetencia);
@@ -1962,9 +1952,7 @@ function ImportadorTarefas({
   origemRelatorio = "acumulada",
   controle,
   aoMudarArquivo,
-  mes,
 }: {
-  mes?: string;
   atrasadas?: boolean;
   origemRelatorio?: "complementar" | "acumulada";
   controle?: MutableRefObject<(() => Promise<void>) | null>;
@@ -2018,7 +2006,6 @@ function ImportadorTarefas({
             etapa: `Atualizando os números: ${feitas} de ${total} tarefas`,
             valor: 95 + Math.round((total === 0 ? 1 : feitas / total) * 4),
           }),
-          r.mesPredominante || r.mesCompetencia || mes,
         ),
       );
       setArquivo(null);
