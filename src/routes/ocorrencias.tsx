@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -44,6 +44,12 @@ import { FlowBuilder } from "@/components/ocorrencias/flow-builder";
 import { FormatadorSla } from "@/components/ocorrencias/formatador-sla";
 import { DetalheOcorrenciaDialog } from "@/components/ocorrencias/detalhe-ocorrencia-dialog";
 import { DashboardOcorrencias } from "@/components/ocorrencias/dashboard-ocorrencias";
+import {
+  FILTROS_VAZIOS,
+  FiltrosOcorrencias,
+  aplicarFiltrosOcorrencias,
+  type FiltrosOcorrenciasValor,
+} from "@/components/ocorrencias/filtros-ocorrencias";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
   ESTADO_NC_VAZIO,
@@ -75,6 +81,7 @@ import {
   PRIORIDADE_LABELS,
   alinharFluxoAoTipo,
   tipoTemJulgamento,
+  SETOR_RESPONSAVEL_OCORRENCIAS,
   ehTipoNaoConformidade,
   etapasDoTipo,
   PRAZOS_EFICACIA,
@@ -115,6 +122,10 @@ export const Route = createFileRoute("/ocorrencias")({
   head: () => ({
     meta: [{ title: "Ocorrências | Gestão da Qualidade" }],
   }),
+  // `abrir`: id da ocorrência a abrir direto (vem do clique numa notificação).
+  validateSearch: (s: Record<string, unknown>): { abrir?: string } => ({
+    abrir: typeof s["abrir"] === "string" ? (s["abrir"] as string) : undefined,
+  }),
   component: Ocorrencias,
 });
 
@@ -150,6 +161,11 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   const [ocorrenciaSelecionada, setOcorrenciaSelecionada] = useState<Ocorrencia | null>(null);
   // Aviso de ocorrência registrada (fica na tela até ser dispensado).
   const [avisoCriada, setAvisoCriada] = useState<Ocorrencia | null>(null);
+  // Filtros por tipo, pessoa e setor (valem para as abas de lista, kanban e dashboard).
+  const [filtros, setFiltros] = useState<FiltrosOcorrenciasValor>(FILTROS_VAZIOS);
+  // Ocorrência pedida na URL (clique numa notificação): abre o detalhe uma única vez.
+  const abrirPedido = (useSearch({ strict: false }) as { abrir?: string }).abrir;
+  const abriuPedidoRef = useRef<string | null>(null);
 
   const tipos = useAsync(listarTipos, [refreshToken]);
   const ocorrencias = useAsync(listarOcorrencias, [refreshToken]);
@@ -165,6 +181,15 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   const vêTudo = veTodasAsOcorrencias(session);
   const carregando = ocorrencias.loading;
   const lista = listaAoVivo ?? ocorrencias.data ?? [];
+
+  useEffect(() => {
+    if (!abrirPedido || abriuPedidoRef.current === abrirPedido) return;
+    const alvo = lista.find((o) => o.id === abrirPedido);
+    if (!alvo) return;
+    abriuPedidoRef.current = abrirPedido;
+    setOcorrenciaSelecionada(alvo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirPedido, lista]);
 
   useEffect(() => {
     if (!ocorrencias.loading && ocorrencias.data) {
@@ -248,7 +273,10 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   };
 
   const porAba = (aba: string) =>
-    lista.filter((o) => filtrar(aba as (typeof ABAS)[number]["valor"], o));
+    aplicarFiltrosOcorrencias(
+      lista.filter((o) => filtrar(aba as (typeof ABAS)[number]["valor"], o)),
+      filtros,
+    );
 
   return (
     <PanelShell wide>
@@ -358,6 +386,17 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
               })}
             </TabsList>
 
+            {abaAtiva !== "abertura" && (
+              <div className="mt-4">
+                <FiltrosOcorrencias
+                  ocorrencias={lista}
+                  tipos={tipos.data ?? []}
+                  valor={filtros}
+                  onChange={setFiltros}
+                />
+              </div>
+            )}
+
             {abasVisiveis.map((aba) => (
               <TabsContent key={aba.valor} value={aba.valor}>
                 {aba.valor === "abertura" ? (
@@ -383,7 +422,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                   />
                 ) : aba.valor === "dashboard" ? (
                   <DashboardOcorrencias
-                    ocorrencias={lista}
+                    ocorrencias={aplicarFiltrosOcorrencias(lista, filtros)}
                     tipos={tipos.data ?? []}
                   />
                 ) : visao === "kanban" ? (
@@ -581,7 +620,6 @@ const COLUNAS_KANBAN: { rotulo: string; etapas: string[] }[] = [
   { rotulo: "Julgamento", etapas: ["julgamento"] },
   { rotulo: "Plano de ação", etapas: ["plano_acao"] },
   { rotulo: "Implementação", etapas: ["implementacao", "comunicacao", ETAPA_RETORNO_CLIENTE] },
-  { rotulo: "Finalização", etapas: ["fechamento"] },
   { rotulo: "Eficácia", etapas: ["avaliacao_eficacia"] },
 ];
 
@@ -645,7 +683,13 @@ function KanbanOcorrencias({
               const impedida = !!o.impedidaEm;
               const encerrada = o.status === "encerrada";
               const atrasada = ocorrenciaAtrasada(o);
-              const responsavel = o.responsavelNome || o.donoQualidadeNome || "—";
+              // Quem está com a ocorrência: a pessoa da tratativa (ou o responsável, se for uma pessoa).
+              const responsavel =
+                o.donoQualidadeNome ||
+                (o.responsavelNome && o.responsavelNome !== SETOR_RESPONSAVEL_OCORRENCIAS
+                  ? o.responsavelNome
+                  : "") ||
+                "—";
               return (
                 <button
                   key={o.id}
@@ -839,8 +883,18 @@ function ListaOcorrencias({
                       <span
                         className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
                         style={{
-                          backgroundColor: o.procedencia === "procedente" ? "#ECFDF5" : "#FDECEE",
-                          color: o.procedencia === "procedente" ? "#065F46" : "#991A1A",
+                          backgroundColor:
+                            o.procedencia === "procedente"
+                              ? "#ECFDF5"
+                              : o.procedencia === "parcialmente_procedente"
+                                ? "#FEF3C7"
+                                : "#FDECEE",
+                          color:
+                            o.procedencia === "procedente"
+                              ? "#065F46"
+                              : o.procedencia === "parcialmente_procedente"
+                                ? "#92400E"
+                                : "#991A1A",
                         }}
                       >
                         {PROCEDENCIA_LABELS[o.procedencia]}
@@ -1867,10 +1921,10 @@ function TipoDialog({
       const idx = pos < 0 ? 0 : pos + 1;
       etapasSalvas = [...etapasSalvas.slice(0, idx), julgamento, ...etapasSalvas.slice(idx)];
     }
-    // Retorno ao cliente: etapa obrigatória antes do fechamento (criada/removida pela opção).
+    // Retorno ao cliente: etapa obrigatória antes da eficácia (criada/removida pela opção).
     etapasSalvas = etapasSalvas.filter((e) => e.id !== ETAPA_RETORNO_CLIENTE);
     if (retornoCliente) {
-      const pos = etapasSalvas.findIndex((e) => e.id === "fechamento");
+      const pos = etapasSalvas.findIndex((e) => e.id === "avaliacao_eficacia");
       const retorno: EtapaTipo = {
         id: ETAPA_RETORNO_CLIENTE,
         nome: "Retorno ao cliente",

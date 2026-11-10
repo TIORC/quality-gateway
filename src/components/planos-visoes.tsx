@@ -7,6 +7,41 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { STATUS_ACAO_LABELS, formatarPrazo } from "@/lib/planos";
 import type { PlanoAcao } from "@/lib/planos";
 
+/**
+ * Paleta de cores por origem. Cada origem recebe sempre a mesma cor (derivada do
+ * nome), e as classes ficam completas para o Tailwind gerar todas, em claro e escuro.
+ */
+const PALETA_ORIGEM = [
+  "border-amber-500/60 bg-amber-50 text-amber-800 dark:border-amber-400/50 dark:bg-amber-400/10 dark:text-amber-200",
+  "border-sky-500/60 bg-sky-50 text-sky-800 dark:border-sky-400/50 dark:bg-sky-400/10 dark:text-sky-200",
+  "border-violet-500/60 bg-violet-50 text-violet-800 dark:border-violet-400/50 dark:bg-violet-400/10 dark:text-violet-200",
+  "border-emerald-500/60 bg-emerald-50 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-400/10 dark:text-emerald-200",
+  "border-rose-500/60 bg-rose-50 text-rose-800 dark:border-rose-400/50 dark:bg-rose-400/10 dark:text-rose-200",
+  "border-teal-500/60 bg-teal-50 text-teal-800 dark:border-teal-400/50 dark:bg-teal-400/10 dark:text-teal-200",
+  "border-fuchsia-500/60 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-400/50 dark:bg-fuchsia-400/10 dark:text-fuchsia-200",
+  "border-indigo-500/60 bg-indigo-50 text-indigo-800 dark:border-indigo-400/50 dark:bg-indigo-400/10 dark:text-indigo-200",
+];
+
+function corDaOrigem(nome: string): string {
+  let soma = 0;
+  for (const c of nome) soma = (soma * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETA_ORIGEM[soma % PALETA_ORIGEM.length] ?? PALETA_ORIGEM[0]!;
+}
+
+/** Origem do plano em destaque: de onde ele veio (ex.: ocorrência RC-2026-002). */
+function OrigemDestaque({ plano }: { plano: PlanoAcao }) {
+  const ehOcorrencia = plano.vinculoTipo === "ocorrencia";
+  const nome = ehOcorrencia ? "Ocorrência" : plano.origem || "—";
+  return (
+    <span
+      className={`inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border px-2 py-1 text-[12px] ${corDaOrigem(nome)}`}
+    >
+      <span className="font-semibold">Origem: {nome}</span>
+      {plano.origemOutros && <span className="font-mono font-semibold">{plano.origemOutros}</span>}
+    </span>
+  );
+}
+
 export function CartaoLista({ planos, onAbrir }: { planos: PlanoAcao[]; onAbrir: (p: PlanoAcao) => void }) {
   return (
     <ul className="divide-y divide-[#EEF2F7]">
@@ -20,10 +55,12 @@ export function CartaoLista({ planos, onAbrir }: { planos: PlanoAcao[]; onAbrir:
                 <StatusBadge status={p.status} />
               </span>
               <span className="mt-0.5 block truncate text-[14px] font-medium text-[#1F2937]">{p.titulo}</span>
+              <span className="mt-1.5 block">
+                <OrigemDestaque plano={p} />
+              </span>
               <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#64748B]">
                 <span>{p.responsavelNome || "Sem responsável"}</span>
                 <PrioridadeDot prioridade={p.prioridade} />
-                <span className="hidden sm:inline">{p.origem}</span>
               </span>
             </span>
             <PrazoBadge plano={p} />
@@ -93,7 +130,11 @@ function Celula({ plano, coluna }: { plano: PlanoAcao; coluna: Coluna }) {
     case "prioridade": return <PrioridadeDot prioridade={plano.prioridade} />;
     case "progresso": return <span className="font-mono text-[12px]">{plano.progresso}%</span>;
     case "seguidores": return <span className="text-[#64748B]">{plano.seguidores.length || "—"}</span>;
-    case "origem": return <span className="text-[#64748B]">{plano.origem}</span>;
+    case "origem": return (
+      <span className="text-[#64748B]">
+        {plano.origem}{plano.origemOutros ? ` · ${plano.origemOutros}` : ""}
+      </span>
+    );
     case "vinculo": return (
       <span className="text-[#64748B]">
         {plano.vinculoTipo === "ocorrencia" ? `Ocorrência ${plano.origemOutros}` : plano.vinculoTipo || "—"}

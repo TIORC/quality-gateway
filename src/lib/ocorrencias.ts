@@ -60,11 +60,14 @@ const ETAPAS_PADRAO_IDS = [
   "abertura",
   "apuracao",
   "julgamento",
+  "comunicacao",
   "plano_acao",
   "implementacao",
-  "fechamento",
   "avaliacao_eficacia",
 ] as const;
+
+/** Etapa removida do fluxo: a Finalização foi absorvida pelo plano de ação (parecer final). */
+const ETAPA_REMOVIDA = "fechamento";
 
 /** Id de uma etapa do tipo (padrão ou criada no Configurar). */
 export type MacroEtapa = string;
@@ -106,11 +109,16 @@ export const STATUS_OCORRENCIA_LABELS: Record<StatusOcorrencia, string> = {
 };
 
 /** Resultado do julgamento da ocorrência (visível ao solicitante). */
-export type ProcedenciaOcorrencia = "pendente" | "procedente" | "nao_procedente";
+export type ProcedenciaOcorrencia =
+  | "pendente"
+  | "procedente"
+  | "parcialmente_procedente"
+  | "nao_procedente";
 
 export const PROCEDENCIA_LABELS: Record<ProcedenciaOcorrencia, string> = {
   pendente: "Em análise",
   procedente: "Procedente",
+  parcialmente_procedente: "Parcialmente Procedente",
   nao_procedente: "Não-procedente",
 };
 
@@ -285,7 +293,7 @@ export function tipoTemJulgamento(
 export function etapasDoTipo(
   tipo: { etapas?: EtapaTipo[]; nome?: string } | null | undefined,
 ): EtapaTipo[] {
-  const etapas = tipo?.etapas?.length ? tipo.etapas : etapasPadrao();
+  const etapas = etapasComPlanoAcao(tipo?.etapas?.length ? tipo.etapas : etapasPadrao());
   return tipoTemJulgamento(tipo) ? etapas : etapas.filter((e) => e.id !== "julgamento");
 }
 
@@ -303,6 +311,49 @@ export function slaDaEtapa(tipo: { etapas?: EtapaTipo[] }, id: string): number |
 
 export function fluxoVazio(etapas: EtapaTipo[] = etapasPadrao()): MacroFluxo[] {
   return etapas.map((e) => ({ macro: e.id, nome: e.nome, subetapas: [] }));
+}
+
+/**
+ * Todo fluxo tem a etapa de plano de ação, logo após a Comunicação (ou, se o
+ * tipo não tiver Comunicação, após o Julgamento ou a Apuração). Vale também para
+ * tipos e ocorrências criadas antes dessa regra.
+ */
+function posicaoDoPlanoAcao(ids: string[]): number {
+  for (const ref of ["comunicacao", "julgamento", "apuracao"]) {
+    const i = ids.indexOf(ref);
+    if (i >= 0) return i + 1;
+  }
+  const eficacia = ids.indexOf("avaliacao_eficacia");
+  return eficacia >= 0 ? eficacia : ids.length;
+}
+
+/**
+ * Normaliza as etapas do tipo: remove a Finalização (fechamento) e garante o
+ * plano de ação logo após a Comunicação (ou Julgamento/Apuração, se faltar).
+ */
+export function etapasComPlanoAcao(etapas: EtapaTipo[]): EtapaTipo[] {
+  const semFinalizacao = etapas.filter((e) => e.id !== ETAPA_REMOVIDA);
+  if (semFinalizacao.some((e) => e.id === "plano_acao")) return semFinalizacao;
+  const copia = [...semFinalizacao];
+  copia.splice(posicaoDoPlanoAcao(semFinalizacao.map((e) => e.id)), 0, {
+    id: "plano_acao",
+    nome: MACRO_ETAPA_LABELS.plano_acao ?? "Plano de ação",
+    slaDias: 5,
+  });
+  return copia;
+}
+
+/** Mesma normalização de `etapasComPlanoAcao`, para o fluxo publicado. */
+export function fluxoComPlanoAcao(fluxo: MacroFluxo[]): MacroFluxo[] {
+  const semFinalizacao = fluxo.filter((e) => e.macro !== ETAPA_REMOVIDA);
+  if (semFinalizacao.some((e) => e.macro === "plano_acao")) return semFinalizacao;
+  const copia = [...semFinalizacao];
+  copia.splice(posicaoDoPlanoAcao(semFinalizacao.map((e) => e.macro)), 0, {
+    macro: "plano_acao",
+    nome: MACRO_ETAPA_LABELS.plano_acao ?? "Plano de ação",
+    subetapas: [],
+  });
+  return copia;
 }
 
 /** Subetapa automática de uma etapa: sob a Qualidade, com o SLA da etapa. */
@@ -922,4 +973,54 @@ export interface ParecerApuracao {
 export function parecerApuracaoDe(o: Pick<Ocorrencia, "respostas">): ParecerApuracao | null {
   const v = o.respostas[CHAVE_PARECER_APURACAO] as ParecerApuracao | undefined;
   return v && typeof v.texto === "string" ? v : null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Julgamento: relatório e partes procedentes / não procedentes                */
+/* -------------------------------------------------------------------------- */
+
+/** Limite do relatório do julgamento (bem maior que o texto comum). */
+export const LIMITE_RELATORIO_JULGAMENTO = 50000;
+
+/** Chave em `respostas` do relatório escrito pelo responsável no julgamento. */
+export const CHAVE_RELATORIO_JULGAMENTO = "__relatorio_julgamento";
+
+export interface RelatorioJulgamento {
+  texto: string;
+  anexos: AnexoOcorrencia[];
+  salvoPorNome: string;
+  salvoEm: string;
+}
+
+export function relatorioJulgamentoDe(o: Pick<Ocorrencia, "respostas">): RelatorioJulgamento | null {
+  const v = o.respostas[CHAVE_RELATORIO_JULGAMENTO] as RelatorioJulgamento | undefined;
+  return v && typeof v.texto === "string" ? v : null;
+}
+
+/** Chave em `respostas` das partes do julgamento (cada uma procedente ou não). */
+export const CHAVE_ITENS_JULGAMENTO = "__itens_julgamento";
+
+export interface ItemJulgamento {
+  id: string;
+  /** Parte da reclamação/não conformidade julgada. */
+  descricao: string;
+  procedencia: "procedente" | "nao_procedente";
+}
+
+export function itensJulgamentoDe(o: Pick<Ocorrencia, "respostas">): ItemJulgamento[] {
+  const v = o.respostas[CHAVE_ITENS_JULGAMENTO];
+  return Array.isArray(v) ? (v as ItemJulgamento[]) : [];
+}
+
+/**
+ * Resultado geral do julgamento a partir das partes: todas procedentes →
+ * procedente; todas não-procedentes → não-procedente; mistura → parcialmente
+ * procedente; sem partes → pendente.
+ */
+export function procedenciaDosItens(itens: ItemJulgamento[]): ProcedenciaOcorrencia {
+  if (itens.length === 0) return "pendente";
+  const procedentes = itens.filter((i) => i.procedencia === "procedente").length;
+  if (procedentes === itens.length) return "procedente";
+  if (procedentes === 0) return "nao_procedente";
+  return "parcialmente_procedente";
 }

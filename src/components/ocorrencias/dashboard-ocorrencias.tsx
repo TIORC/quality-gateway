@@ -180,10 +180,15 @@ export function DashboardOcorrencias({
 
   // Julgamento das reclamações (e multas), sem contar pendentes.
   const julgados = noPeriodo.filter(
-    (o) => grupoDe(o) === "reclamacao" && (o.procedencia === "procedente" || o.procedencia === "nao_procedente"),
+    (o) =>
+      grupoDe(o) === "reclamacao" &&
+      (o.procedencia === "procedente" ||
+        o.procedencia === "parcialmente_procedente" ||
+        o.procedencia === "nao_procedente"),
   );
   const procedentes = julgados.filter((o) => o.procedencia === "procedente").length;
-  const improcedentes = julgados.length - procedentes;
+  const parciais = julgados.filter((o) => o.procedencia === "parcialmente_procedente").length;
+  const improcedentes = julgados.length - procedentes - parciais;
 
   // Causas que mais se repetem (causa raiz registrada na apuração).
   const causas = useMemo(() => {
@@ -340,11 +345,14 @@ export function DashboardOcorrencias({
             <>
               <div className="mt-4 flex h-3 overflow-hidden rounded-full">
                 <div className="bg-[#F87171]" style={{ width: `${percentual(procedentes, julgados.length)}%` }} />
+                <div className="bg-[#F59E0B]" style={{ width: `${percentual(parciais, julgados.length)}%` }} />
                 <div className="bg-[#3B82F6]" style={{ width: `${percentual(improcedentes, julgados.length)}%` }} />
               </div>
               <p className="mt-3 text-[13px] text-foreground/80">
                 <strong className="text-[#F87171]">{percentual(procedentes, julgados.length)}%</strong> procedentes (
-                {procedentes}) · <strong className="text-[#3B82F6]">{percentual(improcedentes, julgados.length)}%</strong>{" "}
+                {procedentes}) · <strong className="text-[#F59E0B]">{percentual(parciais, julgados.length)}%</strong>{" "}
+                parcialmente procedentes ({parciais}) ·{" "}
+                <strong className="text-[#3B82F6]">{percentual(improcedentes, julgados.length)}%</strong>{" "}
                 improcedentes ({improcedentes})
               </p>
             </>

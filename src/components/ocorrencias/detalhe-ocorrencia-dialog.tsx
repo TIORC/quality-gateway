@@ -45,7 +45,9 @@ import { formatarDataHoraBrasilia } from "@/lib/utils";
 
 import { AnexosVisualizador, anexosDe } from "@/components/ocorrencias/anexos-visualizador";
 import { MetroLinha } from "@/components/ocorrencias/metro-linha";
-import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
+import { RelatorioJulgamento } from "@/components/ocorrencias/relatorio-julgamento";
+import { JulgamentoPartes } from "@/components/ocorrencias/julgamento-partes";
+import { CampoSetores, FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
   agirNaOcorrencia,
   assumirOcorrencia,
@@ -56,7 +58,6 @@ import {
   carregarFluxoAtivo,
   carregarFormularioAtivo,
   comentarOcorrencia,
-  decidirProcedencia,
   definirPrioridade,
   enviarAnexo,
   excluirOcorrencia,
@@ -70,6 +71,7 @@ import {
   enviarRetornoParcial,
   RETORNO_PARCIAL_ACAO,
   salvarParecerApuracao,
+  adicionarSetoresEnvolvidos,
 } from "@/lib/ocorrencias-crud";
 import {
   definirParecerApuracaoTipo,
@@ -129,7 +131,6 @@ import {
   type MacroFluxo,
   type Ocorrencia,
   LIMITE_TEXTO_OCORRENCIA,
-  type ProcedenciaOcorrencia,
   type ResultadoEficacia,
   type Respostas,
 } from "@/lib/ocorrencias";
@@ -207,6 +208,24 @@ function DetalheCorpo({
   const parecerSalvo = parecerApuracaoDe(o);
   const [textoParecer, setTextoParecer] = useState(parecerSalvo?.texto ?? "");
   const [salvandoParecer, setSalvandoParecer] = useState(false);
+
+  // Setores envolvidos acrescentados depois da abertura.
+  const [novosSetores, setNovosSetores] = useState<string[]>([]);
+  const [salvandoSetores, setSalvandoSetores] = useState(false);
+
+  async function adicionarSetores() {
+    setSalvandoSetores(true);
+    try {
+      await adicionarSetoresEnvolvidos(o, novosSetores, session);
+      setNovosSetores([]);
+      toast.success("Setores envolvidos adicionados.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvandoSetores(false);
+    }
+  }
 
   /** Liga/desliga a exigência do parecer para o tipo (vale para todas as ocorrências dele). */
   async function alternarParecerObrigatorio() {
@@ -310,7 +329,6 @@ function DetalheCorpo({
       : (subEtapa?.acoes ?? []).filter(
           (a) => !(o.macroAtual === "avaliacao_eficacia" && (a === "aprovar" || a === "reprovar")),
         );
-  const noFechamento = o.macroAtual === "fechamento";
   const setoresEnvolvidos = setoresEnvolvidosDe(o);
   const ciencias = cienciasDe(o);
   const meuSetor = normalizarSetor(session?.setor);
@@ -322,6 +340,8 @@ function DetalheCorpo({
   const macrosFluxo = etapas.map((e) => e.macro);
   const idxMacro = macrosFluxo.indexOf(o.macroAtual);
   const proximaMacro = o.status === "encerrada" || idxMacro < 0 ? undefined : etapas[idxMacro + 1];
+  // Etapa anterior à eficácia: é nela que o parecer final é registrado.
+  const noFechamento = proximaMacro?.macro === "avaliacao_eficacia";
   const verInternos = podeVerInternos(session, o);
   const comentar = podeComentar(session, o);
   const camposEtapa = subEtapa?.campos ?? [];
@@ -524,16 +544,6 @@ function DetalheCorpo({
     }
   }
 
-  async function decidir(procedencia: Exclude<ProcedenciaOcorrencia, "pendente">) {
-    try {
-      await decidirProcedencia(o, procedencia, "", session);
-      toast.success(`${PROCEDENCIA_LABELS[procedencia]} registrado.`);
-      await recarregar();
-    } catch (e) {
-      toast.error(traduzErro(e).message);
-    }
-  }
-
   async function mudarPrioridade(valor: PrioridadeOcorrencia) {
     try {
       await definirPrioridade(o, valor, session);
@@ -611,11 +621,6 @@ function DetalheCorpo({
   );
   const mostraAvaliacao =
     gerencia && (o.macroAtual === "avaliacao_eficacia" || o.status !== "em_andamento");
-  const mostraDecisao =
-    o.status === "em_andamento" &&
-    o.macroAtual === "julgamento" &&
-    o.procedencia === "pendente" &&
-    pode;
 
   return (
     <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
@@ -639,7 +644,9 @@ function DetalheCorpo({
               className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
                 o.procedencia === "procedente"
                   ? "bg-[#ECFDF5] text-[#065F46]"
-                  : "bg-[#FDECEE] text-[#991A1A]"
+                  : o.procedencia === "parcialmente_procedente"
+                    ? "bg-[#FEF3C7] text-[#92400E]"
+                    : "bg-[#FDECEE] text-[#991A1A]"
               }`}
             >
               {PROCEDENCIA_LABELS[o.procedencia]}
@@ -915,36 +922,45 @@ function DetalheCorpo({
             </section>
           )}
 
-          {mostraDecisao && (
+          {verInternos && o.macroAtual === "julgamento" && (
+            <RelatorioJulgamento
+              key={`relatorio-${o.id}`}
+              ocorrencia={o}
+              session={session}
+              editavel={podeMover && o.status !== "encerrada"}
+              onSalvo={recarregar}
+            />
+          )}
+
+          {verInternos && o.macroAtual === "julgamento" && (
+            <JulgamentoPartes
+              key={`julgamento-${o.id}`}
+              ocorrencia={o}
+              session={session}
+              editavel={podeMover && o.status !== "encerrada"}
+              gerencia={gerencia}
+              onSalvo={recarregar}
+            />
+          )}
+
+          {verInternos && o.macroAtual === "apuracao" && (
             <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Julgamento — decisão de procedência
+                Ferramenta de apuração
               </h3>
-              <p className="mt-1 text-[13px] text-[#64748B]">
-                Registra se a não conformidade foi procedente ou não. O solicitante verá a decisão
-                em tempo real.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="bg-[#059669] text-white hover:bg-[#047857]"
-                  onClick={() => void decidir("procedente")}
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Procedente
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="border-[#E11D48]/40 text-[#E11D48] hover:bg-[#FDECEE]"
-                  onClick={() => void decidir("nao_procedente")}
-                >
-                  <AlertTriangle className="h-4 w-4" />
-                  Não-procedente
-                </Button>
-              </div>
+              <FerramentaApuracao
+                key={o.id}
+                ocorrencia={o}
+                editavel={podeMover && o.status !== "encerrada"}
+                salvando={salvandoApuracao}
+                onSalvar={salvarApuracao}
+              />
+              {anexosApuracaoAntiga.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[12px] text-[#64748B]">Anexos da apuração anterior</p>
+                  <AnexosVisualizador anexos={anexosApuracaoAntiga} />
+                </div>
+              )}
             </section>
           )}
 
@@ -1016,72 +1032,6 @@ function DetalheCorpo({
             </section>
           )}
 
-          {verInternos && o.macroAtual === "apuracao" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                  Parecer final
-                </h3>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!!tipoDaOcorrencia?.parecerApuracao}
-                  disabled={!podeOperarOcorrencias(session) || !tipoDaOcorrencia}
-                  onClick={() => void alternarParecerObrigatorio()}
-                  className="inline-flex items-center gap-2 text-[12px] text-[#334155] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      tipoDaOcorrencia?.parecerApuracao ? "bg-[#1E3A8A]" : "bg-[#CBD5E1]"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                        tipoDaOcorrencia?.parecerApuracao ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </span>
-                  Obrigatório neste tipo
-                </button>
-              </div>
-              <p className="mt-1 text-[12px] text-[#64748B]">
-                Quando ativo, a Apuração só avança com o parecer registrado. Alterável pela Qualidade e pelo Desenvolvedor do Sistema; vale para todas as ocorrências deste tipo.
-              </p>
-              {podeMover && o.status !== "encerrada" ? (
-                <div className="mt-3 space-y-2">
-                  <Textarea
-                    className="min-h-[110px]"
-                    maxLength={LIMITE_TEXTO_OCORRENCIA}
-                    placeholder="Escreva o parecer final da apuração…"
-                    value={textoParecer}
-                    onChange={(e) => setTextoParecer(e.target.value)}
-                  />
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[11px] text-[#64748B]">
-                      {parecerSalvo
-                        ? `Último registro: ${parecerSalvo.salvoPorNome || "—"} · ${formatarDataHoraBrasilia(parecerSalvo.salvoEm)}`
-                        : "Ainda não registrado."}
-                    </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={salvandoParecer || !textoParecer.trim()}
-                      className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                      onClick={() => void salvarParecer()}
-                    >
-                      {salvandoParecer ? "Salvando…" : "Salvar parecer"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-3 whitespace-pre-wrap rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
-                  {parecerSalvo?.texto || "Não registrado."}
-                </p>
-              )}
-            </section>
-          )}
-
           {verInternos && o.macroAtual === "avaliacao_eficacia" && (
             <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
@@ -1115,124 +1065,7 @@ function DetalheCorpo({
             </section>
           )}
 
-          {verInternos && o.macroAtual === "apuracao" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Ferramenta de apuração
-              </h3>
-              <FerramentaApuracao
-                key={o.id}
-                ocorrencia={o}
-                editavel={podeMover && o.status !== "encerrada"}
-                salvando={salvandoApuracao}
-                onSalvar={salvarApuracao}
-              />
-              {anexosApuracaoAntiga.length > 0 && (
-                <div className="mt-4">
-                  <p className="mb-2 text-[12px] text-[#64748B]">Anexos da apuração anterior</p>
-                  <AnexosVisualizador anexos={anexosApuracaoAntiga} />
-                </div>
-              )}
-            </section>
-          )}
-
-          {podeMover && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Gestão (Qualidade)
-              </h3>
-              <div className="mt-2 flex flex-wrap items-end gap-2">
-                {proximaMacro && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                    onClick={() =>
-                      void mover(proximaMacro.macro, proximaMacro.subetapas?.[0]?.id ?? "")
-                    }
-                  >
-                    Avançar para {proximaMacro.nome}
-                  </Button>
-                )}
-                <div className="w-full sm:w-[260px]">
-                  <Label className="text-[12px]">Mover para etapa</Label>
-                  <Select
-                    value=""
-                    onValueChange={(v) => {
-                      if (!v) return;
-                      const [macro, ...resto] = v.split("::");
-                      void mover(macro as MacroEtapa, resto.join("::"));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Escolher etapa…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {moverOpcoes.length === 0 ? (
-                        <SelectItem value={"_sem"} disabled>
-                          Nenhuma subetapa no fluxo
-                        </SelectItem>
-                      ) : (
-                        moverOpcoes.map(({ macro, subetapa }) => (
-                          <SelectItem
-                            key={`${macro}::${subetapa?.id ?? ""}`}
-                            value={`${macro}::${subetapa?.id ?? ""}`}
-                          >
-                            {subetapa
-                              ? `${nomeEtapaDoFluxo(etapas, macro)} › ${subetapa.nome}`
-                              : nomeEtapaDoFluxo(etapas, macro)}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {mostraAvaliacao && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setResultado("eficaz");
-                      setObservacao("");
-                      setAvaliacaoAberta(true);
-                    }}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Avaliar eficácia
-                  </Button>
-                )}
-              </div>
-
-              {o.avaliacao && (
-                <div className="mt-3 rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
-                  <span className="font-semibold">
-                    Relatório de eficácia:{" "}
-                    {o.avaliacao.resultado === "impedida"
-                      ? "impedida"
-                      : o.avaliacao.resultado === "nao_eficaz" || o.avaliacao.eficaz === false
-                        ? "não eficaz"
-                        : o.avaliacao.resultado === "eficaz" || o.avaliacao.eficaz === true
-                          ? "eficaz"
-                          : "pendente"}
-                    {o.avaliacao.verificacaoEm
-                      ? ` · verificação ${formatarPrazo(o.avaliacao.verificacaoEm)}`
-                      : ""}
-                  </span>
-                  {o.avaliacao.observacao && (
-                    <p className="mt-0.5 whitespace-pre-wrap">{o.avaliacao.observacao}</p>
-                  )}
-                  {o.avaliacao.anexos.length > 0 && (
-                    <div className="mt-2">
-                      <AnexosVisualizador anexos={o.avaliacao.anexos} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-
-          {setoresEnvolvidos.length > 0 &&
+          {(setoresEnvolvidos.length > 0 || (podeMover && o.status !== "encerrada")) &&
             (verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor)) && (
               <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
                 <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
@@ -1272,6 +1105,23 @@ function DetalheCorpo({
                     );
                   })}
                 </ul>
+                {podeMover && o.status !== "encerrada" && (
+                  <div className="mt-4 space-y-2 border-t border-[#E9EEF5] pt-3">
+                    <p className="text-[12px] font-semibold text-[#475569]">Adicionar setores envolvidos</p>
+                    <CampoSetores valor={novosSetores} onChange={(v) => setNovosSetores(Array.isArray(v) ? (v as string[]) : [])} />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={salvandoSetores || novosSetores.length === 0}
+                        className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                        onClick={() => void adicionarSetores()}
+                      >
+                        {salvandoSetores ? "Adicionando…" : "Adicionar setores"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -1382,6 +1232,168 @@ function DetalheCorpo({
               </div>
             )}
           </section>
+
+          {verInternos && o.macroAtual === "apuracao" && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Parecer final
+                </h3>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!tipoDaOcorrencia?.parecerApuracao}
+                  disabled={!podeOperarOcorrencias(session) || !tipoDaOcorrencia}
+                  onClick={() => void alternarParecerObrigatorio()}
+                  className="inline-flex items-center gap-2 text-[12px] text-[#334155] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      tipoDaOcorrencia?.parecerApuracao ? "bg-[#1E3A8A]" : "bg-[#CBD5E1]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                        tipoDaOcorrencia?.parecerApuracao ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </span>
+                  Obrigatório neste tipo
+                </button>
+              </div>
+              <p className="mt-1 text-[12px] text-[#64748B]">
+                Quando ativo, a Apuração só avança com o parecer registrado. Alterável pela Qualidade e pelo Desenvolvedor do Sistema; vale para todas as ocorrências deste tipo.
+              </p>
+              {podeMover && o.status !== "encerrada" ? (
+                <div className="mt-3 space-y-2">
+                  <Textarea
+                    className="min-h-[110px]"
+                    maxLength={LIMITE_TEXTO_OCORRENCIA}
+                    placeholder="Escreva o parecer final da apuração…"
+                    value={textoParecer}
+                    onChange={(e) => setTextoParecer(e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] text-[#64748B]">
+                      {parecerSalvo
+                        ? `Último registro: ${parecerSalvo.salvoPorNome || "—"} · ${formatarDataHoraBrasilia(parecerSalvo.salvoEm)}`
+                        : "Ainda não registrado."}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={salvandoParecer || !textoParecer.trim()}
+                      className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                      onClick={() => void salvarParecer()}
+                    >
+                      {salvandoParecer ? "Salvando…" : "Salvar parecer"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 whitespace-pre-wrap rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
+                  {parecerSalvo?.texto || "Não registrado."}
+                </p>
+              )}
+            </section>
+          )}
+
+          {podeMover && (
+            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Gestão (Qualidade)
+              </h3>
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                {proximaMacro && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                    onClick={() =>
+                      void mover(proximaMacro.macro, proximaMacro.subetapas?.[0]?.id ?? "")
+                    }
+                  >
+                    Avançar para {proximaMacro.nome}
+                  </Button>
+                )}
+                <div className="w-full sm:w-[260px]">
+                  <Label className="text-[12px]">Mover para etapa</Label>
+                  <Select
+                    value=""
+                    onValueChange={(v) => {
+                      if (!v) return;
+                      const [macro, ...resto] = v.split("::");
+                      void mover(macro as MacroEtapa, resto.join("::"));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolher etapa…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {moverOpcoes.length === 0 ? (
+                        <SelectItem value={"_sem"} disabled>
+                          Nenhuma subetapa no fluxo
+                        </SelectItem>
+                      ) : (
+                        moverOpcoes.map(({ macro, subetapa }) => (
+                          <SelectItem
+                            key={`${macro}::${subetapa?.id ?? ""}`}
+                            value={`${macro}::${subetapa?.id ?? ""}`}
+                          >
+                            {subetapa
+                              ? `${nomeEtapaDoFluxo(etapas, macro)} › ${subetapa.nome}`
+                              : nomeEtapaDoFluxo(etapas, macro)}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {mostraAvaliacao && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setResultado("eficaz");
+                      setObservacao("");
+                      setAvaliacaoAberta(true);
+                    }}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Avaliar eficácia
+                  </Button>
+                )}
+              </div>
+
+              {o.avaliacao && (
+                <div className="mt-3 rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
+                  <span className="font-semibold">
+                    Relatório de eficácia:{" "}
+                    {o.avaliacao.resultado === "impedida"
+                      ? "impedida"
+                      : o.avaliacao.resultado === "nao_eficaz" || o.avaliacao.eficaz === false
+                        ? "não eficaz"
+                        : o.avaliacao.resultado === "eficaz" || o.avaliacao.eficaz === true
+                          ? "eficaz"
+                          : "pendente"}
+                    {o.avaliacao.verificacaoEm
+                      ? ` · verificação ${formatarPrazo(o.avaliacao.verificacaoEm)}`
+                      : ""}
+                  </span>
+                  {o.avaliacao.observacao && (
+                    <p className="mt-0.5 whitespace-pre-wrap">{o.avaliacao.observacao}</p>
+                  )}
+                  {o.avaliacao.anexos.length > 0 && (
+                    <div className="mt-2">
+                      <AnexosVisualizador anexos={o.avaliacao.anexos} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       )}
 
@@ -1718,6 +1730,7 @@ function eventoVisivelParaSolicitante(acao: string): boolean {
     "reabert",
     "escalad",
     "julgamento",
+    "plano de ação",
   ];
   const normalizada = acao.toLowerCase();
   return visiveis.some((v) => normalizada.includes(v));

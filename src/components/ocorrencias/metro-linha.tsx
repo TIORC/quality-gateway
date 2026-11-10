@@ -97,6 +97,13 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
   const atrasada = ocorrenciaAtrasada(o);
   const progresso = progressoOcorrencia(o, etapas);
 
+  // Visão completa: etapas sem subetapas não abrem painel (o histórico já aparece em "Comentários & histórico").
+  function ocultarDetalhe(macro: MacroEtapa): boolean {
+    if (visao !== "completa") return false;
+    const subs = etapas.find((e) => e.macro === macro)?.subetapas ?? [];
+    return subs.length === 0;
+  }
+
   function estadoDa(macro: MacroEtapa): EstadoEstacao {
     const idx = ids.indexOf(macro);
     if (o.status === "encerrada") return "concluida";
@@ -150,7 +157,10 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
             <Fragment key={macro}>
               <button
                 type="button"
-                onClick={() => setExpandida(expandidaAqui ? null : macro)}
+                onClick={() => {
+                  if (ocultarDetalhe(macro)) return;
+                  setExpandida(expandidaAqui ? null : macro);
+                }}
                 className="group flex w-14 shrink-0 flex-col items-center gap-1.5"
                 title={etapa.nome}
               >
@@ -208,7 +218,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
       </div>
 
       {/* Painel expandido da estação */}
-      {expandida && (
+      {expandida && !ocultarDetalhe(expandida) && (
         <div className="mt-4 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-4">
           <p className="text-[13px] font-semibold text-[#1F2937]">
             {nomeEtapaDoFluxo(etapas, expandida)}

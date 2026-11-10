@@ -6,7 +6,7 @@
  * que não toca no banco.
  */
 import { traduzErro } from "@/lib/organizacao";
-import { fluxoVazio, type MacroFluxo, type Ocorrencia } from "@/lib/ocorrencias";
+import { fluxoComPlanoAcao, fluxoVazio, type MacroFluxo, type Ocorrencia } from "@/lib/ocorrencias";
 import {
   cloud,
   listarFluxos,
@@ -54,6 +54,6 @@ export const lojaSupabase: LojaOcorrencias = {
   async carregarFluxo(tipoId, versao) {
     const versoes = await listarFluxos(tipoId).catch(() => []);
     const escolhida = versoes.find((f) => f.versao === versao) ?? versoes[versoes.length - 1];
-    return escolhida?.etapas ?? fluxoVazio();
+    return fluxoComPlanoAcao(escolhida?.etapas ?? fluxoVazio());
   },
 };

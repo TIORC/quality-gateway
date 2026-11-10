@@ -179,7 +179,7 @@ function CampoAssinatura({
 }
 
 /** Setores envolvidos: aceita mais de um departamento do catálogo organizacional. */
-function CampoSetores({
+export function CampoSetores({
   valor, onChange, desabilitado,
 }: { valor: unknown; onChange: (v: unknown) => void; desabilitado?: boolean }) {
   const { setores } = useCatalogoOrganizacional();

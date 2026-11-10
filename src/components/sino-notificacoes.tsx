@@ -73,6 +73,8 @@ export function SinoNotificacoes() {
       void router.navigate({ to: "/politicas", search: { abrir: n.politicaId } });
     } else if (n.planoId) {
       void router.navigate({ to: "/planos-de-acao", search: { abrir: n.planoId } });
+    } else if (n.ocorrenciaId) {
+      void router.navigate({ to: "/ocorrencias", search: { abrir: n.ocorrenciaId } });
     } else {
       void router.navigate({ to: "/painel" });
     }

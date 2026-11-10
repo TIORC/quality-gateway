@@ -18,7 +18,7 @@ import type { Colaborador } from "@/lib/dados";
 import { atualizarPlano, criarPlano } from "@/lib/planos-crud";
 import { listarPlanos } from "@/lib/planos-base";
 import { listarHistorico } from "@/lib/planos-inter";
-import { formatarPrazo, prazoBrParaISO, STATUS_ACAO_LABELS, type PlanoAcao } from "@/lib/planos";
+import { formatarPrazo, STATUS_ACAO_LABELS, type PlanoAcao } from "@/lib/planos";
 import type { Ocorrencia } from "@/lib/ocorrencias";
 import { NIVEL_LIDER_SETOR } from "@/lib/niveis-acesso";
 import { traduzErro } from "@/lib/organizacao";
@@ -116,7 +116,7 @@ export function PlanoAcoesOcorrencia({
 
   async function sugerir() {
     const responsavel = colaboradores.find((c) => c.id === responsavelId);
-    const prazoIso = prazoBrParaISO(prazo);
+    const prazoIso = prazo;
     if (!titulo.trim()) {
       toast.error("Informe o que fazer.");
       return;
@@ -126,7 +126,7 @@ export function PlanoAcoesOcorrencia({
       return;
     }
     if (!prazoIso) {
-      toast.error("Informe um prazo válido (dd/mm/aaaa).");
+      toast.error("Informe o prazo.");
       return;
     }
     setSalvando(true);
@@ -332,7 +332,7 @@ export function PlanoAcoesOcorrencia({
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[12px]">Prazo</Label>
-                    <Input value={prazo} onChange={(e) => setPrazo(e.target.value)} placeholder="dd/mm/aaaa" />
+                    <Input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-1.5">

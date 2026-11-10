@@ -14,6 +14,8 @@ import {
   ACOES_ETAPA_LABELS,
   ETAPA_RETORNO_CLIENTE,
   CHAVE_CIENCIAS,
+  CHAVE_SETORES_ENVOLVIDOS,
+  setoresEnvolvidosDe,
   cienciasDe,
   setoresSemCiencia,
   PROCEDENCIA_LABELS,
@@ -22,6 +24,7 @@ import {
   SETOR_RESPONSAVEL_OCORRENCIAS,
   calcularPrazoEtapa,
   fluxoVazio,
+  fluxoComPlanoAcao,
   idCurto,
   LIMITE_TEXTO_OCORRENCIA,
   type ResultadoEficacia,
@@ -49,6 +52,14 @@ import {
   type AcaoExecutada,
   type ParecerApuracao,
   type EvidenciaApuracao,
+  CHAVE_RELATORIO_JULGAMENTO,
+  CHAVE_ITENS_JULGAMENTO,
+  LIMITE_RELATORIO_JULGAMENTO,
+  type ItemJulgamento,
+  type RelatorioJulgamento,
+  itensJulgamentoDe,
+  procedenciaDosItens,
+  relatorioJulgamentoDe,
   type CampoFormulario,
   type MacroEtapa,
   type MacroFluxo,
@@ -97,6 +108,7 @@ async function notificar(
   itens: { email: string; nome: string; titulo: string; mensagem: string }[],
   autor: Rec,
   loja: LojaOcorrencias = lojaSupabase,
+  ocorrenciaId: string | null = null,
 ): Promise<void> {
   const validos = itens.filter((i) => i.email.includes("@"));
   if (!validos.length) return;
@@ -108,6 +120,7 @@ async function notificar(
       mensagem: i.mensagem,
       tipo: "ocorrencia_etapa",
       plano_id: null,
+      ocorrencia_id: ocorrenciaId,
       autor_nome: autor["autor_nome"],
       autor_email: autor["autor_email"],
     })),
@@ -130,7 +143,7 @@ function primeiraSubetapa(etapas: MacroFluxo[], macro: MacroEtapa): SubetapaFlux
 export async function carregarFluxoAtivo(tipoId: string, versao: number): Promise<MacroFluxo[]> {
   const versoes = await listarFluxos(tipoId).catch(() => []);
   const escolhida = versoes.find((f) => f.versao === versao) ?? versoes[versoes.length - 1];
-  return escolhida?.etapas ?? fluxoVazio();
+  return fluxoComPlanoAcao(escolhida?.etapas ?? fluxoVazio());
 }
 
 export async function carregarFormularioAtivo(
@@ -164,7 +177,7 @@ export async function carregarUltimasVersoes(tipoId: string): Promise<VersoesPub
     fluxoVersao: fluxo?.versao ?? 1,
     campos: formulario?.campos ?? [],
     telas: formulario?.telas ?? [],
-    etapas: fluxo?.etapas ?? fluxoVazio(),
+    etapas: fluxoComPlanoAcao(fluxo?.etapas ?? fluxoVazio()),
   };
 }
 
@@ -228,7 +241,7 @@ export async function detectarAtrasos(
                 mensagem: `${o.titulo} · etapa ${o.subetapaAtualNome || o.macroAtual} com prazo estourado.`,
               },
             ],
-        autor,
+        autor, lojaSupabase, o.id,
       ).catch(() => undefined);
       registrados += 1;
     }
@@ -322,6 +335,7 @@ export async function abrirOcorrencia(
         ],
         autor,
         loja,
+        String(o["id"]),
       );
     }
   } catch {
@@ -463,6 +477,36 @@ async function entrarEm(
     loja,
   );
 
+  // Comunicado: ao entrar no plano de ação, o solicitante é avisado de que ele foi gerado.
+  if (macro === "plano_acao") {
+    await registrarHistorico(
+      o.id,
+      autor,
+      {
+        acao: "Plano de ação gerado",
+        macro,
+        subetapa: sub?.nome ?? "",
+        de: "",
+        para: "",
+        comentario: "Um plano de ação foi gerado para esta ocorrência.",
+        anexos: [],
+      },
+      loja,
+    );
+    await notificar(
+      [
+        {
+          email: o.abertaPorEmail,
+          nome: o.abertaPorNome,
+          titulo: `Plano de ação gerado — ocorrência ${o.numero}`,
+          mensagem: `Foi gerado um plano de ação para a sua ocorrência (${o.titulo}).`,
+        },
+      ],
+      autor,
+      loja, o.id,
+    ).catch(() => undefined);
+  }
+
   if (sub?.notificar) {
     const email = sub.responsavel.email ?? "";
     const alvo = email ? [{ email, nome: sub.responsavel.nome || nomeDoEmail(email) }] : [];
@@ -476,7 +520,7 @@ async function entrarEm(
         mensagem: `${o.titulo} · etapa: ${rotuloEtapa(etapas, macro, sub)} · previsão: ${prazo ?? "sem prazo"}`,
       })),
       autor,
-      loja,
+      loja, o.id,
     );
   }
 }
@@ -528,7 +572,7 @@ async function encerrar(
       },
     ],
     autor,
-    loja,
+    loja, o.id,
   ).catch(() => undefined);
 }
 
@@ -613,9 +657,8 @@ export async function agirNaOcorrencia(
     o = { ...o, respostas };
   }
 
-  // Fechamento: o parecer final é obrigatório e define a data da avaliação de eficácia.
-  const saindoDoFechamento =
-    payload.acao === "aprovar" && macroAtual === "fechamento" && proxima?.macro !== "fechamento";
+  // Última etapa antes da eficácia: o parecer final é obrigatório e define a data da avaliação.
+  const saindoDoFechamento = payload.acao === "aprovar" && proxima?.macro === "avaliacao_eficacia";
   if (saindoDoFechamento) {
     if (!comentario) {
       throw new Error("Informe o parecer final (campo de comentário) para fechar a ocorrência.");
@@ -646,7 +689,7 @@ export async function agirNaOcorrencia(
         },
       ],
       autor,
-      loja,
+      loja, o.id,
     ).catch(() => undefined);
   }
 
@@ -658,7 +701,7 @@ export async function agirNaOcorrencia(
         proxima.macro,
         proxima.subetapa,
         autor,
-        saindoDoFechamento ? "Fechamento com parecer final" : "Aprovação",
+        saindoDoFechamento ? "Parecer final registrado" : "Aprovação",
         comentario,
         anexos,
         loja,
@@ -720,7 +763,7 @@ export async function agirNaOcorrencia(
         },
       ],
       autor,
-      loja,
+      loja, o.id,
     ).catch(() => undefined);
   } else if (payload.acao === "escalar") {
     await registrarHistorico(
@@ -747,7 +790,7 @@ export async function agirNaOcorrencia(
         },
       ],
       autor,
-      loja,
+      loja, o.id,
     ).catch(() => undefined);
   }
 
@@ -823,7 +866,7 @@ export async function comentarOcorrencia(
       titulo: `Novo comentário na ocorrência ${o.numero}`,
       mensagem: texto || "Anexo adicionado.",
     })),
-    autor,
+    autor, lojaSupabase, o.id,
   ).catch(() => undefined);
 }
 
@@ -832,46 +875,139 @@ export async function comentarOcorrencia(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Registra a decisão do julgamento: procedente ou não-procedente. Essa é a
- * informação que o solicitante acompanha em tempo real junto ao status.
+ * Salva o relatório do julgamento (texto de até 50.000 caracteres + anexos).
+ * Os anexos já enviados são mantidos; `novosAnexos` são somados a eles.
  */
-export async function decidirProcedencia(
+export async function salvarRelatorioJulgamento(
   o: Ocorrencia,
-  procedencia: Exclude<ProcedenciaOcorrencia, "pendente">,
-  comentario: string,
+  texto: string,
+  novosAnexos: AnexoOcorrencia[],
   sessao: UserSession | null,
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
+  const limpo = texto.trim();
+  if (limpo.length > LIMITE_RELATORIO_JULGAMENTO) {
+    throw new Error(`O relatório pode ter no máximo ${LIMITE_RELATORIO_JULGAMENTO} caracteres.`);
+  }
+  const anteriores = relatorioJulgamentoDe(o)?.anexos ?? [];
+  if (!limpo && anteriores.length === 0 && novosAnexos.length === 0) {
+    throw new Error("Escreva o relatório ou anexe um documento antes de salvar.");
+  }
   const autor = autorDe(sessao);
-  await loja.atualizarOcorrencia(o.id, { procedencia });
-
+  const relatorio: RelatorioJulgamento = {
+    texto: limpo,
+    anexos: [...anteriores, ...novosAnexos],
+    salvoPorNome: autor.autor_nome,
+    salvoEm: new Date().toISOString(),
+  };
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [CHAVE_RELATORIO_JULGAMENTO]: relatorio },
+  });
   await registrarHistorico(
     o.id,
     autor,
     {
-      acao: "Julgamento: " + PROCEDENCIA_LABELS[procedencia],
+      acao: "Relatório do julgamento salvo",
       macro: "julgamento",
       subetapa: o.subetapaAtualNome,
       de: "",
+      para: "",
+      comentario: "",
+      anexos: novosAnexos,
+    },
+    loja,
+  );
+}
+
+/**
+ * Registra as partes do julgamento (cada uma procedente ou não-procedente).
+ * O resultado geral (`procedencia`) é derivado delas. Quem já registrou pode
+ * editar depois pela mesma rotina — a permissão de edição é checada na tela.
+ */
+export async function salvarItensJulgamento(
+  o: Ocorrencia,
+  itens: ItemJulgamento[],
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpos = itens.map((i) => ({ ...i, descricao: i.descricao.trim() }));
+  if (limpos.length === 0) throw new Error("Inclua ao menos uma parte no julgamento.");
+  if (limpos.some((i) => !i.descricao)) throw new Error("Descreva cada parte do julgamento.");
+  if (limpos.some((i) => i.descricao.length > LIMITE_TEXTO_OCORRENCIA)) {
+    throw new Error(`Cada parte pode ter no máximo ${LIMITE_TEXTO_OCORRENCIA} caracteres.`);
+  }
+  const procedencia = procedenciaDosItens(limpos) as Exclude<ProcedenciaOcorrencia, "pendente">;
+  const jaHavia = itensJulgamentoDe(o).length > 0;
+  const autor = autorDe(sessao);
+  await loja.atualizarOcorrencia(o.id, {
+    procedencia,
+    respostas: { ...o.respostas, [CHAVE_ITENS_JULGAMENTO]: limpos },
+  });
+  const resumo = limpos
+    .map((i) => `${PROCEDENCIA_LABELS[i.procedencia]}: ${i.descricao}`)
+    .join("\n");
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: jaHavia ? "Julgamento editado" : "Julgamento registrado",
+      macro: "julgamento",
+      subetapa: o.subetapaAtualNome,
+      de: jaHavia ? PROCEDENCIA_LABELS[o.procedencia as Exclude<ProcedenciaOcorrencia, "pendente">] ?? "" : "",
       para: PROCEDENCIA_LABELS[procedencia],
-      comentario,
+      comentario: resumo,
       anexos: [],
     },
     loja,
   );
-
   await notificar(
     [
       {
         email: o.abertaPorEmail,
         nome: o.abertaPorNome,
         titulo: `Julgamento da ocorrência ${o.numero}`,
-        mensagem: `Sua não conformidade foi considerada ${PROCEDENCIA_LABELS[procedencia].toLowerCase()} (${o.titulo}).`,
+        mensagem: `O julgamento da sua não conformidade (${o.titulo}) foi registrado como ${PROCEDENCIA_LABELS[procedencia].toLowerCase()}.`,
       },
     ],
     autor,
-    loja,
+    loja, o.id,
   ).catch(() => undefined);
+}
+
+/**
+ * Acrescenta setores envolvidos à ocorrência (além dos marcados na abertura).
+ * Setores já listados são ignorados. Cada setor novo passa a pedir ciência.
+ */
+export async function adicionarSetoresEnvolvidos(
+  o: Ocorrencia,
+  novos: string[],
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const atuais = setoresEnvolvidosDe(o);
+  const incluir = [...new Set(novos.map((s) => s.trim()).filter(Boolean))].filter(
+    (s) => !atuais.includes(s),
+  );
+  if (incluir.length === 0) {
+    throw new Error("Escolha ao menos um setor que ainda não está na lista.");
+  }
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [CHAVE_SETORES_ENVOLVIDOS]: [...atuais, ...incluir] },
+  });
+  await registrarHistorico(
+    o.id,
+    autorDe(sessao),
+    {
+      acao: "Setores envolvidos adicionados",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: incluir.join(", "),
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
 }
 
 /** A Qualidade define (ou muda) a prioridade da ocorrência após a abertura. */
@@ -1205,7 +1341,7 @@ export async function enviarRetornoParcial(
       },
     ],
     autor,
-    loja,
+    loja, o.id,
   ).catch(() => undefined);
 }
 
