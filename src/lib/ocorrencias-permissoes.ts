@@ -127,9 +127,13 @@ export function podeGerenciar(sessao: UserSession | null | undefined, o: Ocorren
   return podeOperarOcorrencias(sessao) && operaComoDono(sessao, o);
 }
 
-/** Move a ocorrência de etapa: dono da tratativa (Qualidade) e Desenvolvedor do Sistema. */
-export function podeMoverEtapa(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
-  return (podeOperarOcorrencias(sessao) && operaComoDono(sessao, o)) || ehAdministrador(sessao);
+/**
+ * Avança, move de etapa e desconsidera a ocorrência (botões do rodapé): toda a equipe da
+ * Qualidade (inclusive a Kaylane e o setor) e o Desenvolvedor do Sistema, sem precisar
+ * assumir a tratativa. Excluir continua restrito a `podeExcluir`.
+ */
+export function podeMoverEtapa(sessao: UserSession | null | undefined, _o: Ocorrencia): boolean {
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
 }
 
 /** Define a prioridade da ocorrência: Qualidade e Desenvolvedor do Sistema. */
