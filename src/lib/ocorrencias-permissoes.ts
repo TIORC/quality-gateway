@@ -13,7 +13,7 @@
  */
 import type { UserSession } from "@/lib/auth";
 import { NIVEL_GESTOR_QUALIDADE, normalizarSetor } from "@/lib/niveis-acesso";
-import { ehAdministrador, ehUsuarioDaQualidade, liderDoSetor } from "@/lib/permissoes";
+import { ehAdministrador, liderDoSetor } from "@/lib/permissoes";
 import { setoresEnvolvidosDe, type Ocorrencia } from "@/lib/ocorrencias";
 
 export type PapelOcorrencia =
@@ -154,7 +154,8 @@ export function veTodasAsOcorrencias(sessao: UserSession | null | undefined): bo
 
 /** Pode excluir ocorrências: Qualidade e administradores. */
 export function podeExcluir(sessao: UserSession | null | undefined): boolean {
-  return ehUsuarioDaQualidade(sessao) || ehAdministrador(sessao);
+  if (!sessao) return false;
+  return sessao.nivelAcesso === NIVEL_GESTOR_QUALIDADE || ehAdministrador(sessao);
 }
 
 /**

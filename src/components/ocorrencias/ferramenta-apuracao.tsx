@@ -58,11 +58,13 @@ export function FerramentaApuracao({
   const podeSalvar = editavel && !salvando && causa.trim().length > 0;
 
   function setCausaRaiz(valor: string) {
-    setDraft((d) => {
-      if (d.metodo === "cinco_porques") return { ...d, cincoPorques: { ...d.cincoPorques, causaRaiz: valor } };
-      if (d.metodo === "ishikawa") return { ...d, ishikawa: { ...d.ishikawa, causaRaiz: valor } };
-      return { ...d, analiseDireta: { ...d.analiseDireta, causaRaiz: valor } };
-    });
+    // Campo único no topo: o valor vale para qualquer ferramenta escolhida.
+    setDraft((d) => ({
+      ...d,
+      cincoPorques: { ...d.cincoPorques, causaRaiz: valor },
+      ishikawa: { ...d.ishikawa, causaRaiz: valor },
+      analiseDireta: { ...d.analiseDireta, causaRaiz: valor },
+    }));
   }
 
   const campoLimite = (texto: string) => (
@@ -73,6 +75,9 @@ export function FerramentaApuracao({
 
   return (
     <div className="mt-2">
+      <div className="mb-4">
+        <CausaRaizCampo valor={causa} editavel={editavel} onChange={setCausaRaiz} />
+      </div>
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Ferramenta de apuração">
         {FERRAMENTAS_APURACAO.map((m: FerramentaApuracao) => {
           const ativa = draft.metodo === m;
@@ -111,7 +116,6 @@ export function FerramentaApuracao({
             />
             {campoLimite(draft.analiseDireta.texto)}
           </div>
-          <CausaRaizCampo valor={draft.analiseDireta.causaRaiz} editavel={editavel} onChange={setCausaRaiz} />
         </div>
       )}
 
@@ -132,13 +136,6 @@ export function FerramentaApuracao({
               }
             />
           ))}
-          <LinhaPorque
-            rotulo="Causa raiz"
-            destaque
-            valor={draft.cincoPorques.causaRaiz}
-            editavel={editavel}
-            onChange={setCausaRaiz}
-          />
         </div>
       )}
 
@@ -153,7 +150,6 @@ export function FerramentaApuracao({
             editavel={editavel}
             onChange={(ishikawa: IshikawaApuracao) => setDraft((d) => ({ ...d, ishikawa }))}
           />
-          <CausaRaizCampo valor={draft.ishikawa.causaRaiz} editavel={editavel} onChange={setCausaRaiz} />
         </div>
       )}
 

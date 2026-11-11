@@ -5,10 +5,12 @@
  */
 import { useState } from "react";
 import { CheckCircle2, AlertTriangle, Plus, X } from "lucide-react";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { UserSession } from "@/lib/auth";
 import { traduzErro } from "@/lib/organizacao";
 import {
@@ -82,34 +84,43 @@ export function JulgamentoPartes({ ocorrencia: o, session, editavel, gerencia, o
                 value={item.descricao}
                 onChange={(e) => atualizar(item.id, { descricao: e.target.value })}
               />
-              <Button
-                type="button"
-                size="sm"
-                variant={item.procedencia === "procedente" ? "default" : "outline"}
-                className={
-                  item.procedencia === "procedente"
-                    ? "bg-[#059669] text-white hover:bg-[#047857]"
-                    : "text-[#64748B]"
-                }
-                onClick={() => atualizar(item.id, { procedencia: "procedente" })}
+              <div
+                role="radiogroup"
+                aria-label="Procedência da parte"
+                className="relative inline-flex rounded-lg border border-[#D9E0EA] bg-[#F1F5F9] p-0.5"
               >
-                <CheckCircle2 className="h-4 w-4" />
-                Procedente
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={item.procedencia === "nao_procedente" ? "default" : "outline"}
-                className={
-                  item.procedencia === "nao_procedente"
-                    ? "bg-[#E11D48] text-white hover:bg-[#BE123C]"
-                    : "text-[#64748B]"
-                }
-                onClick={() => atualizar(item.id, { procedencia: "nao_procedente" })}
-              >
-                <AlertTriangle className="h-4 w-4" />
-                Não-procedente
-              </Button>
+                {(
+                  [
+                    { valor: "procedente", rotulo: "Procedente", Icone: CheckCircle2, cor: "#059669" },
+                    { valor: "nao_procedente", rotulo: "Não-procedente", Icone: AlertTriangle, cor: "#E11D48" },
+                  ] as const
+                ).map(({ valor, rotulo, Icone, cor }) => {
+                  const ativo = item.procedencia === valor;
+                  return (
+                    <button
+                      key={valor}
+                      type="button"
+                      role="radio"
+                      aria-checked={ativo}
+                      onClick={() => atualizar(item.id, { procedencia: valor })}
+                      className={`relative z-10 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+                        ativo ? "text-white" : "text-[#64748B] hover:text-[#334155]"
+                      }`}
+                    >
+                      {ativo && (
+                        <motion.span
+                          layoutId={`julgamento-toggle-${item.id}`}
+                          className="absolute inset-0 -z-10 rounded-md shadow-sm"
+                          style={{ backgroundColor: cor }}
+                          transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                        />
+                      )}
+                      <Icone className="h-4 w-4" />
+                      {rotulo}
+                    </button>
+                  );
+                })}
+              </div>
               {itens.length > 1 && (
                 <Button
                   type="button"
@@ -121,6 +132,18 @@ export function JulgamentoPartes({ ocorrencia: o, session, editavel, gerencia, o
                   <X className="h-4 w-4" />
                 </Button>
               )}
+              <Textarea
+                className="basis-full"
+                rows={2}
+                maxLength={1000}
+                placeholder={
+                  item.procedencia === "procedente"
+                    ? "Por que esta parte foi procedente?"
+                    : "Por que esta parte foi não-procedente?"
+                }
+                value={item.justificativa ?? ""}
+                onChange={(e) => atualizar(item.id, { justificativa: e.target.value })}
+              />
             </div>
           ))}
 
@@ -162,7 +185,14 @@ export function JulgamentoPartes({ ocorrencia: o, session, editavel, gerencia, o
                   key={i.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[13px] text-[#334155]"
                 >
-                  <span>{i.descricao}</span>
+                  <span>
+                    {i.descricao}
+                    {i.justificativa ? (
+                      <span className="mt-0.5 block whitespace-pre-wrap text-[12px] text-[#64748B]">
+                        Motivo: {i.justificativa}
+                      </span>
+                    ) : null}
+                  </span>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                       i.procedencia === "procedente"

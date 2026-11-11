@@ -60,8 +60,8 @@ const ETAPAS_PADRAO_IDS = [
   "abertura",
   "apuracao",
   "julgamento",
-  "comunicacao",
   "plano_acao",
+  "comunicacao",
   "implementacao",
   "avaliacao_eficacia",
 ] as const;
@@ -289,11 +289,21 @@ export function tipoTemJulgamento(
   return normalizado.includes("reclamacao") || normalizado.includes("multa");
 }
 
+/** O Retorno ao cliente existe só no tipo Reclamação de Cliente. */
+export function tipoEhReclamacao(tipo: { nome?: string } | null | undefined): boolean {
+  const normalizado = (tipo?.nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  return normalizado.includes("reclamacao");
+}
+
 /** Etapas do tipo na ordem configurada (sem configuração: as padrão). */
 export function etapasDoTipo(
   tipo: { etapas?: EtapaTipo[]; nome?: string } | null | undefined,
 ): EtapaTipo[] {
-  const etapas = etapasComPlanoAcao(tipo?.etapas?.length ? tipo.etapas : etapasPadrao());
+  let etapas = etapasComPlanoAcao(tipo?.etapas?.length ? tipo.etapas : etapasPadrao());
+  if (!tipoEhReclamacao(tipo)) etapas = etapas.filter((e) => e.id !== ETAPA_RETORNO_CLIENTE);
   return tipoTemJulgamento(tipo) ? etapas : etapas.filter((e) => e.id !== "julgamento");
 }
 
@@ -319,7 +329,10 @@ export function fluxoVazio(etapas: EtapaTipo[] = etapasPadrao()): MacroFluxo[] {
  * tipos e ocorrências criadas antes dessa regra.
  */
 function posicaoDoPlanoAcao(ids: string[]): number {
-  for (const ref of ["comunicacao", "julgamento", "apuracao"]) {
+  // Plano de ação vem antes da Comunicação (4ª estação).
+  const comunicacao = ids.indexOf("comunicacao");
+  if (comunicacao >= 0) return comunicacao;
+  for (const ref of ["julgamento", "apuracao"]) {
     const i = ids.indexOf(ref);
     if (i >= 0) return i + 1;
   }
@@ -328,12 +341,35 @@ function posicaoDoPlanoAcao(ids: string[]): number {
 }
 
 /**
+ * Garante o plano de ação imediatamente antes da Comunicação e o Retorno ao cliente
+ * logo depois do plano de ação (inclusive em tipos já salvos).
+ */
+function planoAntesDaComunicacao<T>(lista: T[], idDe: (x: T) => string): T[] {
+  let copia = [...lista];
+  const iPlano = copia.findIndex((x) => idDe(x) === "plano_acao");
+  const iCom = copia.findIndex((x) => idDe(x) === "comunicacao");
+  if (iPlano >= 0 && iCom >= 0 && iPlano > iCom) {
+    const [plano] = copia.splice(iPlano, 1);
+    copia.splice(iCom, 0, plano as T);
+  }
+  const iRetorno = copia.findIndex((x) => idDe(x) === ETAPA_RETORNO_CLIENTE);
+  const iPlano2 = copia.findIndex((x) => idDe(x) === "plano_acao");
+  if (iRetorno >= 0 && iPlano2 >= 0 && iRetorno !== iPlano2 + 1) {
+    const [retorno] = copia.splice(iRetorno, 1);
+    const alvo = copia.findIndex((x) => idDe(x) === "plano_acao");
+    copia.splice(alvo + 1, 0, retorno as T);
+  }
+  return copia;
+}
+
+/**
  * Normaliza as etapas do tipo: remove a Finalização (fechamento) e garante o
  * plano de ação logo após a Comunicação (ou Julgamento/Apuração, se faltar).
  */
 export function etapasComPlanoAcao(etapas: EtapaTipo[]): EtapaTipo[] {
   const semFinalizacao = etapas.filter((e) => e.id !== ETAPA_REMOVIDA);
-  if (semFinalizacao.some((e) => e.id === "plano_acao")) return semFinalizacao;
+  if (semFinalizacao.some((e) => e.id === "plano_acao"))
+    return planoAntesDaComunicacao(semFinalizacao, (e) => e.id);
   const copia = [...semFinalizacao];
   copia.splice(posicaoDoPlanoAcao(semFinalizacao.map((e) => e.id)), 0, {
     id: "plano_acao",
@@ -346,7 +382,8 @@ export function etapasComPlanoAcao(etapas: EtapaTipo[]): EtapaTipo[] {
 /** Mesma normalização de `etapasComPlanoAcao`, para o fluxo publicado. */
 export function fluxoComPlanoAcao(fluxo: MacroFluxo[]): MacroFluxo[] {
   const semFinalizacao = fluxo.filter((e) => e.macro !== ETAPA_REMOVIDA);
-  if (semFinalizacao.some((e) => e.macro === "plano_acao")) return semFinalizacao;
+  if (semFinalizacao.some((e) => e.macro === "plano_acao"))
+    return planoAntesDaComunicacao(semFinalizacao, (e) => e.macro);
   const copia = [...semFinalizacao];
   copia.splice(posicaoDoPlanoAcao(semFinalizacao.map((e) => e.macro)), 0, {
     macro: "plano_acao",
@@ -1005,6 +1042,8 @@ export interface ItemJulgamento {
   /** Parte da reclamação/não conformidade julgada. */
   descricao: string;
   procedencia: "procedente" | "nao_procedente";
+  /** Por que a parte foi considerada procedente / não-procedente. */
+  justificativa?: string;
 }
 
 export function itensJulgamentoDe(o: Pick<Ocorrencia, "respostas">): ItemJulgamento[] {

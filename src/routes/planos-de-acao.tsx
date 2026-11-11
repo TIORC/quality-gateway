@@ -13,7 +13,10 @@ import { DetalhePlanoDialog } from "@/components/detalhe-plano-dialog";
 import { CartaoLista, TabelaPlanos } from "@/components/planos-visoes";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { getSession } from "@/lib/auth";
-import { podeGerenciarConteudo } from "@/lib/permissoes";
+import { podeExcluirPlano, podeGerenciarConteudo } from "@/lib/permissoes";
+import { ConfirmarDialog, type ConfirmarDialogProps } from "@/components/confirmar-dialog";
+import { excluirPlano } from "@/lib/planos-crud";
+import { toast } from "sonner";
 import { PRIORIDADES_ACAO, STATUS_ACAO_LABELS } from "@/lib/planos";
 import type { PlanoAcao, StatusAcao } from "@/lib/planos";
 import { diasParaPrazo, planoAtrasado } from "@/lib/planos";
@@ -79,6 +82,8 @@ function PlanosDeAcao() {
   const [origens, setOrigens] = useState<string[]>([]);
   const [novoPlanoAberto, setNovoPlanoAberto] = useState(false);
   const [planoAberto, setPlanoAberto] = useState<PlanoAcao | null>(null);
+  const [confirmar, setConfirmar] = useState<ConfirmarDialogProps | null>(null);
+  const podeExcluir = podeExcluirPlano(sessao);
   const { abrir, preencher, titulo, detalhamento, setor, origem, vinculo } = rotaPlanos.useSearch();
   // O formulário de novo plano vindo de outro módulo abre uma única vez por visita.
   const preenchimentoAplicado = useRef(false);
@@ -117,6 +122,31 @@ function PlanosDeAcao() {
     const alvo = planos.find((p) => p.id === abrir);
     if (alvo) setPlanoAberto(alvo);
   }, [abrir, planos]);
+
+  function pedirExclusao(plano: PlanoAcao) {
+    if (!podeExcluir) return;
+    setConfirmar({
+      open: true, tom: "danger", onOpenChange: (aberto) => (!aberto ? setConfirmar(null) : undefined),
+      titulo: `Excluir ${plano.codigo || "esta ação"}?`,
+      descricao: (
+        <>
+          <span className="block font-medium text-[#334155]">{plano.titulo}</span>
+          A ação, seus comentários, anexos e o histórico serão
+          <span className="font-medium text-rose-600"> apagados permanentemente</span>. Esta ação não pode ser desfeita.
+        </>
+      ),
+      textoConfirmar: "Excluir definitivamente",
+      onConfirmar: () => {
+        setConfirmar(null);
+        excluirPlano(plano.id)
+          .then(() => {
+            setPlanos((atual) => atual.filter((x) => x.id !== plano.id));
+            toast.success("Plano de ação excluído.");
+          })
+          .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível excluir."));
+      },
+    });
+  }
 
   const contadores = useMemo(() => ({
     minhas: planos.filter((p) => ehResponsavel(p, sessao)).length,
@@ -200,6 +230,7 @@ function PlanosDeAcao() {
               onFiltroChange={atualizarFiltro}
               onNovoPlano={() => setNovoPlanoAberto(true)}
               onAbrir={setPlanoAberto}
+              onExcluir={podeExcluir ? pedirExclusao : undefined}
               onRecarregar={() => void recarregar()}
             />
           </TabsContent>
@@ -230,6 +261,7 @@ function PlanosDeAcao() {
           }}
         />
       ) : null}
+      {confirmar ? <ConfirmarDialog {...confirmar} /> : null}
     </PanelShell>
   );
 }
@@ -284,12 +316,13 @@ interface ListaAcoesProps {
   onFiltroChange: (campo: keyof Filtros, valor: string) => void;
   onNovoPlano: () => void;
   onAbrir: (plano: PlanoAcao) => void;
+  onExcluir?: ((plano: PlanoAcao) => void) | undefined;
   onRecarregar: () => void;
 }
 
 function ListaAcoes(props: ListaAcoesProps) {
   const { filtros, setores, origens, carregando, erro, planos, todas, vista } = props;
-  const { onFiltroChange, onNovoPlano, onAbrir, onRecarregar, podeGerenciar } = props;
+  const { onFiltroChange, onNovoPlano, onAbrir, onExcluir, onRecarregar, podeGerenciar } = props;
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
       <div className="grid gap-3 border-b border-[#E9EEF5] p-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -360,7 +393,7 @@ function ListaAcoes(props: ListaAcoesProps) {
           ) : null}
         </div>
       ) : vista === "lista" ? (
-        <CartaoLista planos={planos} onAbrir={onAbrir} />
+        <CartaoLista planos={planos} onAbrir={onAbrir} onExcluir={onExcluir} />
       ) : vista === "kanban" ? (
         <KanbanPlanos planos={todas} onAbrir={onAbrir} />
       ) : vista === "cronograma" ? (

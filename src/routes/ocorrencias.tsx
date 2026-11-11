@@ -95,6 +95,8 @@ import {
   iconeTipoOcorrencia,
   idCurto,
   nomeEtapaDoTipo,
+  prefixoNumeroTipo,
+  tipoEhReclamacao,
   type CampoFormulario,
   type EtapaTipo,
   type MacroFluxo,
@@ -618,8 +620,8 @@ const COLUNAS_KANBAN: { rotulo: string; etapas: string[] }[] = [
   { rotulo: "Em aberto", etapas: ["abertura"] },
   { rotulo: "Apuração", etapas: ["apuracao"] },
   { rotulo: "Julgamento", etapas: ["julgamento"] },
-  { rotulo: "Plano de ação", etapas: ["plano_acao"] },
-  { rotulo: "Implementação", etapas: ["implementacao", "comunicacao", ETAPA_RETORNO_CLIENTE] },
+  { rotulo: "Plano de ação", etapas: ["plano_acao", ETAPA_RETORNO_CLIENTE] },
+  { rotulo: "Implementação", etapas: ["implementacao", "comunicacao"] },
   { rotulo: "Eficácia", etapas: ["avaliacao_eficacia"] },
 ];
 
@@ -1015,7 +1017,14 @@ function AberturaOcorrencia({
   // Um cartão por tipo ativo cadastrado em "Configurar", na ordem definida lá.
   const cartoes = tipos
     .filter((t) => t.ativo)
-    .sort((a, b) => a.ordem - b.ordem)
+    .sort((a, b) => {
+      // Hierarquia: Reclamação de Cliente e Não Conformidade vêm primeiro.
+      const peso = (t: typeof a) => {
+        const p = prefixoNumeroTipo(t);
+        return p === "RC" ? 0 : p === "NC" ? 1 : 2;
+      };
+      return peso(a) - peso(b) || a.ordem - b.ordem;
+    })
     .map((t, posicao) => ({
       chave: t.id,
       rotulo: t.nome,
@@ -1921,10 +1930,11 @@ function TipoDialog({
       const idx = pos < 0 ? 0 : pos + 1;
       etapasSalvas = [...etapasSalvas.slice(0, idx), julgamento, ...etapasSalvas.slice(idx)];
     }
-    // Retorno ao cliente: etapa obrigatória antes da eficácia (criada/removida pela opção).
+    // Retorno ao cliente: etapa obrigatória logo após o plano de ação (criada/removida pela opção).
     etapasSalvas = etapasSalvas.filter((e) => e.id !== ETAPA_RETORNO_CLIENTE);
-    if (retornoCliente) {
-      const pos = etapasSalvas.findIndex((e) => e.id === "avaliacao_eficacia");
+    if (retornoCliente && tipoEhReclamacao({ nome })) {
+      const posPlano = etapasSalvas.findIndex((e) => e.id === "plano_acao");
+      const pos = posPlano >= 0 ? posPlano + 1 : etapasSalvas.findIndex((e) => e.id === "avaliacao_eficacia");
       const retorno: EtapaTipo = {
         id: ETAPA_RETORNO_CLIENTE,
         nome: "Retorno ao cliente",
@@ -2189,6 +2199,7 @@ function TipoDialog({
             </span>
           </label>
 
+          {tipoEhReclamacao({ nome }) && (
           <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#334155]">
             <input
               type="checkbox"
@@ -2204,6 +2215,7 @@ function TipoDialog({
               </span>
             </span>
           </label>
+          )}
 
           <label className="flex cursor-pointer items-start gap-2 text-[13px] text-[#334155]">
             <input

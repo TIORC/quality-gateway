@@ -71,6 +71,7 @@ import {
 } from "@/lib/ocorrencias";
 import {
   cloud,
+  listarTipos,
   listarFluxos,
   listarFormularios,
   ocorrenciaDoRow,
@@ -930,7 +931,11 @@ export async function salvarItensJulgamento(
   sessao: UserSession | null,
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
-  const limpos = itens.map((i) => ({ ...i, descricao: i.descricao.trim() }));
+  const limpos = itens.map((i) => ({
+    ...i,
+    descricao: i.descricao.trim(),
+    justificativa: (i.justificativa ?? "").trim(),
+  }));
   if (limpos.length === 0) throw new Error("Inclua ao menos uma parte no julgamento.");
   if (limpos.some((i) => !i.descricao)) throw new Error("Descreva cada parte do julgamento.");
   if (limpos.some((i) => i.descricao.length > LIMITE_TEXTO_OCORRENCIA)) {
@@ -944,7 +949,11 @@ export async function salvarItensJulgamento(
     respostas: { ...o.respostas, [CHAVE_ITENS_JULGAMENTO]: limpos },
   });
   const resumo = limpos
-    .map((i) => `${PROCEDENCIA_LABELS[i.procedencia]}: ${i.descricao}`)
+    .map(
+      (i) =>
+        `${PROCEDENCIA_LABELS[i.procedencia]}: ${i.descricao}` +
+        (i.justificativa ? ` — Motivo: ${i.justificativa}` : ""),
+    )
     .join("\n");
   await registrarHistorico(
     o.id,
@@ -1293,6 +1302,145 @@ export async function salvarEvidencias(
     },
     loja,
   );
+}
+
+/** Chave em `respostas` dos participantes do julgamento (marcados com @). */
+export const CHAVE_PARTICIPANTES_JULGAMENTO = "__participantes_julgamento";
+
+export interface ParticipanteJulgamento {
+  id: string;
+  nome: string;
+  email?: string;
+}
+
+export function participantesJulgamentoDe(o: Pick<Ocorrencia, "respostas">): ParticipanteJulgamento[] {
+  const v = o.respostas[CHAVE_PARTICIPANTES_JULGAMENTO];
+  return Array.isArray(v) ? (v as ParticipanteJulgamento[]) : [];
+}
+
+/** Grava quem participou do julgamento e registra no histórico. */
+export async function salvarParticipantesJulgamento(
+  o: Ocorrencia,
+  lista: ParticipanteJulgamento[],
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: { ...o.respostas, [CHAVE_PARTICIPANTES_JULGAMENTO]: lista },
+  });
+  await registrarHistorico(o.id, autorDe(sessao), {
+    acao: "Participantes do julgamento",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: `${lista.length} participante(s)`,
+    comentario: lista.map((p) => `@${p.nome}`).join(", "),
+    anexos: [],
+  }, loja);
+}
+
+/** Chaves em `respostas` do checklist "Gerou multa?" da Apuração. */
+export const CHAVE_GEROU_MULTA = "gerou_multa";
+export const CHAVE_MULTA_OCORRENCIA_ID = "multa_ocorrencia_id";
+export const CHAVE_MULTA_OCORRENCIA_NUMERO = "multa_ocorrencia_numero";
+export const LIMITE_PDFS_MULTA = 10;
+
+export interface DadosMulta {
+  areas: string[];
+  responsavelProcesso: string;
+  nomeEmpresa: string;
+  declaracao: string;
+  competencia: string;
+  valor: string;
+  descricao: string;
+  pdfs: File[];
+}
+
+/** Checklist da Apuração: "Gerou multa? Não" (limpa qualquer marcação anterior). */
+export async function registrarSemMulta(
+  o: Ocorrencia,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  await loja.atualizarOcorrencia(o.id, { respostas: { ...o.respostas, [CHAVE_GEROU_MULTA]: false } });
+  await registrarHistorico(o.id, autorDe(sessao), {
+    acao: "Checklist da apuração: não gerou multa",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: "Não",
+    comentario: "",
+    anexos: [],
+  }, loja);
+}
+
+/**
+ * Checklist da Apuração: "Gerou multa? Sim". Abre uma nova ocorrência do tipo
+ * Multas (com o seu próprio trilho) ligada a esta, com os dados da multa e os PDFs.
+ */
+export async function gerarOcorrenciaMulta(
+  o: Ocorrencia,
+  dados: DadosMulta,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<Ocorrencia> {
+  if (dados.areas.length === 0) throw new Error("Informe a área envolvida.");
+  if (!dados.responsavelProcesso.trim()) throw new Error("Informe o responsável pelo processo.");
+  if (!dados.nomeEmpresa.trim()) throw new Error("Informe o nome da empresa.");
+  if (!dados.declaracao.trim()) throw new Error("Informe a declaração geradora da multa.");
+  if (!dados.competencia.trim()) throw new Error("Informe a competência da multa.");
+  if (!dados.valor.trim()) throw new Error("Informe o valor da multa.");
+  if (!dados.descricao.trim()) throw new Error("Descreva o processo ocorrido.");
+  if (dados.pdfs.length === 0) throw new Error("Anexe ao menos um PDF da multa.");
+  if (dados.pdfs.length > LIMITE_PDFS_MULTA) throw new Error(`Máximo de ${LIMITE_PDFS_MULTA} PDFs.`);
+
+  const tipos = await listarTipos();
+  const tipo = tipos.find((t) => t.ativo && prefixoNumeroTipo(t) === "MT");
+  if (!tipo) throw new Error('Tipo de ocorrência "Multas" não encontrado ou inativo.');
+  const versoes = await carregarUltimasVersoes(tipo.id);
+
+  const criada = await abrirOcorrencia(
+    {
+      tipo,
+      formularioVersao: versoes.formularioVersao,
+      fluxoVersao: versoes.fluxoVersao,
+      titulo: `Multa — ${dados.nomeEmpresa.trim()} (${dados.competencia.trim()})`,
+      respostas: {
+        area_envolvida: dados.areas.join(", "),
+        [CHAVE_SETORES_ENVOLVIDOS]: dados.areas,
+        responsavel_processo: dados.responsavelProcesso.trim(),
+        nome_empresa: dados.nomeEmpresa.trim(),
+        declaracao_multa: dados.declaracao.trim(),
+        competencia_multa: dados.competencia.trim(),
+        valor_multa: dados.valor.trim(),
+        descricao_processo: dados.descricao.trim(),
+        ocorrencia_origem_id: o.id,
+        ocorrencia_origem_numero: o.numero,
+      },
+    },
+    sessao,
+    loja,
+  );
+  await adicionarAnexosAbertura(criada, dados.pdfs, sessao);
+
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: {
+      ...o.respostas,
+      [CHAVE_GEROU_MULTA]: true,
+      [CHAVE_MULTA_OCORRENCIA_ID]: criada.id,
+      [CHAVE_MULTA_OCORRENCIA_NUMERO]: criada.numero,
+    },
+  });
+  await registrarHistorico(o.id, autorDe(sessao), {
+    acao: "Checklist da apuração: gerou multa",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: `Multa ${criada.numero} aberta`,
+    comentario: `${dados.nomeEmpresa.trim()} · competência ${dados.competencia.trim()} · ${dados.valor.trim()}`,
+    anexos: [],
+  }, loja);
+  return criada;
 }
 
 /** Ação registrada no histórico quando um retorno parcial é enviado ao solicitante. */

@@ -47,6 +47,9 @@ import { AnexosVisualizador, anexosDe } from "@/components/ocorrencias/anexos-vi
 import { MetroLinha } from "@/components/ocorrencias/metro-linha";
 import { RelatorioJulgamento } from "@/components/ocorrencias/relatorio-julgamento";
 import { JulgamentoPartes } from "@/components/ocorrencias/julgamento-partes";
+import { ChecklistMulta } from "@/components/ocorrencias/checklist-multa";
+import { ParticipantesJulgamento } from "@/components/ocorrencias/participantes-julgamento";
+import { participantesJulgamentoDe } from "@/lib/ocorrencias-crud";
 import { CampoSetores, FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
 import {
   agirNaOcorrencia,
@@ -728,7 +731,7 @@ function DetalheCorpo({
           )}
           {!o.impedidaEm && podeMover && o.status !== "encerrada" && (
             <div className="flex justify-end">
-              <Button type="button" size="sm" variant="outline" onClick={() => setImpedindoAberto(true)}>
+              <Button type="button" size="sm" className="border-0 bg-[#DC2626] text-white hover:bg-[#B91C1C]" onClick={() => setImpedindoAberto(true)}>
                 Marcar etapa como impedida
               </Button>
             </div>
@@ -944,6 +947,16 @@ function DetalheCorpo({
           )}
 
           {verInternos && o.macroAtual === "apuracao" && (
+            <ChecklistMulta
+              key={`multa-${o.id}`}
+              ocorrencia={o}
+              session={session}
+              editavel={podeMover && o.status !== "encerrada"}
+              onSalvo={recarregar}
+            />
+          )}
+
+          {verInternos && o.macroAtual === "apuracao" && (
             <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
                 Ferramenta de apuração
@@ -1125,6 +1138,18 @@ function DetalheCorpo({
               </section>
             )}
 
+          {verInternos &&
+            (o.macroAtual === "julgamento" || participantesJulgamentoDe(o).length > 0) && (
+              <ParticipantesJulgamento
+                key={`participantes-${o.id}`}
+                ocorrencia={o}
+                session={session}
+                colaboradores={catalogo.colaboradores}
+                editavel={podeMover && o.status !== "encerrada" && o.macroAtual === "julgamento"}
+                onSalvo={recarregar}
+              />
+            )}
+
           {o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
             <PlanoAcoesOcorrencia
               ocorrencia={o}
@@ -1299,58 +1324,12 @@ function DetalheCorpo({
             </section>
           )}
 
-          {podeMover && (
+          {podeMover && (mostraAvaliacao || o.avaliacao) && (
             <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
                 Gestão (Qualidade)
               </h3>
               <div className="mt-2 flex flex-wrap items-end gap-2">
-                {proximaMacro && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                    onClick={() =>
-                      void mover(proximaMacro.macro, proximaMacro.subetapas?.[0]?.id ?? "")
-                    }
-                  >
-                    Avançar para {proximaMacro.nome}
-                  </Button>
-                )}
-                <div className="w-full sm:w-[260px]">
-                  <Label className="text-[12px]">Mover para etapa</Label>
-                  <Select
-                    value=""
-                    onValueChange={(v) => {
-                      if (!v) return;
-                      const [macro, ...resto] = v.split("::");
-                      void mover(macro as MacroEtapa, resto.join("::"));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Escolher etapa…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {moverOpcoes.length === 0 ? (
-                        <SelectItem value={"_sem"} disabled>
-                          Nenhuma subetapa no fluxo
-                        </SelectItem>
-                      ) : (
-                        moverOpcoes.map(({ macro, subetapa }) => (
-                          <SelectItem
-                            key={`${macro}::${subetapa?.id ?? ""}`}
-                            value={`${macro}::${subetapa?.id ?? ""}`}
-                          >
-                            {subetapa
-                              ? `${nomeEtapaDoFluxo(etapas, macro)} › ${subetapa.nome}`
-                              : nomeEtapaDoFluxo(etapas, macro)}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {mostraAvaliacao && (
                   <Button
                     type="button"
@@ -1398,6 +1377,50 @@ function DetalheCorpo({
       )}
 
       <DialogFooter>
+        {podeMover && proximaMacro && (
+          <Button
+            type="button"
+            size="sm"
+            className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+            onClick={() =>
+              void mover(proximaMacro.macro, proximaMacro.subetapas?.[0]?.id ?? "")
+            }
+          >
+            Avançar para {proximaMacro.nome}
+          </Button>
+        )}
+        {podeMover && (
+          <Select
+            value=""
+            onValueChange={(v) => {
+              if (!v) return;
+              const [macro, ...resto] = v.split("::");
+              void mover(macro as MacroEtapa, resto.join("::"));
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[220px]">
+              <SelectValue placeholder="Mover para etapa…" />
+            </SelectTrigger>
+            <SelectContent>
+              {moverOpcoes.length === 0 ? (
+                <SelectItem value={"_sem"} disabled>
+                  Nenhuma subetapa no fluxo
+                </SelectItem>
+              ) : (
+                moverOpcoes.map(({ macro, subetapa }) => (
+                  <SelectItem
+                    key={`${macro}::${subetapa?.id ?? ""}`}
+                    value={`${macro}::${subetapa?.id ?? ""}`}
+                  >
+                    {subetapa
+                      ? `${nomeEtapaDoFluxo(etapas, macro)} › ${subetapa.nome}`
+                      : nomeEtapaDoFluxo(etapas, macro)}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        )}
         {podeMover && o.status !== "encerrada" && (
           <Button
             type="button"

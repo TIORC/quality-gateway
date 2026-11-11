@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Columns3, Download } from "lucide-react";
+import { Columns3, Download, Trash2 } from "lucide-react";
 import { PrazoBadge, PrioridadeDot, StatusBadge } from "@/components/plano-badges";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,13 +42,13 @@ function OrigemDestaque({ plano }: { plano: PlanoAcao }) {
   );
 }
 
-export function CartaoLista({ planos, onAbrir }: { planos: PlanoAcao[]; onAbrir: (p: PlanoAcao) => void }) {
+export function CartaoLista({ planos, onAbrir, onExcluir }: { planos: PlanoAcao[]; onAbrir: (p: PlanoAcao) => void; onExcluir?: ((p: PlanoAcao) => void) | undefined }) {
   return (
     <ul className="divide-y divide-[#EEF2F7]">
       {planos.map((p) => (
-        <li key={p.id}>
+        <li key={p.id} className="flex items-center">
           <button type="button" onClick={() => onAbrir(p)}
-            className="flex w-full items-center gap-3 border-l-[3px] border-l-transparent px-4 py-3 text-left transition hover:bg-[#F8FAFC]">
+            className="flex w-full min-w-0 flex-1 items-center gap-3 border-l-[3px] border-l-transparent px-4 py-3 text-left transition hover:bg-[#F8FAFC]">
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[11px] text-[#94A3B8]">{p.codigo || "—"} · {p.setor || "—"}</span>
@@ -65,6 +65,12 @@ export function CartaoLista({ planos, onAbrir }: { planos: PlanoAcao[]; onAbrir:
             </span>
             <PrazoBadge plano={p} />
           </button>
+          {onExcluir ? (
+            <Button type="button" variant="ghost" size="icon" aria-label={`Excluir ${p.codigo || p.titulo}`}
+              className="mr-3 h-8 w-8 shrink-0 text-[#94A3B8] hover:text-rose-600" onClick={() => onExcluir(p)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
         </li>
       ))}
     </ul>

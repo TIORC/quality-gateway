@@ -34,6 +34,8 @@ import {
 } from "@/lib/auth";
 import { NAV_GROUPS } from "@/lib/navigation";
 import { listarOcorrencias } from "@/lib/ocorrencias-base";
+import { listarPlanos } from "@/lib/planos-base";
+import { ehResponsavel, ehSeguidor } from "@/lib/planos-inter";
 import type { Ocorrencia } from "@/lib/ocorrencias";
 import { contarRetornosNaoVistos, EVENTO_RETORNO_VISTO } from "@/lib/ocorrencias-retorno";
 import { rotaInicial, rotaPermitida, rotasPermitidas } from "@/lib/permissoes";
@@ -155,6 +157,60 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
     };
   }, [colaboradorId]);
 
+  // Planos de ação novos para a pessoa (responsável ou seguidor) desde a última visita à tela.
+  const [planosNovos, setPlanosNovos] = useState(0);
+  const emailSessao = session?.email ?? "";
+  const naTelaPlanos = location.pathname === "/planos-de-acao";
+  useEffect(() => {
+    if (!session) return;
+    const chave = `planos-visto-em:${(session.colaboradorId || session.email || "").toLowerCase()}`;
+    const ler = (): number => {
+      try {
+        const v = Number(window.localStorage.getItem(chave));
+        return Number.isFinite(v) && v > 0 ? v : 0;
+      } catch {
+        return 0;
+      }
+    };
+    const gravar = (t: number) => {
+      try {
+        window.localStorage.setItem(chave, String(t));
+      } catch {
+        /* sem storage: segue sem lembrar */
+      }
+    };
+    if (naTelaPlanos) {
+      gravar(Date.now());
+      setPlanosNovos(0);
+      return;
+    }
+    // Primeira vez neste navegador: começa a contar daqui para não acender tudo de uma vez.
+    if (ler() === 0) gravar(Date.now());
+    let ativo = true;
+    const buscar = () => {
+      listarPlanos()
+        .then((lista) => {
+          if (!ativo) return;
+          const visto = ler();
+          const novos = lista.filter(
+            (p) =>
+              p.status !== "concluida" &&
+              p.status !== "cancelado" &&
+              (ehResponsavel(p, session) || ehSeguidor(p, session)) &&
+              new Date(p.createdAt).getTime() > visto,
+          );
+          setPlanosNovos(novos.length);
+        })
+        .catch(() => undefined);
+    };
+    buscar();
+    const intervalo = window.setInterval(buscar, 60_000);
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+    };
+  }, [session, emailSessao, naTelaPlanos]);
+
   // Fecha o menu mobile ao navegar.
   useEffect(() => {
     setMenuAberto(false);
@@ -218,6 +274,11 @@ export function PanelShell({ children, wide = false }: PanelShellProps) {
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {item.label}
+                      {item.path === "/planos-de-acao" && planosNovos > 0 && (
+                        <span className="ml-auto rounded-full bg-[#E11D48] px-2 py-0.5 text-[11px] font-bold leading-none text-white">
+                          {planosNovos > 9 ? "+9" : planosNovos}
+                        </span>
+                      )}
                       {item.path === "/ocorrencias" && retornosPendentes > 0 && (
                         <span className="ml-auto rounded-full bg-[#E11D48] px-2 py-0.5 text-[11px] font-bold leading-none text-white">
                           {retornosPendentes}
