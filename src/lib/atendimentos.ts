@@ -210,19 +210,34 @@ export function atendimentosDoMes(
     .sort((x, y) => y.total - x.total);
 }
 
-/** Um nome é o início do outro, palavra por palavra ("Joyce Nascimento" e "Joyce Nascimento Santos"). */
-function inicioDoNome(curto: string, longo: string): boolean {
-  const a = semAcento(curto).split(" ");
-  const b = semAcento(longo).split(" ");
-  return a.length <= b.length && a.every((p, i) => p === b[i]);
+const CONECTIVOS_DO_NOME = new Set(["de", "da", "do", "das", "dos", "e"]);
+
+/** Partes significativas do nome: sem acento, minúsculas, sem pontuação e sem "de", "da", "dos"... */
+function partesDoNome(nome: string): string[] {
+  return semAcento(nome)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(" ")
+    .filter((p) => p && !CONECTIVOS_DO_NOME.has(p));
 }
 
 /**
- * Mesmo colaborador quando um nome é o início do outro, nos dois sentidos. Cobre a planilha com o
- * nome curto ("Adalgiza") e o Gestta com o completo ("Adalgiza Argôlo de Souza"), e também o cadastro.
+ * Mesmo colaborador quando as partes do nome curto estão todas no nome longo, em qualquer ordem.
+ * Cobre "Aelica Sampaio" x "Aelica de Novaes Sampaio", "Sampaio Aelica" e "Adalgiza" x
+ * "Adalgiza Argôlo de Souza". Um nome de uma palavra só casa com o primeiro nome do outro.
  */
 export function colaboradorCorresponde(nomeA: string, nomeB: string): boolean {
-  return inicioDoNome(nomeA, nomeB) || inicioDoNome(nomeB, nomeA);
+  const a = partesDoNome(nomeA);
+  const b = partesDoNome(nomeB);
+  if (a.length === 0 || b.length === 0) return false;
+  const [curto, longo] = a.length <= b.length ? [a, b] : [b, a];
+  if (curto.length === 1) return longo[0] === curto[0];
+  const restantes = [...longo];
+  for (const parte of curto) {
+    const i = restantes.indexOf(parte);
+    if (i < 0) return false;
+    restantes.splice(i, 1);
+  }
+  return true;
 }
 
 /**
