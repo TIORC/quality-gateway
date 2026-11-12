@@ -363,7 +363,7 @@ function linhaParaTarefa(r: LinhaBanco): TarefaGestta {
   };
 }
 
-async function comRetentativa<T extends { error: unknown }>(fazer: () => PromiseLike<T>): Promise<T> {
+async function comRetentativa<T extends { error: unknown; data?: unknown }>(fazer: () => PromiseLike<T>): Promise<T> {
   let resposta = await fazer();
   for (let tentativa = 1; resposta.error && tentativa < 3; tentativa++) {
     await new Promise((r) => setTimeout(r, 700 * tentativa));
@@ -383,7 +383,7 @@ async function buscarFaixa(
   const linhas: LinhaBanco[] = [];
   let ultimo: string | null = null;
   for (;;) {
-    const resposta = await comRetentativa(() => {
+    const resposta: { error: unknown; data?: unknown } = await comRetentativa(() => {
       let q = cliente.from(TABELA).select(COLUNAS_SELECT).order("id").limit(TAMANHO_PAGINA);
       if (ultimo !== null) q = q.gt("id", ultimo);
       else if (inicio !== null) q = q.gte("id", inicio);
