@@ -43,6 +43,13 @@
       "when": 1792158474788,
       "tag": "0005_redefinir_senha_solicitar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794504392941,
+      "tag": "0006_tarefas_gestta_sync_rapido",
+      "breakpoints": true
     }
   ]
 }
