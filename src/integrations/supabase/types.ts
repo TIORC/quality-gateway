@@ -815,6 +815,33 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory_container: {
+        Row: {
+          counts: Json
+          created_at: string
+          id: string
+          performed_by: string | null
+          performed_by_email: string | null
+          snapshot: Json
+        }
+        Insert: {
+          counts?: Json
+          created_at?: string
+          id?: string
+          performed_by?: string | null
+          performed_by_email?: string | null
+          snapshot?: Json
+        }
+        Update: {
+          counts?: Json
+          created_at?: string
+          id?: string
+          performed_by?: string | null
+          performed_by_email?: string | null
+          snapshot?: Json
+        }
+        Relationships: []
+      }
       logs_atividade: {
         Row: {
           acao: string
@@ -870,6 +897,7 @@ export type Database = {
           id: string
           lida: boolean
           mensagem: string
+          ocorrencia_id: string | null
           plano_id: string | null
           politica_id: string | null
           pop_id: string | null
@@ -886,6 +914,7 @@ export type Database = {
           id?: string
           lida?: boolean
           mensagem?: string
+          ocorrencia_id?: string | null
           plano_id?: string | null
           politica_id?: string | null
           pop_id?: string | null
@@ -902,6 +931,7 @@ export type Database = {
           id?: string
           lida?: boolean
           mensagem?: string
+          ocorrencia_id?: string | null
           plano_id?: string | null
           politica_id?: string | null
           pop_id?: string | null
@@ -2516,6 +2546,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      arquivar_almoxarifado: { Args: never; Returns: Json }
       atualizar_ata: {
         Args: {
           ata_id: string
@@ -2723,6 +2754,10 @@ export type Database = {
         Returns: boolean
       }
       pop_recalcular_contadores: { Args: { alvo: string }; Returns: undefined }
+      primeiro_acesso_solicitar: {
+        Args: { p_email: string; p_token_hash: string }
+        Returns: string
+      }
       redefinir_senha_solicitar: {
         Args: { p_email: string; p_token_hash: string }
         Returns: string
