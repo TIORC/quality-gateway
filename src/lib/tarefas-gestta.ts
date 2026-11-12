@@ -280,7 +280,6 @@ export function unificarSetor(nome: string): string {
 const COLUNAS_SELECT =
   "id,nome,tipo,status,cliente,departamento,responsavel,vencimento,data_conclusao,competencia,cnpj_cpf,data_legal,feito_atrasado,feito_com_multa,baixado,origem";
 // Quantas páginas (de 1000) são buscadas ao mesmo tempo. Erros 500 sob carga já são tentados de novo.
-const PAGINAS_SIMULTANEAS = 6;
 
 let cacheTarefas: TarefaGestta[] | null = null;
 
@@ -289,86 +288,186 @@ export function tarefasEmCache(): TarefaGestta[] | null {
   return cacheTarefas;
 }
 
-/** Todas as tarefas já gravadas, buscando várias páginas ao mesmo tempo. */
+/* ---------------- Cache local (IndexedDB) + sincronização incremental ---------------- */
+// A tela abre com o que já está salvo no navegador e só busca no banco o que mudou
+// desde a última vez (coluna importado_em). Carga completa só na 1ª vez ou se algo foi apagado.
+
+type LinhaBanco = Record<string, string | null>;
+interface CacheLocal { tarefas: TarefaGestta[]; ultima: string | null }
+
+const IDB_NOME = "gq-indicadores";
+const IDB_LOJA = "tarefas";
+const IDB_CHAVE = "v1";
+
+function abrirIdb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const req = indexedDB.open(IDB_NOME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_LOJA);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null);
+  });
+}
+async function lerCacheLocal(): Promise<CacheLocal | null> {
+  const db = await abrirIdb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const req = db.transaction(IDB_LOJA).objectStore(IDB_LOJA).get(IDB_CHAVE);
+    req.onsuccess = () => resolve((req.result as CacheLocal) ?? null);
+    req.onerror = () => resolve(null);
+  });
+}
+async function gravarCacheLocal(valor: CacheLocal | null): Promise<void> {
+  const db = await abrirIdb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(IDB_LOJA, "readwrite");
+    const loja = tx.objectStore(IDB_LOJA);
+    if (valor) loja.put(valor, IDB_CHAVE);
+    else loja.delete(IDB_CHAVE);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+
+let ultimaSync: string | null = null;
+
+/** Abre a tela na hora com o cache salvo no navegador (se houver). */
+export async function tarefasDoCacheLocal(): Promise<TarefaGestta[] | null> {
+  if (cacheTarefas) return cacheTarefas;
+  const local = await lerCacheLocal();
+  if (!local) return null;
+  cacheTarefas = local.tarefas;
+  ultimaSync = local.ultima;
+  return cacheTarefas;
+}
+
+function linhaParaTarefa(r: LinhaBanco): TarefaGestta {
+  return {
+    id: r.id ?? "",
+    nome: r.nome ?? "",
+    tipo: r.tipo ?? "",
+    status: r.status ?? "",
+    cliente: r.cliente ?? "",
+    departamento: unificarSetor(r.departamento ?? ""),
+    responsavel: r.responsavel ?? "",
+    vencimento: r.vencimento ?? null,
+    dataConclusao: r.data_conclusao ?? null,
+    competencia: r.competencia ?? "",
+    cnpjCpf: r.cnpj_cpf ?? "",
+    dataLegal: r.data_legal ?? null,
+    feitoAtrasado: r.feito_atrasado ?? "",
+    feitoComMulta: r.feito_com_multa ?? "",
+    baixado: r.baixado ?? "",
+    origem: r.origem ?? "gestta",
+  };
+}
+
+async function comRetentativa<T extends { error: unknown; data?: unknown }>(fazer: () => PromiseLike<T>): Promise<T> {
+  let resposta = await fazer();
+  for (let tentativa = 1; resposta.error && tentativa < 3; tentativa++) {
+    await new Promise((r) => setTimeout(r, 700 * tentativa));
+    resposta = await fazer();
+  }
+  return resposta;
+}
+
+/** Busca páginas por "id maior que o último" (rápido em qualquer profundidade, ao contrário de OFFSET). */
+async function buscarFaixa(
+  inicio: string | null,
+  fim: string | null,
+  desde: string | null,
+  aoPagina: (n: number) => void,
+): Promise<LinhaBanco[]> {
+  const cliente = clienteLivre();
+  const linhas: LinhaBanco[] = [];
+  let ultimo: string | null = null;
+  for (;;) {
+    const resposta: { error: unknown; data?: unknown } = await comRetentativa(() => {
+      let q = cliente.from(TABELA).select(COLUNAS_SELECT).order("id").limit(TAMANHO_PAGINA);
+      if (ultimo !== null) q = q.gt("id", ultimo);
+      else if (inicio !== null) q = q.gte("id", inicio);
+      if (fim !== null) q = q.lt("id", fim);
+      if (desde) q = q.gt("importado_em", desde);
+      return q;
+    });
+    if (resposta.error) {
+      if (tabelaAusente(resposta.error as never)) return linhas;
+      throw traduzErro(resposta.error as never);
+    }
+    const pagina = (resposta.data ?? []) as unknown as LinhaBanco[];
+    linhas.push(...pagina);
+    aoPagina(pagina.length);
+    if (pagina.length < TAMANHO_PAGINA) return linhas;
+    ultimo = pagina[pagina.length - 1]!.id ?? "";
+  }
+}
+
+async function resumoBanco(): Promise<{ total: number; ultima: string | null }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (clienteLivre() as any).rpc("tarefas_gestta_resumo");
+  if (error) throw traduzErro(error);
+  const linha = (Array.isArray(data) ? data[0] : data) ?? {};
+  return { total: Number(linha.total ?? 0), ultima: linha.ultima ?? null };
+}
+
+/** Todas as tarefas: usa o cache local e só baixa o que mudou; carga completa quando necessário. */
 export async function carregarTarefas(
   aoProgredir?: (carregadas: number, total: number) => void,
+  opcoes: { completo?: boolean } = {},
 ): Promise<TarefaGestta[]> {
-  const cliente = clienteLivre();
-  let colunas = COLUNAS_SELECT;
-  const consultaPagina = (de: number) =>
-    cliente
-      .from(TABELA)
-      .select(colunas)
-      .order("id")
-      .range(de, de + TAMANHO_PAGINA - 1);
+  const resumo = await resumoBanco();
+  if (!opcoes.completo) await tarefasDoCacheLocal();
 
-  // Primeira página e contagem em paralelo (antes eram duas viagens em série).
-  const contagemPromise = cliente.from(TABELA).select("id", { count: "exact", head: true });
-  let [primeira, { count }] = await Promise.all([consultaPagina(0), contagemPromise]);
-  if (primeira.error && !tabelaAusente(primeira.error)) {
-    // Migration da coluna "origem" ainda não aplicada: carrega sem ela.
-    colunas = COLUNAS_SELECT.replace(",origem", "");
-    primeira = await consultaPagina(0);
-  }
-  if (primeira.error) {
-    if (tabelaAusente(primeira.error)) return [];
-    throw traduzErro(primeira.error);
-  }
-  const paginas: Record<string, string | null>[][] = [
-    (primeira.data ?? []) as Record<string, string | null>[],
-  ];
-  if (paginas[0]!.length === TAMANHO_PAGINA) {
-    const total = count ?? 0;
-    let carregadas = paginas[0]!.length;
-    aoProgredir?.(carregadas, total);
-    const restantes: number[] = [];
-    for (let de = TAMANHO_PAGINA; de < (count ?? 0); de += TAMANHO_PAGINA) restantes.push(de);
-    let proximo = 0;
-    const resultados: Record<string, string | null>[][] = new Array(restantes.length);
-    const trabalhador = async () => {
-      while (proximo < restantes.length) {
-        const i = proximo++;
-        // Páginas profundas podem estourar o tempo do servidor sob carga (erro 500): tenta de novo antes de desistir.
-        let resposta = await consultaPagina(restantes[i]!);
-        for (let tentativa = 1; resposta.error && tentativa < 3; tentativa++) {
-          await new Promise((r) => setTimeout(r, 700 * tentativa));
-          resposta = await consultaPagina(restantes[i]!);
-        }
-        if (resposta.error) throw traduzErro(resposta.error);
-        resultados[i] = (resposta.data ?? []) as Record<string, string | null>[];
-        carregadas += resultados[i]!.length;
-        aoProgredir?.(carregadas, total);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(PAGINAS_SIMULTANEAS, restantes.length) }, trabalhador));
-    paginas.push(...resultados);
-  }
-
-  const todas: TarefaGestta[] = [];
-  for (const pagina of paginas) {
-    for (const r of pagina) {
-      todas.push({
-        id: r.id ?? "",
-        nome: r.nome ?? "",
-        tipo: r.tipo ?? "",
-        status: r.status ?? "",
-        cliente: r.cliente ?? "",
-        departamento: unificarSetor(r.departamento ?? ""),
-        responsavel: r.responsavel ?? "",
-        vencimento: r.vencimento ?? null,
-        dataConclusao: r.data_conclusao ?? null,
-        competencia: r.competencia ?? "",
-        cnpjCpf: r.cnpj_cpf ?? "",
-        dataLegal: r.data_legal ?? null,
-        feitoAtrasado: r.feito_atrasado ?? "",
-        feitoComMulta: r.feito_com_multa ?? "",
-        baixado: r.baixado ?? "",
-        origem: r.origem ?? "gestta",
-      });
+  // Incremental: só o que foi importado depois da última sincronização.
+  if (!opcoes.completo && cacheTarefas && ultimaSync) {
+    if (resumo.ultima === ultimaSync && resumo.total === cacheTarefas.length) return cacheTarefas;
+    const novas = await buscarFaixa(null, null, ultimaSync, () => {});
+    const mapa = new Map(cacheTarefas.map((t) => [t.id, t] as const));
+    for (const r of novas) mapa.set(r.id ?? "", linhaParaTarefa(r));
+    if (mapa.size === resumo.total) {
+      cacheTarefas = [...mapa.values()];
+      ultimaSync = resumo.ultima;
+      void gravarCacheLocal({ tarefas: cacheTarefas, ultima: ultimaSync });
+      return cacheTarefas;
     }
+    // Alguma tarefa foi apagada por outra pessoa: recarrega tudo.
   }
-  cacheTarefas = todas;
-  return todas;
+
+  // Carga completa: 4 faixas de Id em paralelo (carga moderada no banco).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: faixas } = await (clienteLivre() as any).rpc("tarefas_gestta_faixas", { partes: 4 });
+  const inicios: (string | null)[] = ((faixas ?? []) as { id_inicio: string }[]).map((f) => f.id_inicio);
+  if (!inicios.length) inicios.push(null);
+  inicios[0] = null;
+  let carregadas = 0;
+  aoProgredir?.(0, resumo.total);
+  const partes = await Promise.all(
+    inicios.map((ini, i) =>
+      buscarFaixa(ini, inicios[i + 1] ?? null, null, (n) => {
+        carregadas += n;
+        aoProgredir?.(carregadas, resumo.total);
+      }),
+    ),
+  );
+  cacheTarefas = partes.flat().map(linhaParaTarefa);
+  ultimaSync = resumo.ultima;
+  void gravarCacheLocal({ tarefas: cacheTarefas, ultima: ultimaSync });
+  return cacheTarefas;
+}
+
+/** Tira do cache local as tarefas apagadas. */
+function esquecerTarefas(ids: string[] | null) {
+  if (ids === null) {
+    cacheTarefas = null;
+    ultimaSync = null;
+    void gravarCacheLocal(null);
+    return;
+  }
+  if (!cacheTarefas) return;
+  const fora = new Set(ids);
+  cacheTarefas = cacheTarefas.filter((t) => !fora.has(t.id));
+  void gravarCacheLocal({ tarefas: cacheTarefas, ultima: ultimaSync });
 }
 
 const LOTE_EXCLUSAO = 200;
@@ -489,6 +588,7 @@ export async function importarTarefas(
       .filter((t) => t.origem === "acumulada" && mesesDoArquivo.has(mesDaCompetencia(t.competencia)))
       .map((t) => t.id);
     await apagarTarefasPorId(idsDosMeses);
+    esquecerTarefas(idsDosMeses);
   }
   if (substituirComplementares) {
     const datas = tarefas.map((t) => t.dataConclusao).filter((d): d is string => !!d).sort();
@@ -563,6 +663,7 @@ export async function zerarTarefas(mes?: string): Promise<void> {
   if (!mes) {
     const { error } = await cliente.from(TABELA).delete().not("id", "is", null);
     if (error) throw traduzErro(error);
+    esquecerTarefas(null);
     return;
   }
   // Mesmas regras de mês dos cards: cada origem tem o seu critério.
@@ -574,6 +675,7 @@ export async function zerarTarefas(mes?: string): Promise<void> {
     })
     .map((t) => t.id);
   await apagarTarefasPorId(idsDoMes);
+  esquecerTarefas(idsDoMes);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -756,3 +858,11 @@ export function agruparMetricas(
 
 export const pct = (parte: number, total: number) =>
   total === 0 ? "0%" : `${((parte / total) * 100).toFixed(1).replace(".", ",")}%`;
+
+/** Só as tarefas que algum card do mês usa (mesmas regras de `calcularMetricas`). */
+export function tarefasDoMes(tarefas: TarefaGestta[], mes: string): TarefaGestta[] {
+  return tarefas.filter(
+    (t) =>
+      (t.origem === "gestta" && mesDoGestta(t) === mes) || ehComplementarDoMes(t, mes) || ehAcumulada(t, mes),
+  );
+}

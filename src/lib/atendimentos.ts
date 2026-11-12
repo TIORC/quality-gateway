@@ -225,7 +225,7 @@ function partesDoNome(nome: string): string[] {
  * Cobre "Aelica Sampaio" x "Aelica de Novaes Sampaio", "Sampaio Aelica" e "Adalgiza" x
  * "Adalgiza Argôlo de Souza". Um nome de uma palavra só casa com o primeiro nome do outro.
  */
-export function colaboradorCorresponde(nomeA: string, nomeB: string): boolean {
+function nomesCorrespondem(nomeA: string, nomeB: string): boolean {
   const a = partesDoNome(nomeA);
   const b = partesDoNome(nomeB);
   if (a.length === 0 || b.length === 0) return false;
@@ -238,6 +238,19 @@ export function colaboradorCorresponde(nomeA: string, nomeB: string): boolean {
     restantes.splice(i, 1);
   }
   return true;
+}
+
+/** Cache das comparações (a tela compara cada nome com muitos outros a cada renderização). */
+const cacheCorresponde = new Map<string, boolean>();
+
+export function colaboradorCorresponde(nomeA: string, nomeB: string): boolean {
+  const chave = nomeA + "\u0000" + nomeB;
+  const pronto = cacheCorresponde.get(chave);
+  if (pronto !== undefined) return pronto;
+  const r = nomesCorrespondem(nomeA, nomeB);
+  if (cacheCorresponde.size > 200000) cacheCorresponde.clear();
+  cacheCorresponde.set(chave, r);
+  return r;
 }
 
 /**
