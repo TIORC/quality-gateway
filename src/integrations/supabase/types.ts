@@ -2776,6 +2776,19 @@ export type Database = {
         Args: { p_antigo: string; p_novo: string }
         Returns: undefined
       }
+      tarefas_gestta_faixas: {
+        Args: { partes: number }
+        Returns: {
+          id_inicio: string
+        }[]
+      }
+      tarefas_gestta_resumo: {
+        Args: never
+        Returns: {
+          total: number
+          ultima: string
+        }[]
+      }
       usuario_id_por_email: { Args: { email: string }; Returns: string }
     }
     Enums: {
