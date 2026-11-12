@@ -904,7 +904,10 @@ function Indicadores() {
   ]);
   /** Registro de Orientação: tarefas do departamento "Orientação ao Cliente" da competência do mês, respeitando os filtros. */
   // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
-  const tarefasOrientacao = tarefasDoIndicador(tarefasFiltradas, mesEscolhido, "orientacao");
+  const tarefasOrientacao = useMemo(
+    () => tarefasDoIndicador(tarefasFiltradas, mesEscolhido, "orientacao"),
+    [tarefasFiltradas, mesEscolhido],
+  );
   const orientacoesNoMes = tarefasOrientacao.length;
 
   /** Retrabalho Escrituração/Conciliação Contábil: só quando o setor Contábil está selecionado na tela. */
@@ -912,12 +915,16 @@ function Indicadores() {
   const mostrarRetrabalho = setorNaTela !== "todos" && normalizarSetor(setorNaTela).startsWith("contabil");
   const NOME_RETRABALHO = "retrabalho escrituracao/conciliacao contabil";
   // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
-  const tarefasRetrabalho = tarefasDoIndicador(
-    tarefasMes.filter(
-      (t) => normalizarSetor(t.nome) === NOME_RETRABALHO && normalizarSetor(t.departamento).startsWith("contabil"),
-    ),
-    mesEscolhido,
-    "total",
+  const tarefasRetrabalho = useMemo(
+    () =>
+      tarefasDoIndicador(
+        tarefasMes.filter(
+          (t) => normalizarSetor(t.nome) === NOME_RETRABALHO && normalizarSetor(t.departamento).startsWith("contabil"),
+        ),
+        mesEscolhido,
+        "total",
+      ),
+    [tarefasMes, mesEscolhido],
   );
 
   const metricasTarefas = useMemo(

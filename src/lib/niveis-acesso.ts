@@ -133,8 +133,18 @@ export const SETOR_PARA_PREFIXO: Record<string, string> = {
 };
 
 /** Nome de setor normalizado (sem acentos, minúsculo) para comparações. */
+const cacheNormalizado = new Map<string, string>();
 export function normalizarSetor(nome: string | null | undefined): string {
-  return (nome ?? "")
+  const chave = nome ?? "";
+  const pronto = cacheNormalizado.get(chave);
+  if (pronto !== undefined) return pronto;
+  const r = normalizarSemCache(chave);
+  if (cacheNormalizado.size > 50000) cacheNormalizado.clear();
+  cacheNormalizado.set(chave, r);
+  return r;
+}
+function normalizarSemCache(nome: string): string {
+  return nome
     .trim()
     .toLowerCase()
     .normalize("NFD")
