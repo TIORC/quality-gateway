@@ -247,6 +247,47 @@ export async function lerPlanilhaAtrasadas(
 
 const TAMANHO_PAGINA = 1000;
 
+/** Todas as tarefas já gravadas (paginado: o Supabase devolve no máx. 1000 por consulta). */
+/** Nomes do Gestta que representam o mesmo setor do cadastro (chave sem acento/caixa/espaços extras). */
+const SETORES_EQUIVALENTES: Record<string, string> = {
+  "sucesso do cliente/ relacionamento": "Sucesso do Cliente",
+  "sucesso do cliente/relacionamento": "Sucesso do Cliente",
+  ti: "TI - Desenvolvimento",
+  "suporte ti": "TI - Desenvolvimento",
+  "ti / desenvolvimento": "TI - Desenvolvimento",
+  "ti/desenvolvimento": "TI - Desenvolvimento",
+  "ti - desenvolvimento": "TI - Desenvolvimento",
+};
+
+/**
+ * Nome único do setor: junta variações de grafia (ex.: "Sucesso do Cliente/ Relacionamento").
+ * Vale para importações, para os dados já gravados e para os setores do cadastro.
+ *  - TI: sempre "TI - Desenvolvimento";
+ *  - Recepção: qualquer variação vira "Recepção";
+ *  - Fiscal: só "Fiscal Jaguaquara" e "Fiscal Maracás" (variações de grafia são unificadas).
+ */
+export function unificarSetor(nome: string): string {
+  const limpo = nome.replace(/\s+/g, " ").trim();
+  const chave = semAcento(limpo);
+  const equivalente = SETORES_EQUIVALENTES[chave];
+  if (equivalente) return equivalente;
+  if (chave.startsWith("recepcao")) return "Recepção";
+  if (/^fiscal.*jaguaquara/.test(chave)) return "Fiscal Jaguaquara";
+  if (/^fiscal.*maracas/.test(chave)) return "Fiscal Maracás";
+  return limpo;
+}
+
+const COLUNAS_SELECT =
+  "id,nome,tipo,status,cliente,departamento,responsavel,vencimento,data_conclusao,competencia,cnpj_cpf,data_legal,feito_atrasado,feito_com_multa,baixado,origem";
+// Quantas páginas (de 1000) são buscadas ao mesmo tempo. Erros 500 sob carga já são tentados de novo.
+
+let cacheTarefas: TarefaGestta[] | null = null;
+
+/** Devolve o que já foi carregado nesta sessão (abre a tela na hora; atualize em segundo plano). */
+export function tarefasEmCache(): TarefaGestta[] | null {
+  return cacheTarefas;
+}
+
 /* ---------------- Cache local (IndexedDB) + sincronização incremental ---------------- */
 // A tela abre com o que já está salvo no navegador e só busca no banco o que mudou
 // desde a última vez (coluna importado_em). Carga completa só na 1ª vez ou se algo foi apagado.
