@@ -221,8 +221,15 @@ function inicioDoNome(curto: string, longo: string): boolean {
  * Mesmo colaborador quando um nome é o início do outro, nos dois sentidos. Cobre a planilha com o
  * nome curto ("Adalgiza") e o Gestta com o completo ("Adalgiza Argôlo de Souza"), e também o cadastro.
  */
+const cacheCorresponde = new Map<string, boolean>();
 export function colaboradorCorresponde(nomeA: string, nomeB: string): boolean {
-  return inicioDoNome(nomeA, nomeB) || inicioDoNome(nomeB, nomeA);
+  const chave = nomeA + "\u0000" + nomeB;
+  const pronto = cacheCorresponde.get(chave);
+  if (pronto !== undefined) return pronto;
+  const r = inicioDoNome(nomeA, nomeB) || inicioDoNome(nomeB, nomeA);
+  if (cacheCorresponde.size > 200000) cacheCorresponde.clear();
+  cacheCorresponde.set(chave, r);
+  return r;
 }
 
 /**
