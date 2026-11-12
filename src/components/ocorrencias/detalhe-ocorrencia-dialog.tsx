@@ -109,12 +109,14 @@ import {
   parecerApuracaoDe,
   setoresEnvolvidosDe,
   type TipoOcorrencia,
+  tipoEhErroOperacional,
 } from "@/lib/ocorrencias";
 import { FerramentaApuracao } from "@/components/ocorrencias/ferramenta-apuracao";
 import { EvidenciasApuracao } from "@/components/ocorrencias/evidencias-apuracao";
 import { AcoesExecutadas } from "@/components/ocorrencias/acoes-executadas";
 import { marcarRetornoVisto } from "@/lib/ocorrencias-retorno";
 import { PlanoAcoesOcorrencia } from "@/components/ocorrencias/plano-acoes-ocorrencia";
+import { NaoConformidadeDoErro } from "@/components/ocorrencias/nc-do-erro";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import {
   ACOES_ETAPA_LABELS,
@@ -752,42 +754,6 @@ function DetalheCorpo({
             </div>
           )}
 
-          {podeDefinirPrioridade(session) && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Prioridade
-              </span>
-              <Select
-                value={o.prioridade}
-                onValueChange={(v) => void mudarPrioridade(v as PrioridadeOcorrencia)}
-              >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORIDADES_OCORRENCIA.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PRIORIDADE_LABELS[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
-            </div>
-          )}
-
-          {!podeDefinirPrioridade(session) && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Prioridade
-              </span>
-              <span className="text-[13px] font-semibold text-[#1F2937]">
-                {PRIORIDADE_LABELS[o.prioridade]}
-              </span>
-              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
-            </div>
-          )}
-
           <MetroLinha ocorrencia={o} etapas={etapas} eventos={eventos} visao={visao} />
 
           {mostraAbertura && (
@@ -888,6 +854,42 @@ function DetalheCorpo({
                 </div>
               ) : null}
             </section>
+          )}
+
+          {podeDefinirPrioridade(session) && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Prioridade
+              </span>
+              <Select
+                value={o.prioridade}
+                onValueChange={(v) => void mudarPrioridade(v as PrioridadeOcorrencia)}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORIDADES_OCORRENCIA.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PRIORIDADE_LABELS[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
+            </div>
+          )}
+
+          {!podeDefinirPrioridade(session) && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Prioridade
+              </span>
+              <span className="text-[13px] font-semibold text-[#1F2937]">
+                {PRIORIDADE_LABELS[o.prioridade]}
+              </span>
+              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
+            </div>
           )}
 
           {o.status !== "encerrada" && camposEtapa.length > 0 && verInternos && (
@@ -1093,7 +1095,7 @@ function DetalheCorpo({
             </section>
           )}
 
-          {(setoresEnvolvidos.length > 0 || (podeMover && o.status !== "encerrada")) &&
+          {!tipoEhErroOperacional({ nome: o.tipoNome }) && (setoresEnvolvidos.length > 0 || (podeMover && o.status !== "encerrada")) &&
             (verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor)) && (
               <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
                 <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
@@ -1184,6 +1186,10 @@ function DetalheCorpo({
               podeSugerir={podeSugerirAcao(session, o)}
               podeValidar={podeOperarOcorrencias(session)}
             />
+          )}
+
+          {tipoEhErroOperacional({ nome: o.tipoNome }) && o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
+            <NaoConformidadeDoErro ocorrencia={o} session={session} onAtualizado={recarregar} />
           )}
 
           {o.status === "encerrada" && (

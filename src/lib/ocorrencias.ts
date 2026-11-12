@@ -301,7 +301,6 @@ export function tipoEhReclamacao(tipo: { nome?: string } | null | undefined): bo
 /** Linha enxuta do Erro Operacional: somente estes quatro trilhos, nesta ordem. */
 export const ETAPAS_ERRO_OPERACIONAL: readonly string[] = [
   "abertura",
-  "apuracao",
   "plano_acao",
   "avaliacao_eficacia",
 ];

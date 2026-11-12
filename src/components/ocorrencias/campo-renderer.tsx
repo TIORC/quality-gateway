@@ -5,7 +5,7 @@
  * nos formulários de etapa. A validação é derivada do schema (obrigatório,
  * regex, min/max) — um erro por campo, exibido sob o controle.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -217,6 +217,117 @@ export function CampoSetores({
 /* Campo                                                                       */
 /* -------------------------------------------------------------------------- */
 
+const semAcento = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/**
+ * Resposta curta com @: ao digitar "@", sugere colaboradores e, ao escolher,
+ * insere "@Nome" no texto. Continua sendo texto, então a resposta não muda de formato.
+ */
+function CampoTextoComMencao({
+  valor, onChange, placeholder, desabilitado, colaboradores,
+}: {
+  valor: string;
+  onChange: (texto: string) => void;
+  placeholder?: string | undefined;
+  desabilitado: boolean;
+  colaboradores: { id: string; nome: string }[];
+}) {
+  const [caret, setCaret] = useState(0);
+  const [indiceAtivo, setIndiceAtivo] = useState(0);
+  const areaRef = useRef<HTMLInputElement>(null);
+
+  // "@" seguido de letras logo antes do cursor abre a lista.
+  const consulta = useMemo(() => {
+    const antes = valor.slice(0, caret);
+    const m = /@([^\s@]*)$/.exec(antes);
+    if (!m) return null;
+    return { termo: m[1] ?? "", inicio: antes.length - m[0].length };
+  }, [valor, caret]);
+
+  const termo = consulta?.termo ?? null;
+  const sugestoes = useMemo(
+    () =>
+      termo === null
+        ? []
+        : colaboradores
+            .filter((c) => c.nome && semAcento(c.nome).includes(semAcento(termo)))
+            .slice(0, 6),
+    [colaboradores, termo],
+  );
+
+  useEffect(() => {
+    setIndiceAtivo(0);
+  }, [termo]);
+
+  function escolher(nome: string) {
+    if (!consulta) return;
+    const novo = `${valor.slice(0, consulta.inicio)}@${nome} ${valor.slice(caret)}`;
+    const novoCaret = consulta.inicio + nome.length + 2;
+    onChange(novo);
+    setCaret(novoCaret);
+    requestAnimationFrame(() => {
+      areaRef.current?.focus();
+      areaRef.current?.setSelectionRange(novoCaret, novoCaret);
+    });
+  }
+
+  return (
+    <div className="relative">
+      {sugestoes.length > 0 && (
+        <ul
+          role="listbox"
+          aria-label="Marcar pessoa"
+          className="absolute bottom-full left-0 z-10 mb-1 w-full max-w-sm overflow-hidden rounded-lg border border-[#D9E0EA] bg-white shadow-lg"
+        >
+          {sugestoes.map((c, i) => (
+            <li key={c.id} role="option" aria-selected={i === indiceAtivo}>
+              <button
+                type="button"
+                // mousedown (e não click) para o campo não perder o foco.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  escolher(c.nome);
+                }}
+                className={`flex w-full items-center px-3 py-2 text-left text-[13px] font-medium text-[#1F2937] ${
+                  i === indiceAtivo ? "bg-[#EEF2FF]" : "hover:bg-[#F8FAFC]"
+                }`}
+              >
+                {c.nome}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Input
+        ref={areaRef}
+        value={valor}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setCaret(e.target.selectionStart ?? e.target.value.length);
+        }}
+        onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+        onKeyDown={(e) => {
+          if (sugestoes.length === 0) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setIndiceAtivo((i) => (i + 1) % sugestoes.length);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setIndiceAtivo((i) => (i - 1 + sugestoes.length) % sugestoes.length);
+          } else if (e.key === "Enter" || e.key === "Tab") {
+            e.preventDefault();
+            const escolhida = sugestoes[indiceAtivo];
+            if (escolhida) escolher(escolhida.nome);
+          }
+        }}
+        placeholder={placeholder}
+        disabled={desabilitado}
+      />
+    </div>
+  );
+}
+
 export function CampoFormularioRender(props: CampoRenderProps) {
   const { campo, respostas, onChange, colaboradores = [], setores, onArquivos, desabilitado = false } = props;
   const { setores: setoresDaOrganizacao } = useCatalogoOrganizacional();
@@ -234,11 +345,12 @@ export function CampoFormularioRender(props: CampoRenderProps) {
       </Label>
 
       {campo.tipo === "texto" && (
-        <Input
-          value={typeof valor === "string" ? valor : ""}
-          onChange={(e) => set(e.target.value)}
+        <CampoTextoComMencao
+          valor={typeof valor === "string" ? valor : ""}
+          onChange={(texto) => set(texto)}
           placeholder={campo.placeholder}
-          disabled={desabilitado}
+          desabilitado={desabilitado}
+          colaboradores={colaboradores}
         />
       )}
 

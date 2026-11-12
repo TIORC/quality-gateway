@@ -17,6 +17,7 @@ import {
   ACAO_MENSAGEM_COMUNICACAO,
   TIPO_NOTIFICACAO_CONVERSA,
   CHAVE_SETORES_ENVOLVIDOS,
+  ehTipoNaoConformidade,
   setoresEnvolvidosDe,
   cienciasDe,
   setoresSemCiencia,
@@ -1502,6 +1503,117 @@ export async function gerarOcorrenciaMulta(
     anexos: [],
   }, loja);
   return criada;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Erro Operacional → Não Conformidade                                          */
+/* -------------------------------------------------------------------------- */
+
+export const CHAVE_ERRO_CARACTERIZA_NC = "erro_caracteriza_nc";
+export const CHAVE_ERRO_NC_JUSTIFICATIVA = "erro_nc_justificativa";
+export const CHAVE_ERRO_NC_OCORRENCIA_ID = "erro_nc_ocorrencia_id";
+export const CHAVE_ERRO_NC_OCORRENCIA_NUMERO = "erro_nc_ocorrencia_numero";
+/** Valor de "origem_nc" nas NCs abertas a partir de um Erro Operacional. */
+export const ORIGEM_NC_ERRO_OPERACIONAL = "Erro Operacional";
+
+/** Resposta de "Esse erro se caracteriza como uma Não-Conformidade?" quando a resposta é "Não". */
+export async function registrarNaoCaracterizaErro(
+  o: Ocorrencia,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: {
+      ...o.respostas,
+      [CHAVE_ERRO_CARACTERIZA_NC]: false,
+      [CHAVE_ERRO_NC_JUSTIFICATIVA]: "",
+    },
+  });
+  await registrarHistorico(o.id, autorDe(sessao), {
+    acao: "Erro operacional: não caracterizado como Não-Conformidade",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: "Não",
+    comentario: "",
+    anexos: [],
+  }, loja);
+}
+
+export interface DadosNaoConformidadeDoErro {
+  /** Justificativa de por que o erro é uma Não-Conformidade. */
+  justificativa: string;
+  area: string;
+  descricao: string;
+  consequencia: string;
+  sugestao: string;
+  multa: boolean;
+  assinouMulta: boolean;
+  arquivos: File[];
+}
+
+/**
+ * Abre uma Não Conformidade ligada a este Erro Operacional: a origem fica
+ * como "Erro Operacional" e as duas ocorrências apontam uma para a outra.
+ */
+export async function gerarNaoConformidadeDoErro(
+  o: Ocorrencia,
+  dados: DadosNaoConformidadeDoErro,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<Ocorrencia> {
+  const tipos = await listarTipos();
+  const tipo = tipos.find((t) => t.ativo && ehTipoNaoConformidade(t));
+  if (!tipo) throw new Error('Tipo de ocorrência "Não Conformidade" não encontrado ou inativo.');
+  const versoes = await carregarUltimasVersoes(tipo.id);
+  const descricao = dados.descricao.trim();
+  const titulo = descricao.length > 80 ? `${descricao.slice(0, 80)}…` : descricao;
+
+  const criada = await abrirOcorrencia(
+    {
+      tipo,
+      formularioVersao: versoes.formularioVersao,
+      fluxoVersao: versoes.fluxoVersao,
+      titulo,
+      respostas: {
+        area_envolvida: dados.area.trim(),
+        descricao_nc: descricao,
+        consequencia: dados.consequencia.trim(),
+        sugestao_solucao: dados.sugestao.trim(),
+        gerou_multa: dados.multa,
+        assinou_termo_multa: dados.assinouMulta,
+        origem_nc: ORIGEM_NC_ERRO_OPERACIONAL,
+        ocorrencia_origem_id: o.id,
+        ocorrencia_origem_numero: o.numero,
+        anexos: dados.arquivos.map((a) => ({ nome: a.name })),
+      },
+    },
+    sessao,
+    loja,
+  );
+  const final =
+    dados.arquivos.length > 0 ? await adicionarAnexosAbertura(criada, dados.arquivos, sessao) : criada;
+
+  const justificativa = dados.justificativa.trim();
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: {
+      ...o.respostas,
+      [CHAVE_ERRO_CARACTERIZA_NC]: true,
+      [CHAVE_ERRO_NC_JUSTIFICATIVA]: justificativa,
+      [CHAVE_ERRO_NC_OCORRENCIA_ID]: criada.id,
+      [CHAVE_ERRO_NC_OCORRENCIA_NUMERO]: criada.numero,
+    },
+  });
+  await registrarHistorico(o.id, autorDe(sessao), {
+    acao: "Erro operacional: Não Conformidade gerada",
+    macro: o.macroAtual,
+    subetapa: o.subetapaAtualNome,
+    de: "",
+    para: `NC ${criada.numero} aberta`,
+    comentario: justificativa,
+    anexos: [],
+  }, loja);
+  return final;
 }
 
 /** Ação registrada no histórico quando um retorno parcial é enviado ao solicitante. */
