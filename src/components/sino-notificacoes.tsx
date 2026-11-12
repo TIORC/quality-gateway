@@ -3,9 +3,9 @@ import { Bell } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { getSession } from "@/lib/auth";
 import {
-  contarNaoLidas, listarNotificacoes, marcarNotificacaoLida,
-  marcarTodasLidas, type NotificacaoPainel,
+  listarNotificacoes, marcarNotificacaoLida, type NotificacaoPainel,
 } from "@/lib/notificacoes";
+import { TIPO_NOTIFICACAO_CONVERSA } from "@/lib/ocorrencias";
 import { formatarDataHoraBrasilia } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -32,20 +32,14 @@ export function SinoNotificacoes() {
     const email = sessao?.email;
     if (!email) return;
     try {
+      // Conversas (chat da ocorrência) ficam no ícone @, não no sino.
       // Colaborador não recebe avisos de atraso, só as novas atualizações.
-      if (sessao?.nivelAcesso === "Colaborador") {
-        const lista = (await listarNotificacoes(email, 50))
-          .filter((n) => !n.titulo.endsWith("está atrasada"))
-          .slice(0, 20);
-        setItens(lista);
-        setNaoLidas(lista.filter((n) => !n.lida).length);
-        return;
-      }
-      const [lista, total] = await Promise.all([
-        listarNotificacoes(email, 20), contarNaoLidas(email),
-      ]);
+      const lista = (await listarNotificacoes(email, 50))
+        .filter((n) => n.tipo !== TIPO_NOTIFICACAO_CONVERSA)
+        .filter((n) => sessao?.nivelAcesso !== "Colaborador" || !n.titulo.endsWith("está atrasada"))
+        .slice(0, 20);
       setItens(lista);
-      setNaoLidas(total);
+      setNaoLidas(lista.filter((n) => !n.lida).length);
     } catch { /* sem banco: sino fica zerado */ }
   }
 
@@ -81,10 +75,10 @@ export function SinoNotificacoes() {
   }
 
   async function marcarTodas() {
-    const sessao = getSession();
-    if (!sessao?.email) return;
+    // Só os avisos do sino: as conversas continuam no ícone @ até serem vistas.
+    const pendentes = itens.filter((i) => !i.lida);
     try {
-      await marcarTodasLidas(sessao.email);
+      await Promise.all(pendentes.map((i) => marcarNotificacaoLida(i.id)));
       setItens((atual) => atual.map((i) => ({ ...i, lida: true })));
       setNaoLidas(0);
     } catch { /* noop */ }

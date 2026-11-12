@@ -97,6 +97,8 @@ import {
   nomeEtapaDoTipo,
   prefixoNumeroTipo,
   tipoEhReclamacao,
+  tipoEhErroOperacional,
+  ETAPAS_ERRO_OPERACIONAL,
   type CampoFormulario,
   type EtapaTipo,
   type MacroFluxo,
@@ -813,17 +815,18 @@ function ListaOcorrencias({
     );
   }
 
-  const COLUNAS = "grid grid-cols-[90px_minmax(200px,2fr)_100px_minmax(120px,1fr)_90px_minmax(220px,1.6fr)_minmax(130px,1fr)] items-center gap-4";
+  const COLUNAS = "grid grid-cols-[90px_minmax(200px,2fr)_100px_minmax(120px,1fr)_minmax(120px,1fr)_90px_minmax(220px,1.6fr)_minmax(130px,1fr)] items-center gap-4";
   return (
     <div className="mt-4 overflow-x-auto">
-      <div className="min-w-[1000px]">
+      <div className="min-w-[1180px]">
         <div
           className={`${COLUNAS} px-4 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748B]`}
         >
           <span>Código</span>
           <span>Assunto</span>
           <span>Aberta em</span>
-          <span>Responsável</span>
+          <span>Aberta por</span>
+          <span>Tratada por</span>
           <span>Prioridade</span>
           <span>Andamento</span>
           <span>Prazo</span>
@@ -909,8 +912,15 @@ function ListaOcorrencias({
                   {FormatadorSla.formatarData(o.createdAt)}
                 </span>
 
-                <span className="truncate text-[13px] text-white/90" title={o.responsavelNome}>
-                  {o.responsavelNome || "—"}
+                <span className="truncate text-[13px] text-white/90" title={o.abertaPorNome}>
+                  {o.abertaPorNome || o.abertaPorSetor || "—"}
+                </span>
+
+                <span
+                  className={`truncate text-[13px] ${o.donoQualidadeNome ? "text-white/90" : "italic text-white/60"}`}
+                  title={o.donoQualidadeNome || "Ninguém assumiu ainda"}
+                >
+                  {o.donoQualidadeNome || "Ninguém ainda"}
                 </span>
 
                 <span>
@@ -1891,6 +1901,12 @@ function TipoDialog({
         : "nao",
   );
 
+  // Erro Operacional: a linha tem só Abertura, Apuração, Plano de ação e Eficácia.
+  const erroOperacional = tipoEhErroOperacional({ nome });
+  const etapasExibidas = erroOperacional
+    ? etapas.filter((e) => ETAPAS_ERRO_OPERACIONAL.includes(e.id))
+    : etapas;
+
   function atualizarEtapa(id: string, patch: Partial<EtapaTipo>) {
     setEtapas((atual) => atual.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
@@ -1918,6 +1934,9 @@ function TipoDialog({
       nome: e.nome.trim() || "Etapa",
       slaDias: Math.max(1, Number(e.slaDias) || 5),
     }));
+    if (erroOperacional) {
+      etapasSalvas = etapasSalvas.filter((e) => ETAPAS_ERRO_OPERACIONAL.includes(e.id));
+    }
     // Etapa de julgamento: conforme a opção do tipo (automático = pelo nome).
     const temJulgamento =
       julgamentoModo === "auto" ? tipoTemJulgamento({ nome: nome.trim() }) : julgamentoModo === "sim";
@@ -2067,7 +2086,7 @@ function TipoDialog({
 
           <Campo rotulo="Etapas da linha do metrô (nome e SLA em dias)">
             <div className="space-y-2">
-              {etapas.map((e) => (
+              {etapasExibidas.map((e) => (
                 <div key={e.id} className="flex items-center gap-2">
                   <Input
                     value={e.nome}
@@ -2097,10 +2116,12 @@ function TipoDialog({
                   )}
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" onClick={adicionarEtapa}>
-                <Plus className="h-3.5 w-3.5" />
-                Adicionar etapa
-              </Button>
+              {!erroOperacional && (
+                <Button type="button" variant="outline" size="sm" onClick={adicionarEtapa}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Adicionar etapa
+                </Button>
+              )}
             </div>
           </Campo>
 

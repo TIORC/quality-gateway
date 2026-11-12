@@ -48,6 +48,8 @@ import { MetroLinha } from "@/components/ocorrencias/metro-linha";
 import { RelatorioJulgamento } from "@/components/ocorrencias/relatorio-julgamento";
 import { JulgamentoPartes } from "@/components/ocorrencias/julgamento-partes";
 import { ChecklistMulta } from "@/components/ocorrencias/checklist-multa";
+import { ChatComunicacao } from "@/components/ocorrencias/chat-comunicacao";
+import { marcarConversasLidas } from "@/lib/notificacoes";
 import { ParticipantesJulgamento } from "@/components/ocorrencias/participantes-julgamento";
 import { participantesJulgamentoDe } from "@/lib/ocorrencias-crud";
 import { CampoSetores, FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
@@ -102,6 +104,7 @@ import { normalizarSetor } from "@/lib/niveis-acesso";
 import {
   causaRaizDaApuracao,
   cienciasDe,
+  ACAO_MENSAGEM_COMUNICACAO,
   apuracaoFerramentasDe,
   parecerApuracaoDe,
   setoresEnvolvidosDe,
@@ -133,6 +136,7 @@ import {
   type MacroEtapa,
   type MacroFluxo,
   type Ocorrencia,
+  fluxoDoTipo,
   LIMITE_TEXTO_OCORRENCIA,
   type ResultadoEficacia,
   type Respostas,
@@ -294,6 +298,13 @@ function DetalheCorpo({
   const [excluirAberto, setExcluirAberto] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
 
+  // Conversas desta ocorrência saem do @ quando a pessoa a abre.
+  useEffect(() => {
+    const email = session?.email;
+    if (!email) return;
+    void marcarConversasLidas(email, o.id).catch(() => undefined);
+  }, [o.id, session?.email, eventos.length]);
+
   useEffect(() => {
     let ativo = true;
     setCarregando(true);
@@ -304,7 +315,7 @@ function DetalheCorpo({
     ])
       .then(([etapasCarregadas, formularioCarregado, historico]) => {
         if (!ativo) return;
-        setEtapas(etapasCarregadas);
+        setEtapas(fluxoDoTipo({ nome: o.tipoNome }, etapasCarregadas));
         setFormulario(formularioCarregado);
         setEventos(historico);
         setEtapaRespostas(
@@ -348,6 +359,10 @@ function DetalheCorpo({
   const verInternos = podeVerInternos(session, o);
   const comentar = podeComentar(session, o);
   const camposEtapa = subEtapa?.campos ?? [];
+  // Chat da Comunicação: quem está envolvido (ou a Qualidade) conversa aqui.
+  const mensagensComunicacao = eventos.filter((ev) => ev.acao === ACAO_MENSAGEM_COMUNICACAO);
+  const podeConversar =
+    verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor);
 
   async function recarregar() {
     const [lista, historico] = await Promise.all([
@@ -1138,6 +1153,17 @@ function DetalheCorpo({
               </section>
             )}
 
+          {podeConversar && o.macroAtual === "comunicacao" && (
+            <ChatComunicacao
+              ocorrencia={o}
+              setoresEnvolvidos={setoresEnvolvidos}
+              mensagens={mensagensComunicacao}
+              session={session}
+              podeEnviar={o.macroAtual === "comunicacao" && o.status !== "encerrada" && podeConversar}
+              onEnviada={() => void recarregar()}
+            />
+          )}
+
           {verInternos &&
             (o.macroAtual === "julgamento" || participantesJulgamentoDe(o).length > 0) && (
               <ParticipantesJulgamento
@@ -1192,7 +1218,11 @@ function DetalheCorpo({
             </h3>
             <ul className="mt-2 max-h-60 space-y-2 overflow-y-auto pr-1">
               {eventos
-                .filter((ev) => verInternos || eventoVisivelParaSolicitante(ev.acao))
+                .filter(
+                  (ev) =>
+                    ev.acao !== ACAO_MENSAGEM_COMUNICACAO &&
+                    (verInternos || eventoVisivelParaSolicitante(ev.acao)),
+                )
                 .map((ev) => {
                   const Icone = iconeEvento(ev.acao);
                   return (

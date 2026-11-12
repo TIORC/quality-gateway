@@ -298,12 +298,33 @@ export function tipoEhReclamacao(tipo: { nome?: string } | null | undefined): bo
   return normalizado.includes("reclamacao");
 }
 
+/** Linha enxuta do Erro Operacional: somente estes quatro trilhos, nesta ordem. */
+export const ETAPAS_ERRO_OPERACIONAL: readonly string[] = [
+  "abertura",
+  "apuracao",
+  "plano_acao",
+  "avaliacao_eficacia",
+];
+
+/** Erro Operacional (ou "Erros operacionais"): usa só as quatro etapas enxutas. */
+export function tipoEhErroOperacional(tipo: { nome?: string } | null | undefined): boolean {
+  const normalizado = (tipo?.nome ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\s_-]+/g, " ");
+  return /\berros? operacion(al|ais)\b/.test(normalizado);
+}
+
 /** Etapas do tipo na ordem configurada (sem configuração: as padrão). */
 export function etapasDoTipo(
   tipo: { etapas?: EtapaTipo[]; nome?: string } | null | undefined,
 ): EtapaTipo[] {
   let etapas = etapasComPlanoAcao(tipo?.etapas?.length ? tipo.etapas : etapasPadrao());
   if (!tipoEhReclamacao(tipo)) etapas = etapas.filter((e) => e.id !== ETAPA_RETORNO_CLIENTE);
+  if (tipoEhErroOperacional(tipo)) {
+    etapas = etapas.filter((e) => ETAPAS_ERRO_OPERACIONAL.includes(e.id));
+  }
   return tipoTemJulgamento(tipo) ? etapas : etapas.filter((e) => e.id !== "julgamento");
 }
 
@@ -427,6 +448,18 @@ export function alinharFluxoAoTipo(tipo: TipoOcorrencia, fluxo: MacroFluxo[]): M
       : [subetapaPadrao(e)];
     return { macro: e.id, nome: e.nome, subetapas };
   });
+}
+
+/**
+ * Fluxo publicado restrito às etapas do tipo: versões antigas de Erro Operacional
+ * ainda podem trazer Comunicação/Implementação; elas saem da linha.
+ */
+export function fluxoDoTipo(
+  tipo: { nome?: string } | null | undefined,
+  fluxo: MacroFluxo[],
+): MacroFluxo[] {
+  if (!tipoEhErroOperacional(tipo)) return fluxo;
+  return fluxo.filter((e) => ETAPAS_ERRO_OPERACIONAL.includes(e.macro));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -763,6 +796,12 @@ export function progressoOcorrencia(
 
 export const CHAVE_SETORES_ENVOLVIDOS = "__setores_envolvidos";
 export const CHAVE_CIENCIAS = "__ciencias";
+
+/** Ação do histórico para as mensagens do chat da etapa de Comunicação. */
+export const ACAO_MENSAGEM_COMUNICACAO = "Mensagem da comunicação";
+
+/** Tipo da notificação de nova mensagem no chat (ícone @ ao lado do sino). */
+export const TIPO_NOTIFICACAO_CONVERSA = "ocorrencia_conversa";
 
 export interface CienciaSetor {
   setor: string;

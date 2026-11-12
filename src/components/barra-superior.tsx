@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import type { UserSession } from "@/lib/auth";
 import { carregarEmpresaPrincipal, type Empresa } from "@/lib/organizacao";
 import { SinoNotificacoes } from "@/components/sino-notificacoes";
+import { ConversasOcorrencias } from "@/components/conversas-ocorrencias";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -97,6 +98,7 @@ export function BarraSuperior({ session, onAbrirMenu, onSair }: BarraSuperiorPro
             {formatoHora.format(agora)}
           </p>
 
+          <ConversasOcorrencias />
           <SinoNotificacoes />
 
           <span className="hidden h-6 w-px bg-brand-line sm:block" />

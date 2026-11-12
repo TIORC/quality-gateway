@@ -14,6 +14,8 @@ import {
   ACOES_ETAPA_LABELS,
   ETAPA_RETORNO_CLIENTE,
   CHAVE_CIENCIAS,
+  ACAO_MENSAGEM_COMUNICACAO,
+  TIPO_NOTIFICACAO_CONVERSA,
   CHAVE_SETORES_ENVOLVIDOS,
   setoresEnvolvidosDe,
   cienciasDe,
@@ -869,6 +871,65 @@ export async function comentarOcorrencia(
     })),
     autor, lojaSupabase, o.id,
   ).catch(() => undefined);
+}
+
+/**
+ * Mensagem do chat da etapa de Comunicação. Fica no histórico da ocorrência
+ * (`para` guarda o setor de quem escreveu); não notifica ninguém.
+ */
+export async function enviarMensagemComunicacao(
+  o: Ocorrencia,
+  texto: string,
+  sessao: UserSession | null,
+  envolvidos: { email: string; nome: string }[],
+  mencionados: { email: string; nome: string }[] = [],
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const mensagem = texto.trim();
+  if (!mensagem) return;
+  const autor = autorDe(sessao);
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: ACAO_MENSAGEM_COMUNICACAO,
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: sessao?.setor ?? "",
+      comentario: mensagem,
+      anexos: [],
+    },
+    loja,
+  );
+
+  // Todos os envolvidos recebem aviso; quem foi marcado com @ recebe um aviso com o título próprio.
+  const emailAutor = str(autor["autor_email"]).toLowerCase();
+  const alvo = new Map<string, { email: string; nome: string; marcado: boolean }>();
+  for (const e of envolvidos) {
+    if (e.email) alvo.set(e.email.toLowerCase(), { ...e, marcado: false });
+  }
+  for (const m of mencionados) {
+    if (m.email) alvo.set(m.email.toLowerCase(), { ...m, marcado: true });
+  }
+  alvo.delete(emailAutor);
+
+  const linhas = [...alvo.entries()]
+    .filter(([email]) => email.includes("@"))
+    .map(([email, d]) => ({
+      destinatario_email: email,
+      destinatario_nome: d.nome,
+      titulo: d.marcado
+        ? `Você foi marcado na ocorrência ${o.numero}`
+        : `Nova mensagem na ocorrência ${o.numero}`,
+      mensagem,
+      tipo: TIPO_NOTIFICACAO_CONVERSA,
+      plano_id: null,
+      ocorrencia_id: o.id,
+      autor_nome: str(autor["autor_nome"]),
+      autor_email: emailAutor,
+    }));
+  if (linhas.length > 0) await loja.notificar(linhas);
 }
 
 /* -------------------------------------------------------------------------- */
