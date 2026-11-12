@@ -890,7 +890,7 @@ function Indicadores() {
     }
     return tarefasMes;
   }, [
-    tarefas,
+    tarefasMes,
     secao,
     setorFiltro,
     catalogo.colaboradores,
