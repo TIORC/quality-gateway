@@ -80,6 +80,7 @@ import {
   agruparMetricas,
   calcularMetricas,
   carregarTarefas,
+  tarefasDoCacheLocal,
   importarTarefas,
   lerPlanilhaAtrasadas,
   lerPlanilhaTarefas,
@@ -711,6 +712,7 @@ function Indicadores() {
   useEffect(() => {
     const emCache = tarefasEmCache();
     if (emCache) setTarefas(emCache);
+    else void tarefasDoCacheLocal().then((local) => local && setTarefas((atual) => (atual.length ? atual : local)));
     carregarTarefas()
       .then(setTarefas)
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));

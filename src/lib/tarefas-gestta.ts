@@ -547,6 +547,7 @@ export async function importarTarefas(
       .filter((t) => t.origem === "acumulada" && mesesDoArquivo.has(mesDaCompetencia(t.competencia)))
       .map((t) => t.id);
     await apagarTarefasPorId(idsDosMeses);
+    esquecerTarefas(idsDosMeses);
   }
   if (substituirComplementares) {
     const datas = tarefas.map((t) => t.dataConclusao).filter((d): d is string => !!d).sort();
