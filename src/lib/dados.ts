@@ -51,6 +51,8 @@ export interface Colaborador {
   permExcluirPlanos?: boolean;
   /** Setores extras liderados (só para o nível Líder de setor). */
   setoresLiderados?: string[];
+  /** Outros setores em que a pessoa conta nos indicadores (além do setor principal). Não altera o acesso. */
+  setoresAdicionais?: string[];
 }
 
 export type StatusFuncionario = "Ativo" | "Inativo";

@@ -129,6 +129,7 @@ function colaboradoraDoRow(
     | "perm_excluir_documentos"
     | "perm_excluir_planos"
     | "setores_liderados"
+    | "setores_adicionais"
   >,
 ): Colaborador {
   return {
@@ -147,6 +148,7 @@ function colaboradoraDoRow(
     permExcluirDocumentos: row.perm_excluir_documentos,
     permExcluirPlanos: row.perm_excluir_planos,
     setoresLiderados: row.setores_liderados ?? [],
+    setoresAdicionais: row.setores_adicionais ?? [],
   };
 }
 
@@ -185,6 +187,7 @@ function colaboradorParaInsercao(dados: Colaborador): {
   perm_excluir_documentos: boolean;
   perm_excluir_planos: boolean;
   setores_liderados: string[];
+  setores_adicionais: string[];
 } {
   return {
     id: dados.id,
@@ -202,6 +205,7 @@ function colaboradorParaInsercao(dados: Colaborador): {
     perm_excluir_documentos: dados.permExcluirDocumentos ?? false,
     perm_excluir_planos: dados.permExcluirPlanos ?? false,
     setores_liderados: nivelLideraSetores(dados.nivelAcesso) ? (dados.setoresLiderados ?? []) : [],
+    setores_adicionais: dados.setoresAdicionais ?? [],
   };
 }
 
@@ -220,6 +224,7 @@ function colaboradorParaAtualizacao(dados: Colaborador): {
   perm_excluir_documentos: boolean;
   perm_excluir_planos: boolean;
   setores_liderados: string[];
+  setores_adicionais: string[];
 } {
   return {
     nome: dados.nome,
@@ -236,6 +241,7 @@ function colaboradorParaAtualizacao(dados: Colaborador): {
     perm_excluir_documentos: dados.permExcluirDocumentos ?? false,
     perm_excluir_planos: dados.permExcluirPlanos ?? false,
     setores_liderados: nivelLideraSetores(dados.nivelAcesso) ? (dados.setoresLiderados ?? []) : [],
+    setores_adicionais: dados.setoresAdicionais ?? [],
   };
 }
 
@@ -349,7 +355,7 @@ export async function carregarColaboradores(): Promise<Colaborador[]> {
   const { data, error } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados,created_at,updated_at",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados,setores_adicionais,created_at,updated_at",
     )
     .order("created_at", { ascending: true });
   if (error) throw traduzErro(error);
@@ -427,7 +433,7 @@ export async function carregarPerfilColaborador(id: string): Promise<PerfilColab
   const { data, error } = await client
     .from("colaboradores")
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,status,ultimo_acesso,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados,setores_adicionais",
     )
     .eq("id", id)
     .maybeSingle();
@@ -459,7 +465,7 @@ export async function criarColaborador(dados: Colaborador): Promise<Colaborador>
     .from("colaboradores")
     .insert(colaboradorParaInsercao({ ...dados, id: dados.id || novoId("col") }))
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados,setores_adicionais",
     )
     .single();
   if (error) throw traduzErro(error);
@@ -475,7 +481,7 @@ export async function atualizarColaborador(dados: Colaborador): Promise<Colabora
     .update(colaboradorParaAtualizacao(dados))
     .eq("id", dados.id)
     .select(
-      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados",
+      "id,nome,email,cargo,unidade,cidade,setor,nivel_acesso,grupos,exclusao,perm_adicionar_documentos,perm_modificar_documentos,perm_excluir_documentos,perm_excluir_planos,setores_liderados,setores_adicionais",
     )
     .single();
   if (error) throw traduzErro(error);

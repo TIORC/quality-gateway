@@ -1485,6 +1485,10 @@ function GerirColaboradorDialog({
   const [setoresLiderados, setSetoresLiderados] = useState<string[]>(
     colaborador?.setoresLiderados ?? [],
   );
+  // Outros setores em que a pessoa conta nos indicadores (não altera o acesso).
+  const [setoresAdicionais, setSetoresAdicionais] = useState<string[]>(
+    colaborador?.setoresAdicionais ?? [],
+  );
   const [exclusao, setExclusao] = useState(colaborador?.exclusao ?? "Sem acesso");
   const [nome, setNome] = useState(colaborador?.nome ?? "");
   const [email, setEmail] = useState(colaborador?.email ?? "");
@@ -1601,6 +1605,7 @@ function GerirColaboradorDialog({
         nivelAcesso === NIVEL_LIDER_SETOR || nivelAcesso === NIVEL_GESTOR_QUALIDADE
           ? setoresLiderados.filter((nome) => nome !== setor)
           : [],
+      setoresAdicionais: setoresAdicionais.filter((nome) => nome !== setor),
     };
     if (atual.cidade) atualizado.cidade = atual.cidade;
     if (grupos.length > 0) atualizado.grupos = grupos.join(", ");
@@ -1668,6 +1673,37 @@ function GerirColaboradorDialog({
               </Select>
             </Campo>
           </div>
+
+          <Campo rotulo="Outros setores (indicadores)">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {setores
+                .filter((item) => item.nome !== setor)
+                .map((item) => (
+                  <label
+                    key={item.id}
+                    htmlFor={`gerir-setor-adicional-${item.id}`}
+                    className="flex cursor-pointer items-center gap-2 rounded-md border border-[#E2E8F0] px-3 py-2 text-sm"
+                  >
+                    <Checkbox
+                      id={`gerir-setor-adicional-${item.id}`}
+                      checked={setoresAdicionais.includes(item.nome)}
+                      onCheckedChange={(marcado) =>
+                        setSetoresAdicionais((atual) =>
+                          marcado === true
+                            ? [...atual.filter((nome) => nome !== item.nome), item.nome]
+                            : atual.filter((nome) => nome !== item.nome),
+                        )
+                      }
+                    />
+                    {item.nome}
+                  </label>
+                ))}
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
+              Use quando a pessoa atende mais de um setor: ela passa a contar nos indicadores de
+              todos eles. O setor principal continua definindo o acesso e as permissões.
+            </p>
+          </Campo>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Unidade">

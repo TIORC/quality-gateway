@@ -544,6 +544,7 @@ export type Database = {
           processos_visualizados: number
           setor: string
           setores_liderados: string[]
+          setores_adicionais: string[]
           status: string
           ultimo_acesso: string | null
           unidade: string
@@ -568,6 +569,7 @@ export type Database = {
           processos_visualizados?: number
           setor?: string
           setores_liderados?: string[]
+          setores_adicionais?: string[]
           status?: string
           ultimo_acesso?: string | null
           unidade?: string
@@ -592,6 +594,7 @@ export type Database = {
           processos_visualizados?: number
           setor?: string
           setores_liderados?: string[]
+          setores_adicionais?: string[]
           status?: string
           ultimo_acesso?: string | null
           unidade?: string

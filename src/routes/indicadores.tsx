@@ -450,6 +450,16 @@ function setorDoCadastroCorresponde(setorCadastro: string | undefined, setorGest
   return cadastro !== "" && (gestta === cadastro || gestta.startsWith(`${cadastro} `));
 }
 
+/** Pessoa conta nos indicadores do setor principal e de todos os setores adicionais. */
+function colaboradorEstaNoSetor(
+  colaborador: { setor?: string; setoresAdicionais?: string[] },
+  setorGestta: string,
+): boolean {
+  return [colaborador.setor, ...(colaborador.setoresAdicionais ?? [])].some((setor) =>
+    setorDoCadastroCorresponde(setor, setorGestta),
+  );
+}
+
 function SummaryCard({ label, value, valueClass, accent, footer, style }: SummaryCardProps) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-[#D9E0EA] bg-white p-4">
@@ -817,7 +827,7 @@ function Indicadores() {
   const membrosDoSetor =
     setorDoColaborador === "todos"
       ? null
-      : catalogo.colaboradores.filter((c) => setorDoCadastroCorresponde(c.setor, setorDoColaborador));
+      : catalogo.colaboradores.filter((c) => colaboradorEstaNoSetor(c, setorDoColaborador));
 
   /** Por Célula: atendimentos dos colaboradores da célula (ou de um só, se escolhido). */
   const linhasCelula: LinhaDetalheAtendimento[] = atendimentosDoColaboradoresDoMes(
@@ -866,7 +876,7 @@ function Indicadores() {
     }
     if (secao === "por-setor" && setorFiltro !== "todos") {
       // Tarefas do departamento do setor, e as de "Orientação ao Cliente" feitas por quem é do setor.
-      const membros = catalogo.colaboradores.filter((c) => setorDoCadastroCorresponde(c.setor, setorFiltro));
+      const membros = catalogo.colaboradores.filter((c) => colaboradorEstaNoSetor(c, setorFiltro));
       return tarefasMes.filter(
         (t) =>
           t.departamento === setorFiltro ||
