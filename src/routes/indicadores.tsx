@@ -81,6 +81,7 @@ import {
   calcularMetricas,
   carregarTarefas,
   tarefasDoCacheLocal,
+  tarefasDoMes,
   importarTarefas,
   lerPlanilhaAtrasadas,
   lerPlanilhaTarefas,
@@ -852,19 +853,21 @@ function Indicadores() {
           ).map((d) => ({ chave: d.departamento, rotulo: d.departamento, total: d.total }));
   const totalAtendimentosMes = linhasAtendimentos.reduce((soma, l) => soma + l.total, 0);
 
+  // Reduz as ~400 mil tarefas às do mês uma vez só; os filtros abaixo trabalham sobre essa lista menor.
+  const tarefasMes = useMemo(() => tarefasDoMes(tarefas, mesEscolhido), [tarefas, mesEscolhido]);
   const tarefasFiltradas = useMemo(() => {
     if (escopo === "setor") {
       const setores = new Set(setoresDoEscopo.split("|").filter(Boolean));
-      return tarefas.filter((t) => setores.has(normalizarSetor(t.departamento)));
+      return tarefasMes.filter((t) => setores.has(normalizarSetor(t.departamento)));
     }
     if (escopo === "proprio") {
       const eu = sessao?.nome ?? "";
-      return eu.trim() ? tarefas.filter((t) => colaboradorCorresponde(t.responsavel, eu)) : [];
+      return eu.trim() ? tarefasMes.filter((t) => colaboradorCorresponde(t.responsavel, eu)) : [];
     }
     if (secao === "por-setor" && setorFiltro !== "todos") {
       // Tarefas do departamento do setor, e as de "Orientação ao Cliente" feitas por quem é do setor.
       const membros = catalogo.colaboradores.filter((c) => setorDoCadastroCorresponde(c.setor, setorFiltro));
-      return tarefas.filter(
+      return tarefasMes.filter(
         (t) =>
           t.departamento === setorFiltro ||
           (normalizarSetor(t.departamento) === "orientacao ao cliente" &&
@@ -872,22 +875,22 @@ function Indicadores() {
       );
     }
     if (secao === "por-celula") {
-      const daCelula = tarefas.filter((t) => pertenceACelula(t.responsavel));
+      const daCelula = tarefasMes.filter((t) => pertenceACelula(t.responsavel));
       return colaboradorCelulaFiltro === "todos"
         ? daCelula
         : daCelula.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorCelulaFiltro));
     }
     if (secao === "por-colaborador") {
       const doSetor = membrosDoSetor
-        ? tarefas.filter((t) => membrosDoSetor.some((m) => colaboradorCorresponde(t.responsavel, m.nome)))
-        : tarefas;
+        ? tarefasMes.filter((t) => membrosDoSetor.some((m) => colaboradorCorresponde(t.responsavel, m.nome)))
+        : tarefasMes;
       return colaboradorFiltro === "todos"
         ? doSetor
         : doSetor.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorFiltro));
     }
-    return tarefas;
+    return tarefasMes;
   }, [
-    tarefas,
+    tarefasMes,
     secao,
     setorFiltro,
     catalogo.colaboradores,
@@ -910,7 +913,7 @@ function Indicadores() {
   const NOME_RETRABALHO = "retrabalho escrituracao/conciliacao contabil";
   // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
   const tarefasRetrabalho = tarefasDoIndicador(
-    tarefas.filter(
+    tarefasMes.filter(
       (t) => normalizarSetor(t.nome) === NOME_RETRABALHO && normalizarSetor(t.departamento).startsWith("contabil"),
     ),
     mesEscolhido,
