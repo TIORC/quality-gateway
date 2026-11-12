@@ -858,3 +858,11 @@ export function agruparMetricas(
 
 export const pct = (parte: number, total: number) =>
   total === 0 ? "0%" : `${((parte / total) * 100).toFixed(1).replace(".", ",")}%`;
+
+/** Só as tarefas que algum card do mês usa (mesmas regras de `calcularMetricas`). */
+export function tarefasDoMes(tarefas: TarefaGestta[], mes: string): TarefaGestta[] {
+  return tarefas.filter(
+    (t) =>
+      (t.origem === "gestta" && mesDoGestta(t) === mes) || ehComplementarDoMes(t, mes) || ehAcumulada(t, mes),
+  );
+}
