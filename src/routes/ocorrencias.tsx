@@ -2051,9 +2051,9 @@ function TipoDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.keys(ICONES_OCORRENCIA).map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {k}
+                  {Object.entries(ICONES_OCORRENCIA).map(([k, IconeOpcao]) => (
+                    <SelectItem key={k} value={k} aria-label={k}>
+                      <IconeOpcao className="h-4 w-4" />
                     </SelectItem>
                   ))}
                 </SelectContent>
