@@ -489,9 +489,12 @@ function hexagono(r: number): string {
 
 const ENTRADA_FUNDO = {
   initial: { opacity: 0 },
-  animate: { opacity: 0.22 },
+  animate: { opacity: 0.3 },
   transition: { duration: 0.8, ease: "easeOut" as const },
 };
+
+/* Laços infinitos: `repeatType: "loop"` reinicia o ciclo sem depender de inversão. */
+const LACO = { repeat: Infinity, repeatType: "loop" as const };
 
 /*
  * Origem das transformações no SVG. Com `transformBox: view-box`, a origem é
@@ -518,12 +521,12 @@ function FundoAnimado({ variante }: { variante: number }) {
         {[50, 100, 150].map((y, i) => (
           <motion.path
             key={y}
-            d={`M-60 ${y} Q -20 ${y - 25} 20 ${y} T 100 ${y} T 180 ${y} T 260 ${y}`}
+            d={`M-60 ${y} Q -20 ${y - 35} 20 ${y} T 100 ${y} T 180 ${y} T 260 ${y}`}
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
-            animate={{ x: [0, -40, 0] }}
-            transition={{ duration: 6 + i, ease: "easeInOut", repeat: Infinity }}
+            strokeWidth="3"
+            animate={{ x: [0, -80], y: [0, 10, 0] }}
+            transition={{ duration: 3 + i, ease: "linear", ...LACO }}
           />
         ))}
       </motion.svg>
@@ -544,12 +547,12 @@ function FundoAnimado({ variante }: { variante: number }) {
               cy={y}
               r={5}
               fill="currentColor"
-              animate={{ scale: [1, 1.8, 1], opacity: [0.4, 1, 0.4] }}
+              animate={{ scale: [1, 2.6, 1], opacity: [0.3, 1, 0.3] }}
               transition={{
-                duration: 3,
+                duration: 2,
                 ease: "easeInOut",
-                repeat: Infinity,
-                delay: (i % 5) * 0.2 + Math.floor(i / 5) * 0.15,
+                ...LACO,
+                delay: (i % 5) * 0.15 + Math.floor(i / 5) * 0.12,
               }}
               style={{ transformBox: "view-box", originX: x / 200, originY: y / 200 }}
             />
@@ -569,7 +572,7 @@ function FundoAnimado({ variante }: { variante: number }) {
           stroke="currentColor"
           strokeWidth="2"
           animate={{ rotate: 360 }}
-          transition={{ duration: 40, ease: "linear", repeat: Infinity }}
+          transition={{ duration: 14, ease: "linear", ...LACO }}
           style={CENTRO_FUNDO}
         />
         <motion.polygon
@@ -579,14 +582,14 @@ function FundoAnimado({ variante }: { variante: number }) {
           strokeWidth="2"
           strokeDasharray="6 8"
           animate={{ rotate: -360 }}
-          transition={{ duration: 30, ease: "linear", repeat: Infinity }}
+          transition={{ duration: 10, ease: "linear", ...LACO }}
           style={CENTRO_FUNDO}
         />
         <motion.polygon
           points={hexagono(20)}
           fill="currentColor"
-          animate={{ scale: [1, 1.15, 1] }}
-          transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
+          animate={{ scale: [1, 1.35, 1] }}
+          transition={{ duration: 2.5, ease: "easeInOut", ...LACO }}
           style={CENTRO_FUNDO}
         />
       </motion.svg>
@@ -598,7 +601,7 @@ function FundoAnimado({ variante }: { variante: number }) {
     <motion.svg aria-hidden="true" viewBox="0 0 200 200" className={classe} {...ENTRADA_FUNDO}>
       <motion.g
         animate={{ rotate: 360 }}
-        transition={{ duration: 60, ease: "linear", repeat: Infinity }}
+        transition={{ duration: 20, ease: "linear", ...LACO }}
         style={CENTRO_FUNDO}
       >
         <circle cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -609,8 +612,8 @@ function FundoAnimado({ variante }: { variante: number }) {
         cy="100"
         r="28"
         fill="currentColor"
-        animate={{ scale: [1, 1.08, 1] }}
-        transition={{ duration: 4, ease: "easeInOut", repeat: Infinity }}
+        animate={{ scale: [1, 1.25, 1] }}
+        transition={{ duration: 2.5, ease: "easeInOut", ...LACO }}
         style={CENTRO_FUNDO}
       />
     </motion.svg>
@@ -950,31 +953,21 @@ function ListaOcorrencias({
                         <span
                           key={e.id}
                           title={e.nome}
-                          className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-white/25"
+                          className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-black/30"
                         >
                           {(feita || atual) && (
+                            // Anima `scaleX` (transform, sem recalcular layout) em vez de `width`.
+                            // O pulso da etapa atual é um keyframe CSS, sem loop de JS por barra.
                             <motion.span
-                              className="absolute inset-y-0 left-0 rounded-full bg-white"
-                              initial={{ width: "0%" }}
-                              animate={
-                                atual
-                                  ? { width: "100%", opacity: [1, 0.55, 1] }
-                                  : { width: "100%", opacity: 1 }
-                              }
+                              className={`absolute inset-0 origin-left rounded-full bg-[#F59E0B] ${
+                                atual ? "animate-pulse" : ""
+                              }`}
+                              initial={{ scaleX: 0 }}
+                              animate={{ scaleX: 1 }}
                               transition={{
-                                width: {
-                                  duration: 0.5,
-                                  delay: i * 0.12 + Math.min(indice, 11) * 0.08,
-                                  ease: "easeOut",
-                                },
-                                opacity: atual
-                                  ? {
-                                      duration: 1.6,
-                                      repeat: Infinity,
-                                      ease: "easeInOut",
-                                      delay: i * 0.12 + 0.6,
-                                    }
-                                  : { duration: 0 },
+                                duration: 0.5,
+                                delay: i * 0.12 + Math.min(indice, 11) * 0.08,
+                                ease: "easeOut",
                               }}
                             />
                           )}
@@ -1081,11 +1074,12 @@ function AberturaOcorrencia({
                         if (evento.key === "Enter" || evento.key === " ") onSelecionar(c.chave);
                       }
                 }
-                whileHover={aberto ? {} : { scale: 1.03 }}
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
+                whileHover={aberto ? {} : { scale: 1.04, y: -4 }}
+                whileTap={aberto ? {} : { scale: 0.98 }}
+                initial={{ opacity: 0, y: 24, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 24, scale: 0.94 }}
+                transition={{ type: "spring", stiffness: 260, damping: 22 }}
                 className={`relative flex flex-col overflow-hidden rounded-2xl p-6 text-left text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E3A8A] ${
                   aberto ? "min-h-[60vh] md:col-span-2" : "cursor-pointer hover:shadow-lg"
                 }`}
