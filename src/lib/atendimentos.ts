@@ -221,24 +221,13 @@ function partesDoNome(nome: string): string[] {
 }
 
 /**
- * Nomes que vêm diferentes no Gestta e no cadastro, mas são a mesma pessoa. Chave: nome do relatório
- * sem acento e em minúsculas; valor: nome como está no cadastro.
- */
-const APELIDOS_GESTTA: Record<string, string> = {
-  "sara rodrigues": "Sara de Souza Santos Nascimento",
-};
-
-/** Troca o nome do relatório pelo nome do cadastro, quando houver apelido cadastrado aqui. */
-const nomeCanonico = (nome: string): string => APELIDOS_GESTTA[semAcento(nome)] ?? nome;
-
-/**
  * Mesmo colaborador quando as partes do nome curto estão todas no nome longo, em qualquer ordem.
  * Cobre "Aelica Sampaio" x "Aelica de Novaes Sampaio", "Sampaio Aelica" e "Adalgiza" x
  * "Adalgiza Argôlo de Souza". Um nome de uma palavra só casa com o primeiro nome do outro.
  */
 function nomesCorrespondem(nomeA: string, nomeB: string): boolean {
-  const a = partesDoNome(nomeCanonico(nomeA));
-  const b = partesDoNome(nomeCanonico(nomeB));
+  const a = partesDoNome(nomeA);
+  const b = partesDoNome(nomeB);
   if (a.length === 0 || b.length === 0) return false;
   const [curto, longo] = a.length <= b.length ? [a, b] : [b, a];
   if (curto.length === 1) return longo[0] === curto[0];
