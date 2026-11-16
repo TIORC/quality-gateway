@@ -925,16 +925,17 @@ function Indicadores() {
   const mostrarRetrabalho = setorNaTela !== "todos" && normalizarSetor(setorNaTela).startsWith("contabil");
   const NOME_RETRABALHO = "retrabalho escrituracao/conciliacao contabil";
   // Mesmas regras da lista de detalhe (tarefasDoIndicador), para o número bater com as linhas.
+  // Por Colaborador: usa as tarefas já filtradas pelo colaborador escolhido (e pelo escopo).
   const tarefasRetrabalho = useMemo(
     () =>
       tarefasDoIndicador(
-        tarefasMes.filter(
+        (secao === "por-colaborador" ? tarefasFiltradas : tarefasMes).filter(
           (t) => normalizarSetor(t.nome) === NOME_RETRABALHO && normalizarSetor(t.departamento).startsWith("contabil"),
         ),
         mesEscolhido,
         "total",
       ),
-    [tarefasMes, mesEscolhido],
+    [tarefasFiltradas, tarefasMes, secao, mesEscolhido],
   );
 
   const metricasTarefas = useMemo(
