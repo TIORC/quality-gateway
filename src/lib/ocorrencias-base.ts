@@ -28,6 +28,8 @@ import type {
   TipoOcorrencia,
 } from "@/lib/ocorrencias";
 import { MACRO_ETAPA_LABELS, etapasPadrao, type ResultadoEficacia } from "@/lib/ocorrencias";
+import { podeConfigurarOcorrencias } from "@/lib/ocorrencias-permissoes";
+import { getSession } from "@/lib/auth";
 
 function resultadoEficaciaDe(valor: unknown): ResultadoEficacia | null {
   return valor === "eficaz" || valor === "nao_eficaz" || valor === "impedida" ? valor : null;
@@ -111,6 +113,29 @@ export async function listarTipos(): Promise<TipoOcorrencia[]> {
     if (tabelaAusente(e)) return [];
     throw e instanceof Error ? e : traduzErro(e);
   }
+}
+
+/**
+ * Exclui um tipo de ocorrência. Restrito ao Gestor da Qualidade e ao Desenvolvedor do
+ * Sistema. Formulários e fluxos do tipo são apagados em cascata pelo banco. Não exclui
+ * tipo que já tenha ocorrências: elas ficariam sem o formulário/fluxo que as descreve.
+ */
+export async function excluirTipo(tipo: Pick<TipoOcorrencia, "id" | "nome">): Promise<void> {
+  if (!podeConfigurarOcorrencias(getSession())) {
+    throw new Error("Só o Gestor da Qualidade e o Desenvolvedor do Sistema podem excluir tipos.");
+  }
+  const { count, error: erroContagem } = await cloud()
+    .from("ocorrencias")
+    .select("id", { count: "exact", head: true })
+    .eq("tipo_id", tipo.id);
+  if (erroContagem) throw traduzErro(erroContagem);
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      `O tipo "${tipo.nome}" tem ${count} ocorrência(s) registrada(s) e não pode ser excluído.`,
+    );
+  }
+  const { error } = await cloud().from("ocorrencia_tipos").delete().eq("id", tipo.id);
+  if (error) throw traduzErro(error);
 }
 
 /** Liga/desliga só a exigência do parecer final do tipo (sem mexer no resto do tipo). */

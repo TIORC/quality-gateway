@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Settings2,
+  Trash2,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -42,6 +43,7 @@ import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { FormBuilder } from "@/components/ocorrencias/form-builder";
 import { FlowBuilder } from "@/components/ocorrencias/flow-builder";
 import { FormatadorSla } from "@/components/ocorrencias/formatador-sla";
+import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { DetalheOcorrenciaDialog } from "@/components/ocorrencias/detalhe-ocorrencia-dialog";
 import { DashboardOcorrencias } from "@/components/ocorrencias/dashboard-ocorrencias";
 import {
@@ -62,6 +64,7 @@ import {
 import {
   publicarFluxo,
   publicarFormulario,
+  excluirTipo,
   listarOcorrencias,
   listarTipos,
   salvarTipo,
@@ -1521,8 +1524,26 @@ function ConfigurarOcorrencias({
   recarregar: () => void;
 }) {
   const catalogo = useCatalogoOrganizacional();
+  const session = usePanelSession();
   const [subAba, setSubAba] = useState("tipos");
   const [tipoDialogo, setTipoDialogo] = useState<{ tipo: TipoOcorrencia | null } | null>(null);
+  const [tipoParaExcluir, setTipoParaExcluir] = useState<TipoOcorrencia | null>(null);
+  const [excluindoTipo, setExcluindoTipo] = useState(false);
+
+  async function confirmarExclusaoTipo() {
+    if (!tipoParaExcluir) return;
+    setExcluindoTipo(true);
+    try {
+      await excluirTipo(tipoParaExcluir);
+      toast.success(`Tipo "${tipoParaExcluir.nome}" excluído.`);
+      setTipoParaExcluir(null);
+      recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setExcluindoTipo(false);
+    }
+  }
 
   return (
     <div className="mt-2">
@@ -1538,6 +1559,8 @@ function ConfigurarOcorrencias({
             tipos={tipos}
             onNovo={() => setTipoDialogo({ tipo: null })}
             onEditar={(t) => setTipoDialogo({ tipo: t })}
+            podeExcluir={podeConfigurarOcorrencias(session)}
+            onExcluir={(t) => setTipoParaExcluir(t)}
           />
         </TabsContent>
 
@@ -1561,6 +1584,25 @@ function ConfigurarOcorrencias({
           }}
         />
       )}
+
+      <ConfirmarDialog
+        open={tipoParaExcluir !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !excluindoTipo) setTipoParaExcluir(null);
+        }}
+        tom="danger"
+        titulo="Excluir tipo de ocorrência?"
+        descricao={
+          <>
+            O tipo <strong>{tipoParaExcluir?.nome}</strong> e seus formulários e fluxos serão
+            removidos. Não é possível desfazer. Tipos que já têm ocorrências registradas não podem
+            ser excluídos.
+          </>
+        }
+        textoConfirmar="Excluir tipo"
+        carregando={excluindoTipo}
+        onConfirmar={confirmarExclusaoTipo}
+      />
     </div>
   );
 }
@@ -1569,10 +1611,14 @@ function TiposTab({
   tipos,
   onNovo,
   onEditar,
+  podeExcluir,
+  onExcluir,
 }: {
   tipos: TipoOcorrencia[];
   onNovo: () => void;
   onEditar: (t: TipoOcorrencia) => void;
+  podeExcluir: boolean;
+  onExcluir: (t: TipoOcorrencia) => void;
 }) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
@@ -1624,6 +1670,16 @@ function TiposTab({
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
+                    {podeExcluir && (
+                      <button
+                        type="button"
+                        aria-label="Excluir tipo"
+                        onClick={() => onExcluir(t)}
+                        className="rounded-md p-1.5 text-[#64748B] transition hover:bg-white hover:text-rose-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <p className="mt-2 text-[13px] font-semibold text-[#1F2937]">{t.nome}</p>
