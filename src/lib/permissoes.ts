@@ -256,8 +256,7 @@ function permConcedida(session: UserSession, permissao: boolean | undefined): bo
 /** Indica se a sessão pode adicionar/criar documentos (POPs e políticas). */
 export function podeAdicionarDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
-  // Auxiliar da Qualidade apenas visualiza os documentos.
-  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
+  // Auxiliar da Qualidade elabora documentos (aprovação é restrita em `podeAprovarDocumentos`).
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permAdicionarDocumentos);
 }
@@ -265,8 +264,7 @@ export function podeAdicionarDocumentos(session: UserSession | null | undefined)
 /** Indica se a sessão pode modificar/editar documentos (POPs e políticas). */
 export function podeModificarDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
-  // Auxiliar da Qualidade apenas visualiza os documentos.
-  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
+  // Auxiliar da Qualidade elabora documentos (aprovação é restrita em `podeAprovarDocumentos`).
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permModificarDocumentos);
 }
@@ -274,8 +272,7 @@ export function podeModificarDocumentos(session: UserSession | null | undefined)
 /** Indica se a sessão pode excluir documentos (POPs e políticas). */
 export function podeExcluirDocumentos(session: UserSession | null | undefined): boolean {
   if (!session) return false;
-  // Auxiliar da Qualidade apenas visualiza os documentos.
-  if (session.nivelAcesso === NIVEL_AUXILIAR_QUALIDADE) return false;
+  // Auxiliar da Qualidade elabora documentos (aprovação é restrita em `podeAprovarDocumentos`).
   if (ehLiderancaDaQualidade(session)) return true;
   return permConcedida(session, session.permExcluirDocumentos);
 }
