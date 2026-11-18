@@ -293,6 +293,7 @@ function Configuracoes() {
         <TabsContent value="colaboradores">
           <ColaboradoresTab
             setores={gerenciador.setores}
+            onCriarSetor={gerenciador.criarSetorRetornando}
             unidades={unidades}
             unidadesCarregando={unidadesCarregando}
             colaboradores={colaboradores}
@@ -427,6 +428,8 @@ interface SetoresTabProps extends GerenciadorSetores {
  */
 function useGerenciadorSetores(): GerenciadorSetores & {
   adicionarSetores: (novos: SetorConfig[]) => void;
+  /** Cria o setor e devolve o registro (usado pelo diálogo do colaborador). */
+  criarSetorRetornando: (nome: string) => Promise<SetorConfig>;
 } {
   const [setores, setSetores] = useState<SetorConfig[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -466,6 +469,13 @@ function useGerenciadorSetores(): GerenciadorSetores & {
       );
   }
 
+  function criarSetorRetornando(nome: string): Promise<SetorConfig> {
+    return org.criarSetor(nome).then((novo) => {
+      setSetores((atual) => [...atual, novo]);
+      return novo;
+    });
+  }
+
   function renomearSetor(setorId: string, nome: string) {
     org
       .renomearSetor(setorId, nome)
@@ -488,6 +498,7 @@ function useGerenciadorSetores(): GerenciadorSetores & {
     setores,
     carregando,
     criarSetor,
+    criarSetorRetornando,
     renomearSetor,
     removerSetor,
     adicionarSetores,
@@ -688,6 +699,7 @@ function SetoresTab({
 
 interface ColaboradoresTabProps {
   setores: SetorConfig[];
+  onCriarSetor: (nome: string) => Promise<SetorConfig>;
   unidades: Unidade[];
   unidadesCarregando: boolean;
   colaboradores: Colaborador[];
@@ -697,6 +709,7 @@ interface ColaboradoresTabProps {
 
 function ColaboradoresTab({
   setores,
+  onCriarSetor,
   unidades,
   unidadesCarregando,
   colaboradores,
@@ -1153,6 +1166,7 @@ function ColaboradoresTab({
           onExcluir={excluirColaborador}
           colaborador={gerindo}
           setores={setores}
+          onCriarSetor={onCriarSetor}
           unidades={nomesUnidades}
           cidadesUnidades={cidadesUnidades}
           unidadesCarregando={unidadesCarregando}
@@ -1450,6 +1464,7 @@ function ConvitePrimeiroAcesso({ colaboradorId }: { colaboradorId: string }) {
 interface GerirColaboradorDialogProps {
   colaborador: Colaborador | null;
   setores: SetorConfig[];
+  onCriarSetor: (nome: string) => Promise<SetorConfig>;
   unidades: string[];
   cidadesUnidades: Map<string, string>;
   unidadesCarregando: boolean;
@@ -1468,6 +1483,7 @@ interface GerirColaboradorDialogProps {
 function GerirColaboradorDialog({
   colaborador,
   setores,
+  onCriarSetor,
   unidades,
   cidadesUnidades,
   unidadesCarregando,
@@ -1489,6 +1505,8 @@ function GerirColaboradorDialog({
   const [setoresAdicionais, setSetoresAdicionais] = useState<string[]>(
     colaborador?.setoresAdicionais ?? [],
   );
+  const [novoSetorAdicional, setNovoSetorAdicional] = useState("");
+  const [criandoSetorAdicional, setCriandoSetorAdicional] = useState(false);
   const [exclusao, setExclusao] = useState(colaborador?.exclusao ?? "Sem acesso");
   const [nome, setNome] = useState(colaborador?.nome ?? "");
   const [email, setEmail] = useState(colaborador?.email ?? "");
@@ -1576,6 +1594,29 @@ function GerirColaboradorDialog({
       ? NIVEIS_ACESSO.filter((nivel) => nivel.rotulo !== NIVEL_DESENVOLVEDOR_SISTEMA)
       : NIVEIS_ACESSO.filter((nivel) => !NIVEIS_RESERVADOS_GESTAO.has(nivel.rotulo));
   const ehDevSistema = ehDesenvolvedorDoSistema;
+
+  /**
+   * Adiciona um setor novo (ou marca um já existente) como setor adicional da pessoa.
+   * Se o nome já existir no cadastro, só marca; senão cria o setor e marca.
+   */
+  async function adicionarSetorAdicional() {
+    const nome = novoSetorAdicional.trim().replace(/\s+/g, " ");
+    if (!nome) return;
+    const existente = setores.find((item) => item.nome.toLowerCase() === nome.toLowerCase());
+    setCriandoSetorAdicional(true);
+    try {
+      const nomeFinal = existente ? existente.nome : (await onCriarSetor(nome)).nome;
+      if (nomeFinal !== setor) {
+        setSetoresAdicionais((atual) => [...atual.filter((item) => item !== nomeFinal), nomeFinal]);
+      }
+      setNovoSetorAdicional("");
+      if (!existente) toast.success(`Setor "${nomeFinal}" criado.`);
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o setor.");
+    } finally {
+      setCriandoSetorAdicional(false);
+    }
+  }
 
   function alternarGrupo(grupo: string) {
     setGrupos((atualLista) =>
@@ -1698,6 +1739,29 @@ function GerirColaboradorDialog({
                     {item.nome}
                   </label>
                 ))}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <Input
+                value={novoSetorAdicional}
+                onChange={(e) => setNovoSetorAdicional(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void adicionarSetorAdicional();
+                  }
+                }}
+                placeholder="Nome de um novo setor (ex.: Comercial - Jaguaquara)"
+                disabled={criandoSetorAdicional}
+                aria-label="Novo setor"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void adicionarSetorAdicional()}
+                disabled={criandoSetorAdicional || !novoSetorAdicional.trim()}
+              >
+                {criandoSetorAdicional ? "Adicionando..." : "Adicionar setor"}
+              </Button>
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">
               Use quando a pessoa atende mais de um setor: ela passa a contar nos indicadores de

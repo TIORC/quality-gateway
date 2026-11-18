@@ -8,7 +8,7 @@
  */
 
 import type { UserSession } from "@/lib/auth";
-import { normalizarSetor, NIVEL_LIDER_SETOR } from "@/lib/niveis-acesso";
+import { normalizarSetor, NIVEL_DIRETORIA, NIVEL_LIDER_SETOR } from "@/lib/niveis-acesso";
 import { ehUsuarioDaQualidade, liderDoSetor, setoresLiderados } from "@/lib/permissoes";
 
 /* -------------------------------------------------------------------------- */
@@ -419,15 +419,28 @@ const EMAILS_VEEM_TODOS_INDICADORES = new Set([
 /**
  * O que a pessoa enxerga em Indicadores:
  *  - `todos`: Desenvolvedor do Sistema, Gestor da Qualidade, setor da Qualidade, Jacson e Celso;
+ *  - `unidade`: Diretoria, só os setores da própria unidade;
  *  - `setor`: Líder de setor, só os indicadores dos setores que lidera;
  *  - `proprio`: demais, só os indicadores em que é o responsável.
  */
-export type EscopoIndicadores = "todos" | "setor" | "proprio";
+export type EscopoIndicadores = "todos" | "unidade" | "setor" | "proprio";
+
+/**
+ * O setor pertence à unidade quando o nome dele termina com o nome da unidade
+ * (ex.: "Fiscal Jaguaquara" é da unidade Jaguaquara; "Fiscal" não tem unidade).
+ */
+export function setorEhDaUnidade(nomeSetor: string | null | undefined, unidade: string | null | undefined): boolean {
+  const alvo = normalizarSetor(unidade);
+  if (!alvo) return false;
+  const setor = normalizarSetor(nomeSetor);
+  return setor === alvo || setor.endsWith(` ${alvo}`);
+}
 
 export function escopoDosIndicadores(session: UserSession | null | undefined): EscopoIndicadores {
   if (!session) return "proprio";
   if (ehUsuarioDaQualidade(session)) return "todos";
   if (EMAILS_VEEM_TODOS_INDICADORES.has((session.email ?? "").trim().toLowerCase())) return "todos";
+  if (session.nivelAcesso === NIVEL_DIRETORIA && session.unidade.trim()) return "unidade";
   if (setoresLiderados(session).length > 0) return "setor";
   return "proprio";
 }

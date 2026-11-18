@@ -56,6 +56,7 @@ import {
   MODOS_PERIODO,
   escopoDosIndicadores,
   normalizarIntervalo,
+  setorEhDaUnidade,
   podeGerenciarIndicadores,
   podeLancarApuracao,
   rotuloMes,
@@ -571,6 +572,7 @@ function Indicadores() {
   const escopo = escopoDosIndicadores(sessao);
   const colaboradorId = sessao?.colaboradorId ?? "";
   const setoresDoEscopo = setoresLiderados(sessao).join("|");
+  const unidadeDoEscopo = sessao?.unidade ?? "";
 
   const recarregar = useCallback(async () => {
     setCarregando(true);
@@ -581,14 +583,17 @@ function Indicadores() {
         listarApuracoes(),
         listarPlanos().catch(() => [] as PlanoAcao[]),
       ]);
-      // Líder de setor vê os indicadores do(s) seu(s) setor(es); os demais, só os que são seus.
+      // Diretoria vê os setores da sua unidade; líder de setor, os setores que lidera;
+      // os demais, só os indicadores em que são responsáveis.
       const setores = new Set(setoresDoEscopo.split("|").filter(Boolean));
       const permitidos = new Set(
         listaIndicadores
           .filter((i) =>
-            escopo === "setor"
-              ? setores.has(normalizarSetor(i.setor))
-              : i.responsavelId === colaboradorId,
+            escopo === "unidade"
+              ? setorEhDaUnidade(i.setor, unidadeDoEscopo)
+              : escopo === "setor"
+                ? setores.has(normalizarSetor(i.setor))
+                : i.responsavelId === colaboradorId,
           )
           .map((i) => i.id),
       );
@@ -601,7 +606,7 @@ function Indicadores() {
     } finally {
       setCarregando(false);
     }
-  }, [escopo, colaboradorId, setoresDoEscopo]);
+  }, [escopo, colaboradorId, setoresDoEscopo, unidadeDoEscopo]);
 
   useEffect(() => {
     void recarregar();
@@ -701,6 +706,28 @@ function Indicadores() {
       .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar os atendimentos."));
   }, []);
 
+  const setoresDoFiltro = useMemo(() => {
+    const nomes = new Set(catalogo.setores.map(unificarSetor));
+    for (const setor of setoresCelula) nomes.add(unificarSetor(setor.nome));
+    // Setor principal e adicionais de cada colaborador também contam como setores existentes.
+    for (const colaborador of catalogo.colaboradores) {
+      if (colaborador.setor) nomes.add(unificarSetor(colaborador.setor));
+      for (const extra of colaborador.setoresAdicionais ?? []) nomes.add(unificarSetor(extra));
+    }
+    for (const indicador of ativos) if (indicador.setor) nomes.add(unificarSetor(indicador.setor));
+    for (const t of tarefas) if (t.departamento) nomes.add(t.departamento);
+    // O Fiscal é dividido por unidade: sai o genérico e ficam Jaguaquara e Maracás.
+    nomes.delete("Fiscal");
+    nomes.add("Fiscal Jaguaquara");
+    nomes.add("Fiscal Maracás");
+    // "Orientação ao Cliente" é tipo de tarefa, não setor: não entra na lista.
+    return [...nomes]
+      .filter((nome) => normalizarSetor(nome) !== "orientacao ao cliente")
+      // Diretoria: só os setores da própria unidade.
+      .filter((nome) => escopo !== "unidade" || setorEhDaUnidade(nome, unidadeDoEscopo))
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [catalogo.setores, catalogo.colaboradores, setoresCelula, ativos, tarefas, escopo, unidadeDoEscopo]);
+
   /** Setores do card de atendimentos: null = sem filtro; undefined = sem dado por setor (card oculto). */
   const setoresAtendimentos: string[] | null | undefined =
     escopo === "proprio"
@@ -713,7 +740,9 @@ function Indicadores() {
             ? [setorDoColaborador]
             : secao === "por-setor" && setorFiltro !== "todos"
               ? [setorFiltro]
-              : null;
+              : escopo === "unidade"
+                ? setoresDoFiltro
+                : null;
   /** Colaborador escolhido em Por Colaborador (visão geral): o card mostra os atendimentos dele. */
   const colaboradorAtendimento =
     escopo === "todos" && secao === "por-colaborador" && colaboradorFiltro !== "todos" ? colaboradorFiltro : null;
@@ -865,6 +894,14 @@ function Indicadores() {
 
   // Reduz as ~400 mil tarefas às do mês uma vez só; os filtros abaixo trabalham sobre essa lista menor.
   const tarefasMes = useMemo(() => tarefasDoMes(tarefas, mesEscolhido), [tarefas, mesEscolhido]);
+  /** Diretoria: as tarefas do mês só dos departamentos da unidade; demais escopos, todas. */
+  const tarefasDoEscopo = useMemo(
+    () =>
+      escopo === "unidade"
+        ? tarefasMes.filter((t) => setorEhDaUnidade(t.departamento, unidadeDoEscopo))
+        : tarefasMes,
+    [tarefasMes, escopo, unidadeDoEscopo],
+  );
   const tarefasFiltradas = useMemo(() => {
     if (escopo === "setor") {
       const setores = new Set(setoresDoEscopo.split("|").filter(Boolean));
@@ -877,7 +914,7 @@ function Indicadores() {
     if (secao === "por-setor" && setorFiltro !== "todos") {
       // Tarefas do departamento do setor, e as de "Orientação ao Cliente" feitas por quem é do setor.
       const membros = catalogo.colaboradores.filter((c) => colaboradorEstaNoSetor(c, setorFiltro));
-      return tarefasMes.filter(
+      return tarefasDoEscopo.filter(
         (t) =>
           t.departamento === setorFiltro ||
           (normalizarSetor(t.departamento) === "orientacao ao cliente" &&
@@ -885,22 +922,23 @@ function Indicadores() {
       );
     }
     if (secao === "por-celula") {
-      const daCelula = tarefasMes.filter((t) => pertenceACelula(t.responsavel));
+      const daCelula = tarefasDoEscopo.filter((t) => pertenceACelula(t.responsavel));
       return colaboradorCelulaFiltro === "todos"
         ? daCelula
         : daCelula.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorCelulaFiltro));
     }
     if (secao === "por-colaborador") {
       const doSetor = membrosDoSetor
-        ? tarefasMes.filter((t) => membrosDoSetor.some((m) => colaboradorCorresponde(t.responsavel, m.nome)))
-        : tarefasMes;
+        ? tarefasDoEscopo.filter((t) => membrosDoSetor.some((m) => colaboradorCorresponde(t.responsavel, m.nome)))
+        : tarefasDoEscopo;
       return colaboradorFiltro === "todos"
         ? doSetor
         : doSetor.filter((t) => colaboradorCorresponde(t.responsavel, colaboradorFiltro));
     }
-    return tarefasMes;
+    return tarefasDoEscopo;
   }, [
     tarefasMes,
+    tarefasDoEscopo,
     secao,
     setorFiltro,
     catalogo.colaboradores,
@@ -929,13 +967,13 @@ function Indicadores() {
   const tarefasRetrabalho = useMemo(
     () =>
       tarefasDoIndicador(
-        (secao === "por-colaborador" ? tarefasFiltradas : tarefasMes).filter(
+        (secao === "por-colaborador" ? tarefasFiltradas : tarefasDoEscopo).filter(
           (t) => normalizarSetor(t.nome) === NOME_RETRABALHO && normalizarSetor(t.departamento).startsWith("contabil"),
         ),
         mesEscolhido,
         "total",
       ),
-    [tarefasFiltradas, tarefasMes, secao, mesEscolhido],
+    [tarefasFiltradas, tarefasDoEscopo, secao, mesEscolhido],
   );
 
   const metricasTarefas = useMemo(
@@ -952,15 +990,17 @@ function Indicadores() {
     [tarefasFiltradas, mesEscolhido, secao],
   );
   /** Por Colaborador: quem aparece no filtro. Com setor, só os colaboradores desse setor no cadastro. */
-  const colaboradoresTarefas = useMemo(
-    () =>
-      membrosDoSetor
-        ? membrosDoSetor.map((c) => c.nome).sort((a, b) => a.localeCompare(b, "pt-BR"))
-        : [...new Set(tarefas.map((t) => t.responsavel).filter(Boolean))].sort((a, b) =>
-            a.localeCompare(b, "pt-BR"),
-          ),
-    [tarefas, membrosDoSetor],
-  );
+  const colaboradoresTarefas = useMemo(() => {
+    if (membrosDoSetor) return membrosDoSetor.map((c) => c.nome).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    // Diretoria: só quem tem tarefas nos setores da unidade.
+    const fonte =
+      escopo === "unidade"
+        ? tarefas.filter((t) => setorEhDaUnidade(t.departamento, unidadeDoEscopo))
+        : tarefas;
+    return [...new Set(fonte.map((t) => t.responsavel).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b, "pt-BR"),
+    );
+  }, [tarefas, membrosDoSetor, escopo, unidadeDoEscopo]);
 
   // Colaborador: só a seção "Por Colaborador", já com o próprio nome selecionado.
   const soProprio = escopo === "proprio";
@@ -1050,20 +1090,6 @@ function Indicadores() {
   function abrirPlano(planoId: string) {
     void router.navigate({ to: "/planos-de-acao", search: { abrir: planoId } });
   }
-
-  const setoresDoFiltro = useMemo(() => {
-    const nomes = new Set(catalogo.setores.map(unificarSetor));
-    for (const indicador of ativos) if (indicador.setor) nomes.add(unificarSetor(indicador.setor));
-    for (const t of tarefas) if (t.departamento) nomes.add(t.departamento);
-    // O Fiscal é dividido por unidade: sai o genérico e ficam Jaguaquara e Maracás.
-    nomes.delete("Fiscal");
-    nomes.add("Fiscal Jaguaquara");
-    nomes.add("Fiscal Maracás");
-    // "Orientação ao Cliente" é tipo de tarefa, não setor: não entra na lista.
-    return [...nomes]
-      .filter((nome) => normalizarSetor(nome) !== "orientacao ao cliente")
-      .sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [catalogo.setores, ativos, tarefas]);
 
   function conteudoLista(lista: Indicador[], vazio: ReactNode) {
     if (carregando) {

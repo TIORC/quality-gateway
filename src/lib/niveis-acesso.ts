@@ -59,6 +59,9 @@ export const NIVEL_AUXILIAR_QUALIDADE = "Auxiliar da Qualidade";
 /** Nível Líder de setor: lidera um ou mais setores (`setores_liderados`). */
 export const NIVEL_LIDER_SETOR = "Líder de setor";
 
+/** Nível Diretoria: vê as informações de todos os setores da sua unidade (somente leitura). */
+export const NIVEL_DIRETORIA = "Diretoria";
+
 /** Níveis que só podem ser atribuídos por quem já tem acesso de gestão. */
 export const NIVEIS_RESERVADOS_GESTAO = new Set<string>([
   NIVEL_GESTOR_QUALIDADE,

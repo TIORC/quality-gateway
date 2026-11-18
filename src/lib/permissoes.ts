@@ -14,6 +14,7 @@ import {
   NIVEIS_ACESSO_TOTAL_POPS,
   NIVEL_AUXILIAR_QUALIDADE,
   NIVEL_DESENVOLVEDOR_SISTEMA,
+  NIVEL_DIRETORIA,
   NIVEL_GESTOR_QUALIDADE,
   NIVEL_LIDER_SETOR,
   NIVEL_SOMENTE_LIBERADOS,
@@ -60,6 +61,9 @@ const ROTAS_QUALIDADE: AppRoutePath[] = TODAS_AS_ROTAS.filter(
 /** Colaborador: públicas + os próprios indicadores. */
 const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
 
+/** Diretoria: públicas + indicadores da própria unidade (somente leitura). */
+const ROTAS_DIRETORIA: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
+
 /**
  * Rotas permitidas por nível (referência para o menu). A regra efetiva está em
  * `rotasPermitidas`, que também considera o setor da Qualidade e a liderança.
@@ -68,7 +72,7 @@ export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
   "Desenvolvedor do Sistema": [...TODAS_AS_ROTAS, ROTA_LOGS],
   "Gestor da Qualidade": [...TODAS_AS_ROTAS, ROTA_LOGS],
   "Auxiliar da Qualidade": TODAS_AS_ROTAS.filter((rota) => rota !== ROTA_LOGS),
-  Diretoria: ROTAS_PUBLICAS,
+  [NIVEL_DIRETORIA]: ROTAS_DIRETORIA,
   "Líder de setor": ROTAS_PUBLICAS,
   Desenvolvedor: ROTAS_PUBLICAS,
   Colaborador: ROTAS_COLABORADOR,
@@ -103,6 +107,7 @@ function rotasGerais(session: UserSession): Set<AppRoutePath> {
   }
   if (ehUsuarioDaQualidade(session)) return new Set(ROTAS_QUALIDADE);
   if (session.nivelAcesso === "Colaborador") return new Set(ROTAS_COLABORADOR);
+  if (session.nivelAcesso === NIVEL_DIRETORIA) return new Set(ROTAS_DIRETORIA);
   return new Set(ROTAS_PUBLICAS);
 }
 
