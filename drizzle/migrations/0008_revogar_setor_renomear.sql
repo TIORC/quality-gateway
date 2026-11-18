@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.setor_renomear_em_tudo(text, text) FROM PUBLIC, anon, authenticated;
