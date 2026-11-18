@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      academy_banners: {
+        Row: {
+          alt: string
+          altura: number
+          criado_em: string
+          criado_por: string | null
+          id: string
+          largura: number
+          src: string
+        }
+        Insert: {
+          alt?: string
+          altura: number
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          largura: number
+          src: string
+        }
+        Update: {
+          alt?: string
+          altura?: number
+          criado_em?: string
+          criado_por?: string | null
+          id?: string
+          largura?: number
+          src?: string
+        }
+        Relationships: []
+      }
       apuracoes: {
         Row: {
           created_at: string
@@ -543,8 +573,8 @@ export type Database = {
           processos_lidos: number
           processos_visualizados: number
           setor: string
-          setores_liderados: string[]
           setores_adicionais: string[]
+          setores_liderados: string[]
           status: string
           ultimo_acesso: string | null
           unidade: string
@@ -568,8 +598,8 @@ export type Database = {
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
-          setores_liderados?: string[]
           setores_adicionais?: string[]
+          setores_liderados?: string[]
           status?: string
           ultimo_acesso?: string | null
           unidade?: string
@@ -593,8 +623,8 @@ export type Database = {
           processos_lidos?: number
           processos_visualizados?: number
           setor?: string
-          setores_liderados?: string[]
           setores_adicionais?: string[]
+          setores_liderados?: string[]
           status?: string
           ultimo_acesso?: string | null
           unidade?: string
@@ -751,6 +781,51 @@ export type Database = {
           id?: string
           modulos_perm?: Json
           nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hippocampus_vault_config: {
+        Row: {
+          id: boolean
+          key_hash: string
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          key_hash: string
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          key_hash?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      hippocampus_vault_items: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          title?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1167,16 +1242,23 @@ export type Database = {
           cor: string
           created_at: string
           descricao: string
+          dono_padrao_email: string
+          dono_padrao_id: string
+          dono_padrao_nome: string
           eficacia_dias: number
           etapas: Json
           exige_parecer_apuracao: boolean
           exige_retorno_cliente: boolean
           icone: string
           id: string
+          link_externo: string
           nome: string
           ordem: number
+          permite_anexos: boolean
           setor_padrao: string
+          sigla: string
           sla_dias: Json
+          tem_julgamento: boolean | null
           updated_at: string
         }
         Insert: {
@@ -1184,16 +1266,23 @@ export type Database = {
           cor?: string
           created_at?: string
           descricao?: string
+          dono_padrao_email?: string
+          dono_padrao_id?: string
+          dono_padrao_nome?: string
           eficacia_dias?: number
           etapas?: Json
           exige_parecer_apuracao?: boolean
           exige_retorno_cliente?: boolean
           icone?: string
           id?: string
+          link_externo?: string
           nome: string
           ordem?: number
+          permite_anexos?: boolean
           setor_padrao?: string
+          sigla?: string
           sla_dias?: Json
+          tem_julgamento?: boolean | null
           updated_at?: string
         }
         Update: {
@@ -1201,16 +1290,23 @@ export type Database = {
           cor?: string
           created_at?: string
           descricao?: string
+          dono_padrao_email?: string
+          dono_padrao_id?: string
+          dono_padrao_nome?: string
           eficacia_dias?: number
           etapas?: Json
           exige_parecer_apuracao?: boolean
           exige_retorno_cliente?: boolean
           icone?: string
           id?: string
+          link_externo?: string
           nome?: string
           ordem?: number
+          permite_anexos?: boolean
           setor_padrao?: string
+          sigla?: string
           sla_dias?: Json
+          tem_julgamento?: boolean | null
           updated_at?: string
         }
         Relationships: []
@@ -2341,6 +2437,97 @@ export type Database = {
         }
         Relationships: []
       }
+      reconhecimento_comentarios: {
+        Row: {
+          autor_email: string
+          autor_nome: string
+          criado_em: string
+          id: string
+          reconhecimento_id: string
+          texto: string
+        }
+        Insert: {
+          autor_email: string
+          autor_nome?: string
+          criado_em?: string
+          id?: string
+          reconhecimento_id: string
+          texto: string
+        }
+        Update: {
+          autor_email?: string
+          autor_nome?: string
+          criado_em?: string
+          id?: string
+          reconhecimento_id?: string
+          texto?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconhecimento_comentarios_reconhecimento_id_fkey"
+            columns: ["reconhecimento_id"]
+            isOneToOne: false
+            referencedRelation: "reconhecimentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reconhecimento_curtidas: {
+        Row: {
+          colaborador_email: string
+          criado_em: string
+          reconhecimento_id: string
+        }
+        Insert: {
+          colaborador_email: string
+          criado_em?: string
+          reconhecimento_id: string
+        }
+        Update: {
+          colaborador_email?: string
+          criado_em?: string
+          reconhecimento_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconhecimento_curtidas_reconhecimento_id_fkey"
+            columns: ["reconhecimento_id"]
+            isOneToOne: false
+            referencedRelation: "reconhecimentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reconhecimentos: {
+        Row: {
+          alvo: string | null
+          autor_email: string
+          autor_foto: string | null
+          autor_nome: string
+          criado_em: string
+          id: string
+          mensagem: string
+        }
+        Insert: {
+          alvo?: string | null
+          autor_email: string
+          autor_foto?: string | null
+          autor_nome?: string
+          criado_em?: string
+          id?: string
+          mensagem: string
+        }
+        Update: {
+          alvo?: string | null
+          autor_email?: string
+          autor_foto?: string | null
+          autor_nome?: string
+          criado_em?: string
+          id?: string
+          mensagem?: string
+        }
+        Relationships: []
+      }
       setores: {
         Row: {
           created_at: string
@@ -2718,6 +2905,54 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      hippocampus_vault_add: {
+        Args: { p_content: string; p_keyword: string; p_title: string }
+        Returns: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          title: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "hippocampus_vault_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      hippocampus_vault_check_member: { Args: never; Returns: undefined }
+      hippocampus_vault_delete: {
+        Args: { p_id: string; p_keyword: string }
+        Returns: undefined
+      }
+      hippocampus_vault_list: {
+        Args: { p_keyword: string }
+        Returns: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          title: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "hippocampus_vault_items"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      hippocampus_vault_set_keyword: {
+        Args: { p_keyword: string }
+        Returns: undefined
+      }
+      hippocampus_vault_status: { Args: never; Returns: boolean }
+      hippocampus_vault_verify: {
+        Args: { p_keyword: string }
+        Returns: undefined
       }
       is_super_deleter: { Args: never; Returns: boolean }
       mudar_ativo_tipo_reuniao: {
