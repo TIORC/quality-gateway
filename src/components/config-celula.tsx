@@ -228,12 +228,21 @@ function CelulaDialog({ celula, setores, colaboradores, onFechar, onSalvo }: Cel
     );
   }
 
-  // Só os colaboradores do setor escolhido aparecem na lista.
+  // Por padrão, só os colaboradores do setor escolhido aparecem na lista.
   const nomeSetor = setores.find((s) => s.id === setorId)?.nome ?? "";
   const doSetor = nomeSetor
     ? colaboradores.filter((c) => normalizar(c.setor ?? "") === normalizar(nomeSetor))
     : [];
-  const visiveis = doSetor.filter((c) => normalizar(c.nome).includes(normalizar(busca)));
+  const buscaNormalizada = normalizar(busca);
+  const visiveis = doSetor.filter((c) => normalizar(c.nome).includes(buscaNormalizada));
+  // Com busca digitada, colaboradores de outros setores também aparecem (rotulados com o setor),
+  // para poderem entrar na célula.
+  const deOutrosSetoresVisiveis = buscaNormalizada && nomeSetor
+    ? colaboradores.filter(
+        (c) => !doSetor.includes(c) && normalizar(c.nome).includes(buscaNormalizada),
+      )
+    : [];
+  const listaExibida = [...visiveis, ...deOutrosSetoresVisiveis];
   // Selecionados de outros setores continuam na célula, mesmo fora da lista.
   const deOutrosSetores = selecionados.filter((id) => !doSetor.some((c) => c.id === id)).length;
 
@@ -311,28 +320,34 @@ function CelulaDialog({ celula, setores, colaboradores, onFechar, onSalvo }: Cel
                   onChange={(evento) => setBusca(evento.target.value)}
                 />
                 <div className="max-h-60 divide-y divide-[#E2E8F0] overflow-y-auto rounded-md border border-[#E2E8F0]">
-                  {visiveis.length === 0 ? (
+                  {listaExibida.length === 0 ? (
                     <p className="px-3 py-4 text-center text-sm text-[#64748B]">
                       Nenhum colaborador neste setor.
                     </p>
                   ) : (
-                    visiveis.map((colaborador) => (
-                      <label
-                        key={colaborador.id}
-                        className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-[#F8FAFC]"
-                      >
-                        <Checkbox
-                          checked={selecionados.includes(colaborador.id)}
-                          onCheckedChange={() => alternar(colaborador.id)}
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-sm text-[#1F2937]">{colaborador.nome}</span>
-                          {colaborador.cargo ? (
-                            <span className="block text-xs text-[#64748B]">{colaborador.cargo}</span>
-                          ) : null}
-                        </span>
-                      </label>
-                    ))
+                    listaExibida.map((colaborador) => {
+                      const doOutroSetor = !doSetor.includes(colaborador);
+                      const legenda = [doOutroSetor ? colaborador.setor : null, colaborador.cargo]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <label
+                          key={colaborador.id}
+                          className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-[#F8FAFC]"
+                        >
+                          <Checkbox
+                            checked={selecionados.includes(colaborador.id)}
+                            onCheckedChange={() => alternar(colaborador.id)}
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm text-[#1F2937]">{colaborador.nome}</span>
+                            {legenda ? (
+                              <span className="block text-xs text-[#64748B]">{legenda}</span>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })
                   )}
                 </div>
                 {deOutrosSetores > 0 ? (
