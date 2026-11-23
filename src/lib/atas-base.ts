@@ -135,38 +135,28 @@ export async function listarAtas(): Promise<Ata[]> {
   }
 }
 
-let cacheUsuarioPorEmail: Map<string, string> | null = null;
-
 /**
  * Devolve o id de `public.usuarios` pelo e-mail do colaborador logado, para o
  * front decidir participação na ata (espelha `usuario_id_por_email` no banco).
- * Carrega a lista uma única vez e guarda em memória.
+ *
+ * Consulta direta por e-mail a cada chamada, sem cache: uma falha antiga não
+ * fica presa em memória até recarregar a página. Erros são propagados, para
+ * quem chama poder avisar o usuário. `null` significa "e-mail sem cadastro".
  */
 export async function usuarioIdPorEmail(email: unknown): Promise<string | null> {
   const limpo = String(email ?? "")
     .trim()
     .toLowerCase();
   if (!limpo) return null;
-  if (!cacheUsuarioPorEmail) {
-    const mapa = new Map<string, string>();
-    try {
-      const client = clienteLivre();
-      const { data, error } = await client.from("usuarios").select("id,email");
-      if (!error) {
-        for (const row of data ?? []) {
-          const linha = row as Record<string, unknown>;
-          const valor = String(linha["email"] ?? "")
-            .trim()
-            .toLowerCase();
-          if (valor && linha["id"]) mapa.set(valor, String(linha["id"]));
-        }
-      }
-    } catch {
-      // Sem cache diante de falha; a permissão real é validada no banco.
-    }
-    cacheUsuarioPorEmail = mapa;
-  }
-  return cacheUsuarioPorEmail.get(limpo) ?? null;
+  const client = clienteLivre();
+  const { data, error } = await client
+    .from("usuarios")
+    .select("id,email")
+    .ilike("email", limpo)
+    .limit(1);
+  if (error) throw traduzErro(error);
+  const linha = (data ?? [])[0] as Record<string, unknown> | undefined;
+  return linha?.["id"] ? String(linha["id"]) : null;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -181,3 +181,11 @@ export function podeConfigurarOcorrencias(sessao: UserSession | null | undefined
 export function podeVerDashboardOcorrencias(sessao: UserSession | null | undefined): boolean {
   return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
 }
+
+/**
+ * Exportar PDF das ocorrências (lista e relatório de uma ocorrência): somente
+ * administradores, o setor da Qualidade (e sua liderança) e o Desenvolvedor do Sistema.
+ */
+export function podeExportarOcorrencias(sessao: UserSession | null | undefined): boolean {
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
+}

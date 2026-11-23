@@ -1657,6 +1657,7 @@ export type Database = {
           descricao: string
           detalhamento: string
           id: string
+          justificativa: string
           origem: string
           origem_outros: string
           prazo: string | null
@@ -1667,6 +1668,8 @@ export type Database = {
           responsavel_nome: string
           seguidores: string[]
           seguidores_ids: string[]
+          suporte: string[]
+          suporte_ids: string[]
           setor: string
           status: string
           tempo_segundos: number
@@ -1685,6 +1688,7 @@ export type Database = {
           descricao?: string
           detalhamento?: string
           id?: string
+          justificativa?: string
           origem?: string
           origem_outros?: string
           prazo?: string | null
@@ -1695,6 +1699,8 @@ export type Database = {
           responsavel_nome?: string
           seguidores?: string[]
           seguidores_ids?: string[]
+          suporte?: string[]
+          suporte_ids?: string[]
           setor?: string
           status?: string
           tempo_segundos?: number
@@ -1713,6 +1719,7 @@ export type Database = {
           descricao?: string
           detalhamento?: string
           id?: string
+          justificativa?: string
           origem?: string
           origem_outros?: string
           prazo?: string | null
@@ -1723,6 +1730,8 @@ export type Database = {
           responsavel_nome?: string
           seguidores?: string[]
           seguidores_ids?: string[]
+          suporte?: string[]
+          suporte_ids?: string[]
           setor?: string
           status?: string
           tempo_segundos?: number

@@ -60,7 +60,7 @@ export function GraficoNpsPredio({ apuracao }: { apuracao: ApuracaoNps }) {
               textAnchor="middle"
               fontSize="16"
               fontWeight="700"
-              fill="#0F172A"
+              className="fill-[#0F172A] dark:fill-white"
             >
               {votos}
             </text>
@@ -70,11 +70,17 @@ export function GraficoNpsPredio({ apuracao }: { apuracao: ApuracaoNps }) {
               textAnchor="middle"
               fontSize="13"
               fontWeight="600"
-              fill="#0F172A"
+              className="fill-[#0F172A] dark:fill-white"
             >
               {grupo.rotulo}
             </text>
-            <text x={centro} y={221} textAnchor="middle" fontSize="11" fill="#64748B">
+            <text
+              x={centro}
+              y={221}
+              textAnchor="middle"
+              fontSize="11"
+              className="fill-[#64748B] dark:fill-white"
+            >
               {grupo.faixa}
             </text>
           </g>

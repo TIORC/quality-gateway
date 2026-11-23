@@ -107,7 +107,7 @@ function CartaoPergunta({
         pergunta.tipo === "caixas_selecao" ||
         pergunta.tipo === "sim_nao") && <GraficoOpcoes pergunta={pergunta} valores={valores} />}
       {(pergunta.tipo === "texto_curto" || pergunta.tipo === "texto_longo") && (
-        <RespostasTexto valores={valores} />
+        <RespostasTexto pares={pares} />
       )}
     </div>
   );
@@ -140,7 +140,7 @@ function GraficoEscala({
       </p>
       <ul className="grid gap-1 text-sm text-[#334155]">
         {dados
-          .filter((d) => d.total > 0)
+          .filter((d) => d.total > 0 && Number(d.rotulo) <= 8)
           .map((d) => (
             <li key={d.rotulo}>
               <span className="font-semibold">Nota {d.rotulo}:</span> {d.empresas.join(", ")}
@@ -180,7 +180,7 @@ function GraficoNps({
         </span>
       </p>
       <ul className="grid gap-1 text-sm text-[#334155]">
-        {GRUPOS_NPS.filter((g) => empresasPorGrupo[g.chave].length > 0).map((g) => (
+        {GRUPOS_NPS.filter((g) => g.chave !== "promotores" && empresasPorGrupo[g.chave].length > 0).map((g) => (
           <li key={g.chave}>
             <span className="font-semibold">
               {g.rotulo} ({g.faixa}):
@@ -286,26 +286,34 @@ const ESTILO_SENTIMENTO = {
   neutra: "bg-[#F8FAFC] text-[#334155]",
 } as const;
 
-function RespostasTexto({ valores }: { valores: (number | string | string[])[] }) {
-  if (valores.length === 0) {
+/** Primeiro nome da empresa: a primeira palavra da razão social. */
+function primeiroNomeEmpresa(empresa: string): string {
+  if (empresa === "Empresa não informada") return empresa;
+  return empresa.trim().split(/\s+/)[0] || empresa;
+}
+
+function RespostasTexto({
+  pares,
+}: {
+  pares: { empresa: string; valor: number | string | string[] }[];
+}) {
+  if (pares.length === 0) {
     return <p className="text-sm text-[#64748B]">Nenhuma resposta ainda.</p>;
   }
+  // Todas as respostas, da mais recente para a mais antiga. A lista tem rolagem para não alongar a página.
   return (
-    <ul className="grid gap-2 text-sm">
-      {valores
-        .slice(-5)
-        .reverse()
-        .map((valor, indice) => {
-          const texto = String(valor);
-          return (
-            <li
-              key={indice}
-              className={`rounded-md px-3 py-2 ${ESTILO_SENTIMENTO[classificarTexto(texto)]}`}
-            >
-              {texto}
-            </li>
-          );
-        })}
+    <ul className="grid max-h-96 gap-2 overflow-y-auto pr-1 text-sm">
+      {[...pares].reverse().map((par, indice) => {
+        const texto = String(par.valor);
+        return (
+          <li
+            key={indice}
+            className={`rounded-md px-3 py-2 ${ESTILO_SENTIMENTO[classificarTexto(texto)]}`}
+          >
+            <span className="font-semibold">{primeiroNomeEmpresa(par.empresa)}:</span> {texto}
+          </li>
+        );
+      })}
     </ul>
   );
 }

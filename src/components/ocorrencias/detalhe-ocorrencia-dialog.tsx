@@ -6,7 +6,7 @@
  * Visibilidade por papel (solicitante vê a viagem simplificada; Qualidade e
  * encarregado veem os detalhes internos e as ações permitidas).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Paperclip,
   Plus,
+  Printer,
   Send,
   type LucideIcon,
 } from "lucide-react";
@@ -150,6 +151,8 @@ interface DetalheOcorrenciaDialogProps {
   ocorrencia: Ocorrencia | null;
   /** Chamado após qualquer alteração para o pai atualizar a lista. */
   onAlterada?: () => void;
+  /** Imprime o relatório só desta ocorrência (botão no cabeçalho). */
+  aoImprimir?: (o: Ocorrencia) => void;
 }
 
 /** Tamanho máximo de cada anexo do relatório de eficácia (fotos, vídeos e documentos). */
@@ -160,6 +163,7 @@ export function DetalheOcorrenciaDialog({
   onClose,
   ocorrencia,
   onAlterada,
+  aoImprimir,
 }: DetalheOcorrenciaDialogProps) {
   return (
     <Dialog open={aberto} onOpenChange={(a) => !a && onClose()}>
@@ -169,6 +173,7 @@ export function DetalheOcorrenciaDialog({
           ocorrencia={ocorrencia}
           onFechar={onClose}
           onAlterada={onAlterada}
+          aoImprimir={aoImprimir}
         />
       )}
     </Dialog>
@@ -179,10 +184,12 @@ function DetalheCorpo({
   ocorrencia: inicial,
   onFechar,
   onAlterada,
+  aoImprimir,
 }: {
   ocorrencia: Ocorrencia;
   onFechar: () => void;
   onAlterada?: () => void;
+  aoImprimir?: (o: Ocorrencia) => void;
 }) {
   const session = usePanelSession();
   const [o, setO] = useState<Ocorrencia>(inicial);
@@ -643,7 +650,7 @@ function DetalheCorpo({
     gerencia && (o.macroAtual === "avaliacao_eficacia" || o.status !== "em_andamento");
 
   return (
-    <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
+    <DialogContent className="max-h-[92vh] w-[96vw] max-w-[1400px] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[#1E3A8A]">{o.numero}</span>
@@ -682,6 +689,14 @@ function DetalheCorpo({
           {o.tipoNome} · aberto por {o.abertaPorNome || o.abertaPorSetor || "—"} · responsável:{" "}
           {o.responsavelNome || "a definir"}
         </DialogDescription>
+        {aoImprimir && (
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={() => aoImprimir(o)}>
+              <Printer className="h-3.5 w-3.5" />
+              Imprimir ocorrência
+            </Button>
+          </div>
+        )}
       </DialogHeader>
 
       {tipoDaOcorrencia?.linkExterno && (
@@ -699,105 +714,574 @@ function DetalheCorpo({
       {carregando ? (
         <div className="py-12 text-center text-sm text-[#64748B]">Carregando a viagem…</div>
       ) : (
-        <div className="space-y-4">
-          {(o.donoQualidadeNome || podeOperarOcorrencias(session)) && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Tratativa
-              </span>
-              <span className="text-[13px] font-semibold text-[#1F2937]">
-                {o.donoQualidadeNome
-                  ? `Com ${o.donoQualidadeNome}`
-                  : o.status === "encerrada"
-                    ? "Sem responsável"
-                    : "Aguardando alguém da Qualidade"}
-              </span>
-              {podeAssumir && !o.donoQualidadeNome && (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="ocorrencia-botao-tremer"
-                  onClick={() => void puxarTratativa()}
-                >
-                  <Hand className="h-4 w-4" />
-                  Puxar tratativa
-                </Button>
-              )}
-              {podeLiberar && (
-                <Button type="button" size="sm" variant="outline" onClick={() => void soltarTratativa()}>
-                  Liberar tratativa
-                </Button>
-              )}
-            </div>
-          )}
-
-          {o.impedidaEm && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#F59E0B] bg-[#FFFBEB] px-4 py-3">
-              <div className="text-[13px] text-[#92400E]">
-                <p className="font-semibold">
-                  Etapa impedida desde {formatarPrazo(o.impedidaEm.slice(0, 10))}
-                </p>
-                {o.impedidaMotivo && <p className="mt-0.5 whitespace-pre-wrap">{o.impedidaMotivo}</p>}
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_440px]">
+          <div className="min-w-0 space-y-4">
+            {(o.donoQualidadeNome || podeOperarOcorrencias(session)) && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Tratativa
+                </span>
+                <span className="text-[13px] font-semibold text-[#1F2937]">
+                  {o.donoQualidadeNome
+                    ? `Com ${o.donoQualidadeNome}`
+                    : o.status === "encerrada"
+                      ? "Sem responsável"
+                      : "Aguardando alguém da Qualidade"}
+                </span>
+                {podeAssumir && !o.donoQualidadeNome && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="ocorrencia-botao-tremer"
+                    onClick={() => void puxarTratativa()}
+                  >
+                    <Hand className="h-4 w-4" />
+                    Puxar tratativa
+                  </Button>
+                )}
+                {podeLiberar && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => void soltarTratativa()}>
+                    Liberar tratativa
+                  </Button>
+                )}
               </div>
-              {podeMover && (
-                <Button type="button" size="sm" variant="outline" onClick={() => void retomarEtapa()}>
-                  Retomar prazo
+            )}
+
+            {o.impedidaEm && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#F59E0B] bg-[#FFFBEB] px-4 py-3">
+                <div className="text-[13px] text-[#92400E]">
+                  <p className="font-semibold">
+                    Etapa impedida desde {formatarPrazo(o.impedidaEm.slice(0, 10))}
+                  </p>
+                  {o.impedidaMotivo && <p className="mt-0.5 whitespace-pre-wrap">{o.impedidaMotivo}</p>}
+                </div>
+                {podeMover && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => void retomarEtapa()}>
+                    Retomar prazo
+                  </Button>
+                )}
+              </div>
+            )}
+            {!o.impedidaEm && podeMover && o.status !== "encerrada" && (
+              <div className="flex justify-end">
+                <Button type="button" size="sm" className="border-0 bg-[#DC2626] text-white hover:bg-[#B91C1C]" onClick={() => setImpedindoAberto(true)}>
+                  Marcar etapa como impedida
                 </Button>
+              </div>
+            )}
+
+            <MetroLinha ocorrencia={o} etapas={etapas} eventos={eventos} visao={visao} />
+
+
+            {podeDefinirPrioridade(session) && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Prioridade
+                </span>
+                <Select
+                  value={o.prioridade}
+                  onValueChange={(v) => void mudarPrioridade(v as PrioridadeOcorrencia)}
+                >
+                  <SelectTrigger className="w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORIDADES_OCORRENCIA.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {PRIORIDADE_LABELS[p]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
+              </div>
+            )}
+
+            {!podeDefinirPrioridade(session) && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Prioridade
+                </span>
+                <span className="text-[13px] font-semibold text-[#1F2937]">
+                  {PRIORIDADE_LABELS[o.prioridade]}
+                </span>
+                <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
+              </div>
+            )}
+
+            {o.status !== "encerrada" && camposEtapa.length > 0 && verInternos && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Formulário da etapa · {subEtapa?.nome}
+                </h3>
+                <div className="mt-3">
+                  <FormularioDinamico
+                    campos={camposEtapa}
+                    respostas={etapaRespostas}
+                    onChange={(id, valor) => setEtapaRespostas((r) => ({ ...r, [id]: valor }))}
+                    desabilitado={!pode}
+                  />
+                </div>
+              </section>
+            )}
+
+            {pode && acoes.length > 0 && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Ações da etapa
+                </h3>
+                <Textarea
+                  className="mt-2 min-h-[60px]"
+                  placeholder={
+                    noFechamento
+                      ? "Parecer final (obrigatório para fechar a ocorrência)…"
+                      : o.macroAtual === "retorno_cliente"
+                        ? "Registre o retorno dado ao cliente (obrigatório)…"
+                        : "Observação da ação (opcional)…"
+                  }
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {acoes.map((a) => (
+                    <Button
+                      key={a}
+                      type="button"
+                      variant={a === "aprovar" ? "default" : "outline"}
+                      size="sm"
+                      className={a === "aprovar" ? "bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" : ""}
+                      onClick={() => void executarAcao(a)}
+                    >
+                      {ACOES_ETAPA_LABELS[a]}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {verInternos && o.macroAtual === "julgamento" && (
+              <RelatorioJulgamento
+                key={`relatorio-${o.id}`}
+                ocorrencia={o}
+                session={session}
+                editavel={podeMover && o.status !== "encerrada"}
+                onSalvo={recarregar}
+              />
+            )}
+
+            {verInternos && o.macroAtual === "julgamento" && (
+              <JulgamentoPartes
+                key={`julgamento-${o.id}`}
+                ocorrencia={o}
+                session={session}
+                editavel={podeMover && o.status !== "encerrada"}
+                gerencia={gerencia}
+                onSalvo={recarregar}
+              />
+            )}
+
+            {verInternos && o.macroAtual === "apuracao" && (
+              <ChecklistMulta
+                key={`multa-${o.id}`}
+                ocorrencia={o}
+                session={session}
+                editavel={podeMover && o.status !== "encerrada"}
+                onSalvo={recarregar}
+              />
+            )}
+
+            {verInternos && o.macroAtual === "apuracao" && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Ferramenta de apuração
+                </h3>
+                <FerramentaApuracao
+                  key={o.id}
+                  ocorrencia={o}
+                  editavel={podeMover && o.status !== "encerrada"}
+                  salvando={salvandoApuracao}
+                  onSalvar={salvarApuracao}
+                />
+                {anexosApuracaoAntiga.length > 0 && (
+                  <div className="mt-4">
+                    <p className="mb-2 text-[12px] text-[#64748B]">Anexos da apuração anterior</p>
+                    <AnexosVisualizador anexos={anexosApuracaoAntiga} />
+                  </div>
+                )}
+              </section>
+            )}
+
+            {verInternos && o.macroAtual === "apuracao" && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Retorno para quem abriu
+                </h3>
+                <p className="mt-1 text-[13px] text-[#64748B]">
+                  Envia um recado parcial ao solicitante agora. O retorno final segue na finalização.
+                </p>
+                {eventos.some((ev) => ev.acao === RETORNO_PARCIAL_ACAO) && (
+                  <ul className="mt-3 space-y-2">
+                    {eventos
+                      .filter((ev) => ev.acao === RETORNO_PARCIAL_ACAO)
+                      .map((ev) => (
+                        <li key={ev.id} className="rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
+                          <p className="whitespace-pre-wrap">{ev.comentario}</p>
+                          <p className="mt-1 text-[11px] text-[#94A3B8]">
+                            {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
+                          </p>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                {podeMover &&
+                  o.status !== "encerrada" &&
+                  (retornoParcialAberto ? (
+                    <div className="mt-3 space-y-2">
+                      <Textarea
+                        className="min-h-[100px]"
+                        maxLength={LIMITE_TEXTO_OCORRENCIA}
+                        placeholder="Escreva o recado para quem abriu…"
+                        value={textoRetornoParcial}
+                        onChange={(e) => setTextoRetornoParcial(e.target.value)}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setRetornoParcialAberto(false);
+                            setTextoRetornoParcial("");
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={enviandoRetornoParcial || !textoRetornoParcial.trim()}
+                          className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                          onClick={() => void enviarRetornoParcialAgora()}
+                        >
+                          {enviandoRetornoParcial ? "Enviando…" : "Enviar retorno"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setRetornoParcialAberto(true)}
+                      className="mt-3 w-full rounded-lg border border-[#D9E0EA] px-4 py-3 text-left text-[14px] font-semibold text-[#1E3A8A] hover:bg-[#F8FAFC]"
+                    >
+                      + Escrever retorno parcial
+                    </button>
+                  ))}
+              </section>
+            )}
+
+            {verInternos && o.macroAtual === "avaliacao_eficacia" && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Ações que foram executadas
+                </h3>
+                <div className="mt-2">
+                  <AcoesExecutadas
+                    key={o.id}
+                    ocorrencia={o}
+                    editavel={podeMover && o.status !== "encerrada"}
+                    onAlterada={recarregar}
+                  />
+                </div>
+              </section>
+            )}
+
+            {verInternos && o.macroAtual === "apuracao" && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Evidências levantadas
+                </h3>
+                <div className="mt-2">
+                  <EvidenciasApuracao
+                    key={o.id}
+                    ocorrencia={o}
+                    editavel={podeMover && o.status !== "encerrada"}
+                    permiteAnexos={tipoDaOcorrencia?.permiteAnexos !== false}
+                    onAlterada={recarregar}
+                  />
+                </div>
+              </section>
+            )}
+
+            {!tipoEhErroOperacional({ nome: o.tipoNome }) && (setoresEnvolvidos.length > 0 || (podeMover && o.status !== "encerrada")) &&
+              (verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor)) && (
+                <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                    Ciência dos setores envolvidos
+                  </h3>
+                  <ul className="mt-2 space-y-2">
+                    {setoresEnvolvidos.map((setor) => {
+                      const c = ciencias[setor];
+                      const podeMarcar =
+                        !c &&
+                        o.status !== "encerrada" &&
+                        (gerencia || normalizarSetor(setor) === meuSetor);
+                      return (
+                        <li
+                          key={setor}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[13px]"
+                        >
+                          <span className="font-medium text-[#1F2937]">{setor}</span>
+                          {c ? (
+                            <span className="text-[12px] text-[#065F46]">
+                              Ciente · {c.por || "—"} · {formatarDataHoraBrasilia(c.em)}
+                            </span>
+                          ) : podeMarcar ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void darCiencia(setor)}
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              Marcar ciência
+                            </Button>
+                          ) : (
+                            <span className="text-[12px] text-[#92400E]">Aguardando ciência</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {podeMover && o.status !== "encerrada" && (
+                    <div className="mt-4 space-y-2 border-t border-[#E9EEF5] pt-3">
+                      <p className="text-[12px] font-semibold text-[#475569]">Adicionar setores envolvidos</p>
+                      <CampoSetores valor={novosSetores} onChange={(v) => setNovosSetores(Array.isArray(v) ? (v as string[]) : [])} />
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={salvandoSetores || novosSetores.length === 0}
+                          className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                          onClick={() => void adicionarSetores()}
+                        >
+                          {salvandoSetores ? "Adicionando…" : "Adicionar setores"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </section>
               )}
-            </div>
-          )}
-          {!o.impedidaEm && podeMover && o.status !== "encerrada" && (
-            <div className="flex justify-end">
-              <Button type="button" size="sm" className="border-0 bg-[#DC2626] text-white hover:bg-[#B91C1C]" onClick={() => setImpedindoAberto(true)}>
-                Marcar etapa como impedida
-              </Button>
-            </div>
-          )}
 
-          <MetroLinha ocorrencia={o} etapas={etapas} eventos={eventos} visao={visao} />
+            {podeConversar && o.macroAtual === "comunicacao" && (
+              <ChatComunicacao
+                ocorrencia={o}
+                setoresEnvolvidos={setoresEnvolvidos}
+                mensagens={mensagensComunicacao}
+                session={session}
+                podeEnviar={o.macroAtual === "comunicacao" && o.status !== "encerrada" && podeConversar}
+                onEnviada={() => void recarregar()}
+              />
+            )}
 
-          {mostraAbertura && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Dados da abertura
-              </h3>
-              <dl className="mt-2 grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-2">
-                {ehTipoNaoConformidade({ nome: o.tipoNome }) && formulario.length === 0 ? (
-                  <>
-                    <div>
-                      <dt className="text-[11px] text-[#94A3B8]">Origem</dt>
-                      <dd className="text-[#334155]">{textoResposta(o.respostas["origem_nc"])}</dd>
+            {verInternos &&
+              (o.macroAtual === "julgamento" || participantesJulgamentoDe(o).length > 0) && (
+                <ParticipantesJulgamento
+                  key={`participantes-${o.id}`}
+                  ocorrencia={o}
+                  session={session}
+                  colaboradores={catalogo.colaboradores}
+                  editavel={podeMover && o.status !== "encerrada" && o.macroAtual === "julgamento"}
+                  onSalvo={recarregar}
+                />
+              )}
+
+            {o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
+              <PlanoAcoesOcorrencia
+                ocorrencia={o}
+                session={session}
+                colaboradores={catalogo.colaboradores}
+                podeSugerir={podeSugerirAcao(session, o)}
+                podeValidar={podeOperarOcorrencias(session)}
+              />
+            )}
+
+            {tipoEhErroOperacional({ nome: o.tipoNome }) && o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
+              <NaoConformidadeDoErro ocorrencia={o} session={session} onAtualizado={recarregar} />
+            )}
+
+            {o.status === "encerrada" && (
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" size="sm" onClick={() => setRetornoAberto(true)}>
+                  Ver retorno da Qualidade
+                </Button>
+              </div>
+            )}
+
+            {o.parecerFinal && (
+              <section className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15803D]">
+                  Parecer final
+                  {o.parecerEm ? ` · ${formatarPrazo(o.parecerEm)}` : ""}
+                </h3>
+                <p className="mt-2 whitespace-pre-wrap text-[13px] text-[#14532D]">
+                  {o.parecerFinal}
+                </p>
+                {o.eficaciaPrevistaEm && o.status !== "encerrada" && (
+                  <p className="mt-2 text-[12px] text-[#166534]">
+                    Avaliação de eficácia prevista para {formatarPrazo(o.eficaciaPrevistaEm)} (
+                    {o.eficaciaDias} dias após o fechamento).
+                  </p>
+                )}
+              </section>
+            )}
+
+            {verInternos && o.macroAtual === "apuracao" && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                    Parecer final
+                  </h3>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!tipoDaOcorrencia?.parecerApuracao}
+                    disabled={!podeOperarOcorrencias(session) || !tipoDaOcorrencia}
+                    onClick={() => void alternarParecerObrigatorio()}
+                    className="inline-flex items-center gap-2 text-[12px] text-[#334155] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        tipoDaOcorrencia?.parecerApuracao ? "bg-[#1E3A8A]" : "bg-[#CBD5E1]"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                          tipoDaOcorrencia?.parecerApuracao ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
+                    </span>
+                    Obrigatório neste tipo
+                  </button>
+                </div>
+                <p className="mt-1 text-[12px] text-[#64748B]">
+                  Quando ativo, a Apuração só avança com o parecer registrado. Alterável pela Qualidade e pelo Desenvolvedor do Sistema; vale para todas as ocorrências deste tipo.
+                </p>
+                {podeMover && o.status !== "encerrada" ? (
+                  <div className="mt-3 space-y-2">
+                    <Textarea
+                      className="min-h-[110px]"
+                      maxLength={LIMITE_TEXTO_OCORRENCIA}
+                      placeholder="Escreva o parecer final da apuração…"
+                      value={textoParecer}
+                      onChange={(e) => setTextoParecer(e.target.value)}
+                    />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[11px] text-[#64748B]">
+                        {parecerSalvo
+                          ? `Último registro: ${parecerSalvo.salvoPorNome || "—"} · ${formatarDataHoraBrasilia(parecerSalvo.salvoEm)}`
+                          : "Ainda não registrado."}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={salvandoParecer || !textoParecer.trim()}
+                        className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+                        onClick={() => void salvarParecer()}
+                      >
+                        {salvandoParecer ? "Salvando…" : "Salvar parecer"}
+                      </Button>
                     </div>
-                    <div>
-                      <dt className="text-[11px] text-[#94A3B8]">Área envolvida</dt>
-                      <dd className="text-[#334155]">
+                  </div>
+                ) : (
+                  <p className="mt-3 whitespace-pre-wrap rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
+                    {parecerSalvo?.texto || "Não registrado."}
+                  </p>
+                )}
+              </section>
+            )}
+
+            {podeMover && (mostraAvaliacao || o.avaliacao) && (
+              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Gestão (Qualidade)
+                </h3>
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  {mostraAvaliacao && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setResultado("eficaz");
+                        setObservacao("");
+                        setAvaliacaoAberta(true);
+                      }}
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Avaliar eficácia
+                    </Button>
+                  )}
+                </div>
+
+                {o.avaliacao && (
+                  <div className="mt-3 rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
+                    <span className="font-semibold">
+                      Relatório de eficácia:{" "}
+                      {o.avaliacao.resultado === "impedida"
+                        ? "impedida"
+                        : o.avaliacao.resultado === "nao_eficaz" || o.avaliacao.eficaz === false
+                          ? "não eficaz"
+                          : o.avaliacao.resultado === "eficaz" || o.avaliacao.eficaz === true
+                            ? "eficaz"
+                            : "pendente"}
+                      {o.avaliacao.verificacaoEm
+                        ? ` · verificação ${formatarPrazo(o.avaliacao.verificacaoEm)}`
+                        : ""}
+                    </span>
+                    {o.avaliacao.observacao && (
+                      <p className="mt-0.5 whitespace-pre-wrap">{o.avaliacao.observacao}</p>
+                    )}
+                    {o.avaliacao.anexos.length > 0 && (
+                      <div className="mt-2">
+                        <AnexosVisualizador anexos={o.avaliacao.anexos} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+          <aside className="min-w-0 space-y-4">
+            {mostraAbertura && (
+              <section className="rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
+                  Dados da abertura
+                </h3>
+                <dl className="mt-2 divide-y divide-[#E9EEF5] text-[13px]">
+                  {ehTipoNaoConformidade({ nome: o.tipoNome }) && formulario.length === 0 ? (
+                    <>
+                      <ItemAbertura rotulo="Origem">{textoResposta(o.respostas["origem_nc"])}</ItemAbertura>
+                      <ItemAbertura rotulo="Área envolvida">
                         {textoResposta(o.respostas["area_envolvida"])}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] text-[#94A3B8]">Descrição da Não Conformidade</dt>
-                      <dd className="whitespace-pre-wrap text-[#334155]">
+                      </ItemAbertura>
+                      <ItemAbertura rotulo="Descrição da Não Conformidade" longo>
                         {textoResposta(o.respostas["descricao_nc"])}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] text-[#94A3B8]">
-                        Consequência
-                        <span className="ml-1 text-[#C7D2E0]">· Qual o impacto dessa NC?</span>
-                      </dt>
-                      <dd className="whitespace-pre-wrap text-[#334155]">
+                      </ItemAbertura>
+                      <ItemAbertura
+                        rotulo={
+                          <>
+                            Consequência
+                            <span className="ml-1 text-[#C7D2E0]">· Qual o impacto dessa NC?</span>
+                          </>
+                        }
+                        longo
+                      >
                         {textoResposta(o.respostas["consequencia"])}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] text-[#94A3B8]">Sugestão de Solução</dt>
-                      <dd className="whitespace-pre-wrap text-[#334155]">
+                      </ItemAbertura>
+                      <ItemAbertura rotulo="Sugestão de Solução" longo>
                         {textoResposta(o.respostas["sugestao_solucao"])}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] text-[#94A3B8]">Gerou multa?</dt>
-                      <dd className="text-[#334155]">
+                      </ItemAbertura>
+                      <ItemAbertura rotulo="Gerou multa?">
                         {o.respostas["gerou_multa"] === true
                           ? o.respostas["assinou_termo_multa"] === true
                             ? "Sim — termo de multa assinado"
@@ -805,610 +1289,124 @@ function DetalheCorpo({
                           : o.respostas["gerou_multa"] === false
                             ? "Não"
                             : "—"}
-                      </dd>
-                    </div>
-                  </>
-                ) : formulario.length > 0 ? (
-                  formulario.map((c) => (
-                    <div key={c.id} className={c.tipo === "arquivo" ? "sm:col-span-2" : undefined}>
-                      <dt className="text-[11px] text-[#94A3B8]">{c.label}</dt>
-                      {c.tipo === "arquivo" && anexosDe(o.respostas[c.id]).length > 0 ? (
-                        <dd>
+                      </ItemAbertura>
+                    </>
+                  ) : formulario.length > 0 ? (
+                    formulario.map((c) => (
+                      <ItemAbertura
+                        key={c.id}
+                        rotulo={c.label}
+                        longo={c.tipo === "arquivo" || String(textoResposta(o.respostas[c.id])).length > 40}
+                      >
+                        {c.tipo === "arquivo" && anexosDe(o.respostas[c.id]).length > 0 ? (
                           <AnexosVisualizador anexos={anexosDe(o.respostas[c.id])} />
-                        </dd>
-                      ) : (
-                        <dd className="text-[#334155]">
-                          {c.tipo === "moeda" && typeof o.respostas[c.id] === "number"
-                            ? (o.respostas[c.id] as number).toLocaleString("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              })
-                            : textoResposta(o.respostas[c.id])}
-                        </dd>
-                      )}
+                        ) : c.tipo === "moeda" && typeof o.respostas[c.id] === "number" ? (
+                          (o.respostas[c.id] as number).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })
+                        ) : (
+                          textoResposta(o.respostas[c.id])
+                        )}
+                      </ItemAbertura>
+                    ))
+                  ) : (
+                    <div className="py-2.5 text-[#64748B]">
+                      Sem formulário publicado — dados registrados na abertura.
                     </div>
-                  ))
-                ) : (
-                  <div className="col-span-2 text-[#64748B]">
-                    Sem formulário publicado — dados registrados na abertura.
-                  </div>
-                )}
-                <div>
-                  <dt className="text-[11px] text-[#94A3B8]">Abertura</dt>
-                  <dd className="text-[#334155]">{formatarDataHoraBrasilia(o.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] text-[#94A3B8]">Etapa atual</dt>
-                  <dd className="text-[#334155]">
+                  )}
+                  <ItemAbertura rotulo="Abertura">{formatarDataHoraBrasilia(o.createdAt)}</ItemAbertura>
+                  <ItemAbertura rotulo="Etapa atual">
                     {nomeEtapaDoFluxo(etapas, o.macroAtual)}
                     {o.subetapaAtualNome ? ` › ${o.subetapaAtualNome}` : ""}
                     {o.prazoEtapa ? ` · prazo ${formatarPrazo(o.prazoEtapa)}` : ""}
-                  </dd>
-                </div>
-              </dl>
-              {!formulario.some((c) => c.id === "anexos" && c.tipo === "arquivo") &&
-              anexosDe(o.respostas["anexos"]).length > 0 ? (
-                <div className="mt-3 border-t border-[#E9EEF5] pt-3">
-                  <h4 className="text-[11px] font-semibold text-[#64748B]">Anexos da abertura</h4>
-                  <AnexosVisualizador anexos={anexosDe(o.respostas["anexos"])} />
-                </div>
-              ) : null}
-            </section>
-          )}
-
-          {podeDefinirPrioridade(session) && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Prioridade
-              </span>
-              <Select
-                value={o.prioridade}
-                onValueChange={(v) => void mudarPrioridade(v as PrioridadeOcorrencia)}
-              >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORIDADES_OCORRENCIA.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PRIORIDADE_LABELS[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
-            </div>
-          )}
-
-          {!podeDefinirPrioridade(session) && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Prioridade
-              </span>
-              <span className="text-[13px] font-semibold text-[#1F2937]">
-                {PRIORIDADE_LABELS[o.prioridade]}
-              </span>
-              <span className="text-[12px] text-[#64748B]">Definida pela Qualidade.</span>
-            </div>
-          )}
-
-          {o.status !== "encerrada" && camposEtapa.length > 0 && verInternos && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Formulário da etapa · {subEtapa?.nome}
-              </h3>
-              <div className="mt-3">
-                <FormularioDinamico
-                  campos={camposEtapa}
-                  respostas={etapaRespostas}
-                  onChange={(id, valor) => setEtapaRespostas((r) => ({ ...r, [id]: valor }))}
-                  desabilitado={!pode}
-                />
-              </div>
-            </section>
-          )}
-
-          {pode && acoes.length > 0 && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Ações da etapa
-              </h3>
-              <Textarea
-                className="mt-2 min-h-[60px]"
-                placeholder={
-                  noFechamento
-                    ? "Parecer final (obrigatório para fechar a ocorrência)…"
-                    : o.macroAtual === "retorno_cliente"
-                      ? "Registre o retorno dado ao cliente (obrigatório)…"
-                      : "Observação da ação (opcional)…"
-                }
-                value={comentario}
-                onChange={(e) => setComentario(e.target.value)}
-              />
-              <div className="mt-2 flex flex-wrap gap-2">
-                {acoes.map((a) => (
-                  <Button
-                    key={a}
-                    type="button"
-                    variant={a === "aprovar" ? "default" : "outline"}
-                    size="sm"
-                    className={a === "aprovar" ? "bg-[#1E3A8A] text-white hover:bg-[#1E40AF]" : ""}
-                    onClick={() => void executarAcao(a)}
-                  >
-                    {ACOES_ETAPA_LABELS[a]}
-                  </Button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {verInternos && o.macroAtual === "julgamento" && (
-            <RelatorioJulgamento
-              key={`relatorio-${o.id}`}
-              ocorrencia={o}
-              session={session}
-              editavel={podeMover && o.status !== "encerrada"}
-              onSalvo={recarregar}
-            />
-          )}
-
-          {verInternos && o.macroAtual === "julgamento" && (
-            <JulgamentoPartes
-              key={`julgamento-${o.id}`}
-              ocorrencia={o}
-              session={session}
-              editavel={podeMover && o.status !== "encerrada"}
-              gerencia={gerencia}
-              onSalvo={recarregar}
-            />
-          )}
-
-          {verInternos && o.macroAtual === "apuracao" && (
-            <ChecklistMulta
-              key={`multa-${o.id}`}
-              ocorrencia={o}
-              session={session}
-              editavel={podeMover && o.status !== "encerrada"}
-              onSalvo={recarregar}
-            />
-          )}
-
-          {verInternos && o.macroAtual === "apuracao" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Ferramenta de apuração
-              </h3>
-              <FerramentaApuracao
-                key={o.id}
-                ocorrencia={o}
-                editavel={podeMover && o.status !== "encerrada"}
-                salvando={salvandoApuracao}
-                onSalvar={salvarApuracao}
-              />
-              {anexosApuracaoAntiga.length > 0 && (
-                <div className="mt-4">
-                  <p className="mb-2 text-[12px] text-[#64748B]">Anexos da apuração anterior</p>
-                  <AnexosVisualizador anexos={anexosApuracaoAntiga} />
-                </div>
-              )}
-            </section>
-          )}
-
-          {verInternos && o.macroAtual === "apuracao" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Retorno para quem abriu
-              </h3>
-              <p className="mt-1 text-[13px] text-[#64748B]">
-                Envia um recado parcial ao solicitante agora. O retorno final segue na finalização.
-              </p>
-              {eventos.some((ev) => ev.acao === RETORNO_PARCIAL_ACAO) && (
-                <ul className="mt-3 space-y-2">
-                  {eventos
-                    .filter((ev) => ev.acao === RETORNO_PARCIAL_ACAO)
-                    .map((ev) => (
-                      <li key={ev.id} className="rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
-                        <p className="whitespace-pre-wrap">{ev.comentario}</p>
-                        <p className="mt-1 text-[11px] text-[#94A3B8]">
-                          {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
-                        </p>
-                      </li>
-                    ))}
-                </ul>
-              )}
-              {podeMover &&
-                o.status !== "encerrada" &&
-                (retornoParcialAberto ? (
-                  <div className="mt-3 space-y-2">
-                    <Textarea
-                      className="min-h-[100px]"
-                      maxLength={LIMITE_TEXTO_OCORRENCIA}
-                      placeholder="Escreva o recado para quem abriu…"
-                      value={textoRetornoParcial}
-                      onChange={(e) => setTextoRetornoParcial(e.target.value)}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setRetornoParcialAberto(false);
-                          setTextoRetornoParcial("");
-                        }}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={enviandoRetornoParcial || !textoRetornoParcial.trim()}
-                        className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                        onClick={() => void enviarRetornoParcialAgora()}
-                      >
-                        {enviandoRetornoParcial ? "Enviando…" : "Enviar retorno"}
-                      </Button>
-                    </div>
+                  </ItemAbertura>
+                </dl>
+                {!formulario.some((c) => c.id === "anexos" && c.tipo === "arquivo") &&
+                anexosDe(o.respostas["anexos"]).length > 0 ? (
+                  <div className="mt-3 border-t border-[#E9EEF5] pt-3">
+                    <h4 className="text-[11px] font-semibold text-[#64748B]">Anexos da abertura</h4>
+                    <AnexosVisualizador anexos={anexosDe(o.respostas["anexos"])} />
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setRetornoParcialAberto(true)}
-                    className="mt-3 w-full rounded-lg border border-[#D9E0EA] px-4 py-3 text-left text-[14px] font-semibold text-[#1E3A8A] hover:bg-[#F8FAFC]"
-                  >
-                    + Escrever retorno parcial
-                  </button>
-                ))}
-            </section>
-          )}
-
-          {verInternos && o.macroAtual === "avaliacao_eficacia" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
+                ) : null}
+              </section>
+            )}
+            <section className="rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Ações que foram executadas
+                Comentários &amp; histórico
               </h3>
-              <div className="mt-2">
-                <AcoesExecutadas
-                  key={o.id}
-                  ocorrencia={o}
-                  editavel={podeMover && o.status !== "encerrada"}
-                  onAlterada={recarregar}
-                />
-              </div>
-            </section>
-          )}
-
-          {verInternos && o.macroAtual === "apuracao" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Evidências levantadas
-              </h3>
-              <div className="mt-2">
-                <EvidenciasApuracao
-                  key={o.id}
-                  ocorrencia={o}
-                  editavel={podeMover && o.status !== "encerrada"}
-                  permiteAnexos={tipoDaOcorrencia?.permiteAnexos !== false}
-                  onAlterada={recarregar}
-                />
-              </div>
-            </section>
-          )}
-
-          {!tipoEhErroOperacional({ nome: o.tipoNome }) && (setoresEnvolvidos.length > 0 || (podeMover && o.status !== "encerrada")) &&
-            (verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor)) && (
-              <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                  Ciência dos setores envolvidos
-                </h3>
-                <ul className="mt-2 space-y-2">
-                  {setoresEnvolvidos.map((setor) => {
-                    const c = ciencias[setor];
-                    const podeMarcar =
-                      !c &&
-                      o.status !== "encerrada" &&
-                      (gerencia || normalizarSetor(setor) === meuSetor);
+              <ul className="mt-2 max-h-60 space-y-2 overflow-y-auto pr-1">
+                {eventos
+                  .filter(
+                    (ev) =>
+                      ev.acao !== ACAO_MENSAGEM_COMUNICACAO &&
+                      (verInternos || eventoVisivelParaSolicitante(ev.acao)),
+                  )
+                  .map((ev) => {
+                    const Icone = iconeEvento(ev.acao);
                     return (
-                      <li
-                        key={setor}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[13px]"
-                      >
-                        <span className="font-medium text-[#1F2937]">{setor}</span>
-                        {c ? (
-                          <span className="text-[12px] text-[#065F46]">
-                            Ciente · {c.por || "—"} · {formatarDataHoraBrasilia(c.em)}
+                      <li key={ev.id} className="flex items-start gap-2 text-[12px] text-[#475569]">
+                        <Icone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#94A3B8]" />
+                        <span className="min-w-0">
+                          <span className="font-medium text-[#1F2937]">{ev.acao}</span>
+                          {ev.de && ` · de ${ev.de}`} {ev.para && `→ ${ev.para}`}
+                          {ev.comentario && (
+                            <span className="mt-0.5 block whitespace-pre-wrap">{ev.comentario}</span>
+                          )}
+                          {ev.anexos.length > 0 && (
+                            <span className="mt-0.5 flex items-center gap-1 text-[#64748B]">
+                              <Paperclip className="h-3 w-3" />
+                              {ev.anexos.map((a) => a.nome).join(", ")}
+                            </span>
+                          )}
+                          <span className="mt-0.5 block text-[11px] text-[#94A3B8]">
+                            {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
                           </span>
-                        ) : podeMarcar ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void darCiencia(setor)}
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Marcar ciência
-                          </Button>
-                        ) : (
-                          <span className="text-[12px] text-[#92400E]">Aguardando ciência</span>
-                        )}
+                        </span>
                       </li>
                     );
                   })}
-                </ul>
-                {podeMover && o.status !== "encerrada" && (
-                  <div className="mt-4 space-y-2 border-t border-[#E9EEF5] pt-3">
-                    <p className="text-[12px] font-semibold text-[#475569]">Adicionar setores envolvidos</p>
-                    <CampoSetores valor={novosSetores} onChange={(v) => setNovosSetores(Array.isArray(v) ? (v as string[]) : [])} />
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={salvandoSetores || novosSetores.length === 0}
-                        className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                        onClick={() => void adicionarSetores()}
-                      >
-                        {salvandoSetores ? "Adicionando…" : "Adicionar setores"}
-                      </Button>
-                    </div>
-                  </div>
+                {eventos.length === 0 && (
+                  <li className="text-[13px] text-[#94A3B8]">Sem movimentações registradas.</li>
                 )}
-              </section>
-            )}
+              </ul>
 
-          {podeConversar && o.macroAtual === "comunicacao" && (
-            <ChatComunicacao
-              ocorrencia={o}
-              setoresEnvolvidos={setoresEnvolvidos}
-              mensagens={mensagensComunicacao}
-              session={session}
-              podeEnviar={o.macroAtual === "comunicacao" && o.status !== "encerrada" && podeConversar}
-              onEnviada={() => void recarregar()}
-            />
-          )}
-
-          {verInternos &&
-            (o.macroAtual === "julgamento" || participantesJulgamentoDe(o).length > 0) && (
-              <ParticipantesJulgamento
-                key={`participantes-${o.id}`}
-                ocorrencia={o}
-                session={session}
-                colaboradores={catalogo.colaboradores}
-                editavel={podeMover && o.status !== "encerrada" && o.macroAtual === "julgamento"}
-                onSalvo={recarregar}
-              />
-            )}
-
-          {o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
-            <PlanoAcoesOcorrencia
-              ocorrencia={o}
-              session={session}
-              colaboradores={catalogo.colaboradores}
-              podeSugerir={podeSugerirAcao(session, o)}
-              podeValidar={podeOperarOcorrencias(session)}
-            />
-          )}
-
-          {tipoEhErroOperacional({ nome: o.tipoNome }) && o.macroAtual === "plano_acao" && o.status !== "encerrada" && (
-            <NaoConformidadeDoErro ocorrencia={o} session={session} onAtualizado={recarregar} />
-          )}
-
-          {o.status === "encerrada" && (
-            <div className="flex justify-end">
-              <Button type="button" variant="outline" size="sm" onClick={() => setRetornoAberto(true)}>
-                Ver retorno da Qualidade
-              </Button>
-            </div>
-          )}
-
-          {o.parecerFinal && (
-            <section className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#15803D]">
-                Parecer final
-                {o.parecerEm ? ` · ${formatarPrazo(o.parecerEm)}` : ""}
-              </h3>
-              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[#14532D]">
-                {o.parecerFinal}
-              </p>
-              {o.eficaciaPrevistaEm && o.status !== "encerrada" && (
-                <p className="mt-2 text-[12px] text-[#166534]">
-                  Avaliação de eficácia prevista para {formatarPrazo(o.eficaciaPrevistaEm)} (
-                  {o.eficaciaDias} dias após o fechamento).
-                </p>
-              )}
-            </section>
-          )}
-
-          <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-              Comentários &amp; histórico
-            </h3>
-            <ul className="mt-2 max-h-60 space-y-2 overflow-y-auto pr-1">
-              {eventos
-                .filter(
-                  (ev) =>
-                    ev.acao !== ACAO_MENSAGEM_COMUNICACAO &&
-                    (verInternos || eventoVisivelParaSolicitante(ev.acao)),
-                )
-                .map((ev) => {
-                  const Icone = iconeEvento(ev.acao);
-                  return (
-                    <li key={ev.id} className="flex items-start gap-2 text-[12px] text-[#475569]">
-                      <Icone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#94A3B8]" />
-                      <span className="min-w-0">
-                        <span className="font-medium text-[#1F2937]">{ev.acao}</span>
-                        {ev.de && ` · de ${ev.de}`} {ev.para && `→ ${ev.para}`}
-                        {ev.comentario && (
-                          <span className="mt-0.5 block whitespace-pre-wrap">{ev.comentario}</span>
-                        )}
-                        {ev.anexos.length > 0 && (
-                          <span className="mt-0.5 flex items-center gap-1 text-[#64748B]">
-                            <Paperclip className="h-3 w-3" />
-                            {ev.anexos.map((a) => a.nome).join(", ")}
-                          </span>
-                        )}
-                        <span className="mt-0.5 block text-[11px] text-[#94A3B8]">
-                          {ev.autorNome} · {formatarDataHoraBrasilia(ev.createdAt)}
-                        </span>
-                      </span>
-                    </li>
-                  );
-                })}
-              {eventos.length === 0 && (
-                <li className="text-[13px] text-[#94A3B8]">Sem movimentações registradas.</li>
-              )}
-            </ul>
-
-            {comentar && (
-              <div className="mt-3 flex items-start gap-2">
-                <Textarea
-                  className="min-h-[60px] flex-1"
-                  placeholder="Adicionar comentário…"
-                  value={comentario}
-                  onChange={(e) => setComentario(e.target.value)}
-                />
-                <div className="flex flex-col gap-2">
-                  <label
-                    hidden={tipoDaOcorrencia?.permiteAnexos === false}
-                    className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]"
-                  >
-                    <Paperclip className="h-3.5 w-3.5" />
-                    {anexos.length > 0 ? `${anexos.length} anexo(s)` : "Anexar"}
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => setAnexos(Array.from(e.target.files ?? []))}
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                    onClick={() => void enviarComentario()}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    Enviar
-                  </Button>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {verInternos && o.macroAtual === "apuracao" && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                  Parecer final
-                </h3>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!!tipoDaOcorrencia?.parecerApuracao}
-                  disabled={!podeOperarOcorrencias(session) || !tipoDaOcorrencia}
-                  onClick={() => void alternarParecerObrigatorio()}
-                  className="inline-flex items-center gap-2 text-[12px] text-[#334155] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      tipoDaOcorrencia?.parecerApuracao ? "bg-[#1E3A8A]" : "bg-[#CBD5E1]"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-                        tipoDaOcorrencia?.parecerApuracao ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </span>
-                  Obrigatório neste tipo
-                </button>
-              </div>
-              <p className="mt-1 text-[12px] text-[#64748B]">
-                Quando ativo, a Apuração só avança com o parecer registrado. Alterável pela Qualidade e pelo Desenvolvedor do Sistema; vale para todas as ocorrências deste tipo.
-              </p>
-              {podeMover && o.status !== "encerrada" ? (
-                <div className="mt-3 space-y-2">
+              {comentar && (
+                <div className="mt-3 flex items-start gap-2">
                   <Textarea
-                    className="min-h-[110px]"
-                    maxLength={LIMITE_TEXTO_OCORRENCIA}
-                    placeholder="Escreva o parecer final da apuração…"
-                    value={textoParecer}
-                    onChange={(e) => setTextoParecer(e.target.value)}
+                    className="min-h-[60px] flex-1"
+                    placeholder="Adicionar comentário…"
+                    value={comentario}
+                    onChange={(e) => setComentario(e.target.value)}
                   />
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[11px] text-[#64748B]">
-                      {parecerSalvo
-                        ? `Último registro: ${parecerSalvo.salvoPorNome || "—"} · ${formatarDataHoraBrasilia(parecerSalvo.salvoEm)}`
-                        : "Ainda não registrado."}
-                    </p>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      hidden={tipoDaOcorrencia?.permiteAnexos === false}
+                      className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] px-2.5 py-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {anexos.length > 0 ? `${anexos.length} anexo(s)` : "Anexar"}
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => setAnexos(Array.from(e.target.files ?? []))}
+                      />
+                    </label>
                     <Button
                       type="button"
                       size="sm"
-                      disabled={salvandoParecer || !textoParecer.trim()}
                       className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
-                      onClick={() => void salvarParecer()}
+                      onClick={() => void enviarComentario()}
                     >
-                      {salvandoParecer ? "Salvando…" : "Salvar parecer"}
+                      <Send className="h-3.5 w-3.5" />
+                      Enviar
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <p className="mt-3 whitespace-pre-wrap rounded-lg bg-[#F8FAFC] p-3 text-[13px] text-[#334155]">
-                  {parecerSalvo?.texto || "Não registrado."}
-                </p>
               )}
             </section>
-          )}
-
-          {podeMover && (mostraAvaliacao || o.avaliacao) && (
-            <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
-                Gestão (Qualidade)
-              </h3>
-              <div className="mt-2 flex flex-wrap items-end gap-2">
-                {mostraAvaliacao && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setResultado("eficaz");
-                      setObservacao("");
-                      setAvaliacaoAberta(true);
-                    }}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Avaliar eficácia
-                  </Button>
-                )}
-              </div>
-
-              {o.avaliacao && (
-                <div className="mt-3 rounded-lg border border-[#E9EEF5] bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
-                  <span className="font-semibold">
-                    Relatório de eficácia:{" "}
-                    {o.avaliacao.resultado === "impedida"
-                      ? "impedida"
-                      : o.avaliacao.resultado === "nao_eficaz" || o.avaliacao.eficaz === false
-                        ? "não eficaz"
-                        : o.avaliacao.resultado === "eficaz" || o.avaliacao.eficaz === true
-                          ? "eficaz"
-                          : "pendente"}
-                    {o.avaliacao.verificacaoEm
-                      ? ` · verificação ${formatarPrazo(o.avaliacao.verificacaoEm)}`
-                      : ""}
-                  </span>
-                  {o.avaliacao.observacao && (
-                    <p className="mt-0.5 whitespace-pre-wrap">{o.avaliacao.observacao}</p>
-                  )}
-                  {o.avaliacao.anexos.length > 0 && (
-                    <div className="mt-2">
-                      <AnexosVisualizador anexos={o.avaliacao.anexos} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
+          </aside>
         </div>
       )}
 
@@ -1793,4 +1791,26 @@ function eventoVisivelParaSolicitante(acao: string): boolean {
   ];
   const normalizada = acao.toLowerCase();
   return visiveis.some((v) => normalizada.includes(v));
+}
+
+function ItemAbertura({
+  rotulo,
+  longo = false,
+  children,
+}: {
+  rotulo: ReactNode;
+  longo?: boolean;
+  children: ReactNode;
+}) {
+  return longo ? (
+    <div className="py-2.5">
+      <dt className="text-[12px] text-[#64748B]">{rotulo}</dt>
+      <dd className="mt-1 whitespace-pre-wrap text-[13px] text-[#1F2937]">{children}</dd>
+    </div>
+  ) : (
+    <div className="flex items-start justify-between gap-3 py-2.5">
+      <dt className="shrink-0 text-[12px] text-[#64748B]">{rotulo}</dt>
+      <dd className="text-right text-[13px] font-semibold text-[#1F2937]">{children}</dd>
+    </div>
+  );
 }

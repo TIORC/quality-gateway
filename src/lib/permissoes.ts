@@ -42,11 +42,12 @@ const TODAS_AS_ROTAS: AppRoutePath[] = [
 const ROTA_LOGS: AppRoutePath = "/logs";
 
 /**
- * Páginas abertas a todos os usuários logados: Ocorrências, POPs e Políticas
- * (e o Meu Perfil, que é pessoal). Todo o resto é restrito à Qualidade.
+ * Páginas abertas a todos os usuários logados: Ocorrências, Atas de Reunião,
+ * POPs e Políticas (e o Meu Perfil, que é pessoal). Todo o resto é restrito à Qualidade.
  */
 const ROTAS_PUBLICAS: AppRoutePath[] = [
   "/ocorrencias",
+  "/atas-de-reuniao",
   "/pops",
   "/politicas",
   "/funcionarios",
@@ -64,6 +65,9 @@ const ROTAS_COLABORADOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
 /** Diretoria: públicas + indicadores da própria unidade (somente leitura). */
 const ROTAS_DIRETORIA: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
 
+/** Líder de setor: públicas + indicadores dos setores que lidera (escopo "setor"). */
+const ROTAS_LIDER_SETOR: AppRoutePath[] = [...ROTAS_PUBLICAS, "/indicadores"];
+
 /**
  * Rotas permitidas por nível (referência para o menu). A regra efetiva está em
  * `rotasPermitidas`, que também considera o setor da Qualidade e a liderança.
@@ -73,7 +77,7 @@ export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
   "Gestor da Qualidade": [...TODAS_AS_ROTAS, ROTA_LOGS],
   "Auxiliar da Qualidade": TODAS_AS_ROTAS.filter((rota) => rota !== ROTA_LOGS),
   [NIVEL_DIRETORIA]: ROTAS_DIRETORIA,
-  "Líder de setor": ROTAS_PUBLICAS,
+  [NIVEL_LIDER_SETOR]: ROTAS_LIDER_SETOR,
   Desenvolvedor: ROTAS_PUBLICAS,
   Colaborador: ROTAS_COLABORADOR,
   "Colaborador de outra unidade": ROTAS_PUBLICAS,
@@ -84,6 +88,7 @@ export const ROTAS_POR_NIVEL: Record<string, AppRoutePath[]> = {
  *  - Gestor da Qualidade, Auxiliar da Qualidade e Desenvolvedor do Sistema: todas;
  *  - Setor da Qualidade: todas menos Configurações;
  *  - Colaborador: públicas + Indicadores (somente os próprios);
+ *  - Líder de setor: públicas + Indicadores (dos setores que lidera);
  *  - demais: Ocorrências, POPs, Políticas e Meu Perfil.
  */
 export function rotasPermitidas(session: UserSession | null): Set<AppRoutePath> {
@@ -108,6 +113,7 @@ function rotasGerais(session: UserSession): Set<AppRoutePath> {
   if (ehUsuarioDaQualidade(session)) return new Set(ROTAS_QUALIDADE);
   if (session.nivelAcesso === "Colaborador") return new Set(ROTAS_COLABORADOR);
   if (session.nivelAcesso === NIVEL_DIRETORIA) return new Set(ROTAS_DIRETORIA);
+  if (session.nivelAcesso === NIVEL_LIDER_SETOR) return new Set(ROTAS_LIDER_SETOR);
   return new Set(ROTAS_PUBLICAS);
 }
 

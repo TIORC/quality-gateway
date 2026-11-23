@@ -80,25 +80,31 @@ function contarPorCampo(planos: PlanoAcao[], campo: "status" | "origem" | "setor
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  nao_iniciado: "Não iniciado",
-  aberta: "Aberta",
+  aberta: "Aberto",
   em_andamento: "Em andamento",
+  impedida: "Impedimento",
   concluida: "Concluída",
   atrasada: "Atrasada",
-  cancelado: "Cancelado",
+  cancelado: "Desconsiderado",
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  nao_iniciado: "#64748B",
   aberta: "#4F46E5",
   em_andamento: "#F59E0B",
+  impedida: "#F97316",
   concluida: "#059669",
   atrasada: "#E11D48",
   cancelado: "#94A3B8",
 };
 
-/** Status que ainda contam como "em aberto" no painel. */
-const STATUS_PENDENTES = new Set(["nao_iniciado", "aberta", "em_andamento", "atrasada"]);
+/** Status que ainda contam como "em aberto" no painel (inclui a sugestão do líder). */
+const STATUS_PENDENTES = new Set(["nao_iniciado", "aberta", "em_andamento"]);
+
+/** Chave do painel: atraso vem do prazo; a sugestão do líder conta como Aberto. */
+function chaveStatusPainel(p: PlanoAcao): string {
+  if (planoAtrasado(p)) return "atrasada";
+  return p.status === "nao_iniciado" ? "aberta" : p.status;
+}
 
 const ORIGEM_COLORS = [
   "#4F46E5",
@@ -211,7 +217,7 @@ function GraficoStatus({
   // cartão "Em atraso" e ao filtro de atraso da lista de Planos de Ação.
   const mapaStatus: Record<string, number> = {};
   for (const p of planos) {
-    const chave = planoAtrasado(p) ? "atrasada" : p.status;
+    const chave = chaveStatusPainel(p);
     mapaStatus[chave] = (mapaStatus[chave] || 0) + 1;
   }
   const dados = Object.entries(mapaStatus)
@@ -227,7 +233,7 @@ function GraficoStatus({
   function selecionarStatus(entrada: { payload?: { chave?: string; nome?: string } }) {
     const chave = entrada.payload?.chave;
     if (!chave) return;
-    const lista = planos.filter((p) => (planoAtrasado(p) ? "atrasada" : p.status) === chave);
+    const lista = planos.filter((p) => chaveStatusPainel(p) === chave);
     onSelecionar({ titulo: `Status: ${entrada.payload?.nome ?? chave}`, planos: lista });
   }
 
@@ -450,7 +456,7 @@ function DetalheGraficoDialog({
         ) : (
           <ul className="divide-y divide-[#E9EEF5]">
             {ordenados.map((p) => {
-              const status = planoAtrasado(p) ? "atrasada" : p.status;
+              const status = chaveStatusPainel(p);
               return (
                 <li key={p.id}>
                   <button

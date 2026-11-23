@@ -20,7 +20,7 @@ interface Props {
 
 const STATUS_POR_COLUNA_FALLBACK: Record<string, StatusAcao[]> = {
   afazer: ["nao_iniciado", "aberta"],
-  andamento: ["em_andamento", "atrasada"],
+  andamento: ["em_andamento"],
   concluido: ["concluida", "cancelado"],
 };
 

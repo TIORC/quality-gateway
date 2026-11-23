@@ -503,3 +503,31 @@ export async function listarHistorico(ocorrenciaId: string): Promise<EventoOcorr
     throw e instanceof Error ? e : traduzErro(e);
   }
 }
+
+/**
+ * Histórico de várias ocorrências de uma vez (relatório em PDF), em lotes
+ * para não estourar o tamanho da consulta. Ordenado do mais antigo ao mais novo.
+ */
+export async function listarHistoricoDe(ocorrenciaIds: string[]): Promise<EventoOcorrencia[]> {
+  const LOTE = 100;
+  const eventos: EventoOcorrencia[] = [];
+  for (let i = 0; i < ocorrenciaIds.length; i += LOTE) {
+    const lote = ocorrenciaIds.slice(i, i + LOTE);
+    try {
+      const { data, error } = await cloud()
+        .from("ocorrencia_historico")
+        .select("*")
+        .in("ocorrencia_id", lote)
+        .order("created_at", { ascending: true });
+      if (error) {
+        if (tabelaAusente(error)) continue;
+        throw traduzErro(error);
+      }
+      eventos.push(...(data ?? []).map((r: unknown) => eventoDoRow(r as Linha)));
+    } catch (e) {
+      if (tabelaAusente(e)) continue;
+      throw e instanceof Error ? e : traduzErro(e);
+    }
+  }
+  return eventos;
+}

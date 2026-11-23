@@ -1,5 +1,6 @@
 import { createFileRoute, getRouteApi } from "@tanstack/react-router";
-import { CalendarRange, Columns3, LayoutGrid, Plus, Search, Table2 } from "lucide-react";
+import { CalendarRange, Columns3, FileSpreadsheet, LayoutGrid, Plus, Search, Table2 } from "lucide-react";
+import { ExportarPlanosDialog } from "@/components/exportar-planos-dialog";
 import { KanbanPlanos } from "@/components/planos-kanban";
 import { CronogramaPlanos } from "@/components/planos-cronograma";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,7 +18,7 @@ import { podeExcluirPlano, podeGerenciarConteudo } from "@/lib/permissoes";
 import { ConfirmarDialog, type ConfirmarDialogProps } from "@/components/confirmar-dialog";
 import { excluirPlano } from "@/lib/planos-crud";
 import { toast } from "sonner";
-import { PRIORIDADES_ACAO, STATUS_ACAO_LABELS } from "@/lib/planos";
+import { PRIORIDADES_ACAO, STATUS_ACAO_LABELS, STATUS_ACAO_SELECIONAVEIS } from "@/lib/planos";
 import type { PlanoAcao, StatusAcao } from "@/lib/planos";
 import { diasParaPrazo, planoAtrasado } from "@/lib/planos";
 import { listarOrigens, listarPlanos } from "@/lib/planos-base";
@@ -60,6 +61,14 @@ const FILTROS_INICIAIS: Filtros = {
   busca: "", origem: "todas", status: "todos",
   setor: "todos", prioridade: "todas", prazo: "todos",
 };
+/**
+ * Status que a página nunca exibe: Concluído, Impedimento e Desconsiderado
+ * (Impedimento e Desconsiderado são tratados como a mesma coisa aqui).
+ */
+const STATUS_OCULTOS: ReadonlySet<StatusAcao> = new Set<StatusAcao>(["concluida", "impedida", "cancelado"]);
+/** Opções de status do filtro: só Aberto, Em andamento e Em atraso. */
+const STATUS_FILTRO_VISIVEIS = STATUS_ACAO_SELECIONAVEIS.filter((s) => !STATUS_OCULTOS.has(s));
+
 const ABAS = [
   { valor: "minhas", rotulo: "Minhas ações" },
   { valor: "acompanho", rotulo: "Acompanho" },
@@ -80,9 +89,12 @@ function PlanosDeAcao() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [origens, setOrigens] = useState<string[]>([]);
+  /** Só as origens ativas no cadastro: são as que o formulário de nova ação oferece. */
+  const [origensAtivas, setOrigensAtivas] = useState<string[]>([]);
   const [novoPlanoAberto, setNovoPlanoAberto] = useState(false);
   const [planoAberto, setPlanoAberto] = useState<PlanoAcao | null>(null);
   const [confirmar, setConfirmar] = useState<ConfirmarDialogProps | null>(null);
+  const [exportarAberto, setExportarAberto] = useState(false);
   const podeExcluir = podeExcluirPlano(sessao);
   const { abrir, preencher, titulo, detalhamento, setor, origem, vinculo } = rotaPlanos.useSearch();
   // O formulário de novo plano vindo de outro módulo abre uma única vez por visita.
@@ -105,8 +117,10 @@ function PlanosDeAcao() {
       const [lista, listaOrigens] = await Promise.all([listarPlanos(), listarOrigens()]);
       setPlanos(lista);
       const nomes = listaOrigens.length > 0 ? listaOrigens.map((o) => o.nome) : [];
-      const extras = lista.map((p) => p.origem).filter((o) => o && !nomes.includes(o));
+      // Origens usadas por planos mas fora do cadastro, sem repetir o mesmo nome.
+      const extras = [...new Set(lista.map((p) => p.origem).filter((o) => o && !nomes.includes(o)))] as string[];
       setOrigens([...nomes, ...extras]);
+      setOrigensAtivas(listaOrigens.filter((o) => o.ativa).map((o) => o.nome));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível carregar.");
       setPlanos([]);
@@ -148,15 +162,18 @@ function PlanosDeAcao() {
     });
   }
 
+  /** Ações exibidas na página: sem as concluídas e as impedidas/desconsideradas. */
+  const planosVisiveis = useMemo(() => planos.filter((p) => !STATUS_OCULTOS.has(p.status)), [planos]);
+
   const contadores = useMemo(() => ({
-    minhas: planos.filter((p) => ehResponsavel(p, sessao)).length,
-    acompanho: planos.filter((p) => !ehResponsavel(p, sessao) && ehSeguidor(p, sessao)).length,
-    organizacao: planos.length,
-  }), [planos, sessao]);
+    minhas: planosVisiveis.filter((p) => ehResponsavel(p, sessao)).length,
+    acompanho: planosVisiveis.filter((p) => !ehResponsavel(p, sessao) && ehSeguidor(p, sessao)).length,
+    organizacao: planosVisiveis.length,
+  }), [planosVisiveis, sessao]);
 
   const filtrados = useMemo(
-    () => filtrarPlanos(planos, filtros, aba, sessao),
-    [planos, filtros, aba, sessao],
+    () => filtrarPlanos(planosVisiveis, filtros, aba, sessao),
+    [planosVisiveis, filtros, aba, sessao],
   );
 
 
@@ -194,6 +211,10 @@ function PlanosDeAcao() {
               <CalendarRange className="h-3.5 w-3.5" /> Cronograma
             </button>
           </div>
+          <Button variant="outline" className="shrink-0" onClick={() => setExportarAberto(true)}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Excel
+          </Button>
           {podeGerenciar ? (
             <Button className="shrink-0" onClick={() => setNovoPlanoAberto(true)}>
               <Plus className="h-4 w-4" />
@@ -224,7 +245,7 @@ function PlanosDeAcao() {
               carregando={carregando}
               erro={erro}
               planos={filtrados}
-              todas={filtrarPlanos(planos, filtros, "organizacao", sessao)}
+              todas={filtrarPlanos(planosVisiveis, filtros, "organizacao", sessao)}
               vista={vista}
               podeGerenciar={podeGerenciar}
               onFiltroChange={atualizarFiltro}
@@ -241,11 +262,12 @@ function PlanosDeAcao() {
         aberto={novoPlanoAberto}
         setores={catalogo.setores}
         colaboradores={catalogo.colaboradores}
-        origens={origens}
+        origens={origensAtivas}
         inicial={{ titulo, detalhamento, setor, origem, vinculo }}
         onFechar={() => setNovoPlanoAberto(false)}
         onCriado={() => { setNovoPlanoAberto(false); void recarregar(); }}
       />
+      <ExportarPlanosDialog aberto={exportarAberto} planos={planos} onFechar={() => setExportarAberto(false)} />
       {planoAberto ? (
         <DetalhePlanoDialog
           plano={planoAberto}
@@ -273,7 +295,7 @@ function filtrarPlanos(planos: PlanoAcao[], filtros: Filtros, aba: Aba, sessao: 
   if (filtros.origem !== "todas") lista = lista.filter((p) => p.origem === filtros.origem);
   if (filtros.status !== "todos") {
     if (filtros.status === "atrasado") lista = lista.filter((p) => planoAtrasado(p));
-    else lista = lista.filter((p) => p.status === filtros.status);
+    else lista = lista.filter((p) => p.status === filtros.status || (filtros.status === "aberta" && p.status === "nao_iniciado"));
   }
   if (filtros.setor !== "todos") lista = lista.filter((p) => p.setor === filtros.setor);
   if (filtros.prioridade !== "todas") lista = lista.filter((p) => p.prioridade === filtros.prioridade);
@@ -342,7 +364,7 @@ function ListaAcoes(props: ListaAcoesProps) {
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os status</SelectItem>
-            {(Object.keys(STATUS_ACAO_LABELS) as StatusAcao[]).map((s) => (
+            {STATUS_FILTRO_VISIVEIS.map((s) => (
               <SelectItem key={s} value={s}>{STATUS_ACAO_LABELS[s]}</SelectItem>
             ))}
             <SelectItem value="atrasado">Em atraso (prazo vencido)</SelectItem>

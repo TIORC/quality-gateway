@@ -1,13 +1,16 @@
 import { exigirCloud } from "@/integrations/supabase/client";
 import type { UserSession } from "@/lib/auth";
 import { traduzErro } from "@/lib/organizacao";
-import { ORIGEM_OUTROS, type PlanoAcao } from "@/lib/planos";
+import { ORIGEM_OUTROS, type ItemChecklist, type PlanoAcao } from "@/lib/planos";
 
 export interface NovoPlanoInput {
   titulo: string; descricao: string; origem: string; origemOutros?: string;
   setor: string; responsavelId: string; responsavelNome: string; responsavelEmail: string;
   seguidoresIds: string[]; seguidoresEmails: string[];
+  suporteIds?: string[]; suporteEmails?: string[];
   prazo: string | null; prioridade: string; vinculoTipo?: string; vinculoId?: string;
+  /** Itens do checklist cadastrados junto com a ação (todos começam sem feito). */
+  checklist?: ItemChecklist[];
 }
 
 /** "Outros" + detalhe livre vira "Outros: <detalhe>" no rótulo da origem. */
@@ -57,6 +60,7 @@ export function destinatariosDoPlano(plano: PlanoAcao, excluirEmail?: string): D
   const candidatos: DestinatarioNotificacao[] = [
     { email: plano.responsavelEmail, nome: plano.responsavelNome },
     ...plano.seguidores.map((email) => ({ email, nome: nomeDoEmail(email) })),
+    ...plano.suporte.map((email) => ({ email, nome: nomeDoEmail(email) })),
   ];
   const vistos = new Set<string>();
   const lista: DestinatarioNotificacao[] = [];

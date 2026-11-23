@@ -54,27 +54,42 @@ export const VINCULOS_ACAO = [
 
 export type VinculoAcao = (typeof VINCULOS_ACAO)[number];
 
+/**
+ * Valores gravados em `planos_de_acao.status`. "nao_iniciado" é a sugestão do
+ * líder aguardando validação da Qualidade: aparece como "Aberto", mas não é
+ * escolhível no formulário. O atraso é calculado pelo prazo (ver planoAtrasado).
+ */
 export const STATUS_ACAO = [
-  "nao_iniciado",
   "aberta",
   "em_andamento",
   "impedida",
   "concluida",
-  "atrasada",
   "cancelado",
+  "nao_iniciado",
 ] as const;
 
 export type StatusAcao = (typeof STATUS_ACAO)[number];
 
+/** Status que o usuário pode escolher (formulário e filtros). */
+export const STATUS_ACAO_SELECIONAVEIS: readonly StatusAcao[] = [
+  "aberta",
+  "em_andamento",
+  "impedida",
+  "concluida",
+  "cancelado",
+];
+
 export const STATUS_ACAO_LABELS: Record<StatusAcao, string> = {
-  nao_iniciado: "Não iniciado",
-  aberta: "Aberta",
+  nao_iniciado: "Aberto",
+  aberta: "Aberto",
   em_andamento: "Em andamento",
-  impedida: "Impedida",
+  impedida: "Impedimento (com justificativa)",
   concluida: "Concluído",
-  atrasada: "Atrasado",
-  cancelado: "Cancelado",
+  cancelado: "Desconsiderado (com justificativa)",
 };
+
+/** Status que exigem uma justificativa em texto. */
+export const STATUS_ACAO_EXIGE_JUSTIFICATIVA: ReadonlySet<StatusAcao> = new Set(["impedida", "cancelado"]);
 
 /** Status que não entram em atraso nem contam como pendentes. */
 export const STATUS_ACAO_ENCERRADOS: ReadonlySet<StatusAcao> = new Set(["concluida", "cancelado"]);
@@ -85,18 +100,19 @@ export const PRIORIDADES_ACAO = ["Baixa", "Média", "Alta", "Crítica"] as const
 export const MARCOS_PROGRESSO = [0, 25, 50, 75, 100] as const;
 
 /**
- * Sugere o status coerente com o progresso informado (usado nos marcos).
- * Não sobrescreve "cancelado"/"atrasada" — são decisões explícitas do usuário.
+ * Sugere o status coerente com o progresso informado (usado nos marcos e no checklist).
+ * Não sobrescreve "cancelado" nem "impedida" — são decisões explícitas do usuário.
  */
 export function sugerirStatusPorProgresso(progresso: number, atual: StatusAcao): StatusAcao {
   if (atual === "cancelado") return atual;
   if (progresso >= 100) return "concluida";
-  if (progresso > 0) return atual === "atrasada" ? "atrasada" : "em_andamento";
-  return atual === "atrasada" ? "atrasada" : "nao_iniciado";
+  if (atual === "impedida") return atual;
+  return progresso > 0 ? "em_andamento" : "aberta";
 }
 
 export interface OrigemAcao { id: string; nome: string; ativa: boolean; ordem: number; }
-export type AnexoPlano = { nome: string; url?: string; tipo?: string; tamanho?: number };
+/** Evidência da ação: link externo (`url`) ou arquivo guardado no Storage (`caminho`). */
+export type AnexoPlano = { nome: string; url?: string; caminho?: string; tipo?: string; tamanho?: number };
 /** Item do plano de ação (checklist). O progresso é a % de itens feitos. */
 export type ItemChecklist = { id: string; texto: string; feito: boolean };
 
@@ -131,7 +147,11 @@ export interface PlanoAcao {
   origemOutros: string; setor: string; prioridade: string;
   responsavelId: string; responsavelNome: string; responsavelEmail: string;
   seguidores: string[]; seguidoresIds: string[];
+  /** Pessoas que apoiam a ação (e-mails e ids), além do responsável. */
+  suporte: string[]; suporteIds: string[];
   prazo: string | null; progresso: number;
+  /** Motivo do impedimento ou da desconsideração (obrigatório nesses status). */
+  justificativa: string;
   checklist: ItemChecklist[];
   tempoSegundos: number; timerInicio: string | null;
   vinculoTipo: string; vinculoId: string; anexos: AnexoPlano[];
@@ -165,7 +185,6 @@ export function diasParaPrazo(prazo: string | null): number | null {
 
 export function planoAtrasado(plano: Pick<PlanoAcao, "status" | "prazo">): boolean {
   if (plano.status === "concluida" || plano.status === "cancelado") return false;
-  if (plano.status === "atrasada") return true;
   const dias = diasParaPrazo(plano.prazo);
   return dias !== null && dias < 0;
 }

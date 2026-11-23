@@ -26,15 +26,21 @@ function lerChecklist(v: unknown): ItemChecklist[] {
   });
 }
 
+/** Status gravado no banco → status atual. "atrasada" saiu da lista: o atraso vem do prazo. */
+function normalizarStatus(valor: string): StatusAcao {
+  if (valor === "atrasada") return "em_andamento";
+  return (STATUS_ACAO as readonly string[]).includes(valor) ? (valor as StatusAcao) : "aberta";
+}
+
 export function planoDoRow(row: Record<string, unknown>): PlanoAcao {
-  const status = str(row["status"], "aberta");
   return {
     id: str(row["id"]),
     codigo: str(row["codigo"]),
     titulo: str(row["titulo"]),
     descricao: str(row["descricao"]),
     detalhamento: str(row["detalhamento"]),
-    status: (STATUS_ACAO as readonly string[]).includes(status) ? (status as StatusAcao) : "aberta",
+    status: normalizarStatus(str(row["status"], "aberta")),
+    justificativa: str(row["justificativa"]),
     origem: str(row["origem"], "Outros"),
     origemOutros: str(row["origem_outros"]),
     setor: str(row["setor"]),
@@ -44,6 +50,8 @@ export function planoDoRow(row: Record<string, unknown>): PlanoAcao {
     responsavelEmail: str(row["responsavel_email"]),
     seguidores: Array.isArray(row["seguidores"]) ? (row["seguidores"] as string[]) : [],
     seguidoresIds: Array.isArray(row["seguidores_ids"]) ? (row["seguidores_ids"] as string[]) : [],
+    suporte: Array.isArray(row["suporte"]) ? (row["suporte"] as string[]) : [],
+    suporteIds: Array.isArray(row["suporte_ids"]) ? (row["suporte_ids"] as string[]) : [],
     prazo: typeof row["prazo"] === "string" ? row["prazo"] : null,
     progresso:
       typeof row["progresso"] === "number" ? row["progresso"] : Number(row["progresso"] ?? 0) || 0,

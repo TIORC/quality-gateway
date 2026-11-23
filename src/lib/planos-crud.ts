@@ -8,7 +8,7 @@ import {
   proximoCodigo, rotuloOrigem, type NovoPlanoInput,
 } from "@/lib/planos-mutar";
 import type { PlanoAcao, StatusAcao } from "@/lib/planos";
-import { STATUS_ACAO_LABELS, formatarPrazo, formatarTempo } from "@/lib/planos";
+import { STATUS_ACAO_EXIGE_JUSTIFICATIVA, STATUS_ACAO_LABELS, formatarPrazo, formatarTempo, progressoDoChecklist } from "@/lib/planos";
 import { listarPlanos } from "@/lib/planos-base";
 
 type Rec = Record<string, unknown>;
@@ -18,6 +18,7 @@ export async function criarPlano(input: NovoPlanoInput, sessao: UserSession | nu
   const existentes = await listarPlanos().catch(() => [] as PlanoAcao[]);
   const codigo = proximoCodigo(existentes);
   const origemFinal = rotuloOrigem(input.origem, input.origemOutros);
+  const checklist = input.checklist ?? [];
   const { data, error } = await client.from("planos_de_acao").insert({
     codigo, titulo: input.titulo.trim(), descricao: input.descricao.trim(),
     detalhamento: input.descricao.trim(), status: "nao_iniciado",
@@ -26,7 +27,8 @@ export async function criarPlano(input: NovoPlanoInput, sessao: UserSession | nu
     responsavel_id: input.responsavelId, responsavel_nome: input.responsavelNome,
     responsavel_email: input.responsavelEmail.toLowerCase(),
     seguidores: input.seguidoresEmails, seguidores_ids: input.seguidoresIds,
-    prazo: input.prazo, progresso: 0,
+    suporte: input.suporteEmails ?? [], suporte_ids: input.suporteIds ?? [],
+    prazo: input.prazo, progresso: progressoDoChecklist(checklist), checklist,
     vinculo_tipo: input.vinculoTipo ?? "", vinculo_id: input.vinculoId ?? "",
   }).select("*").single();
   if (error) throw traduzErro(error);
@@ -49,7 +51,9 @@ export interface AtualizacaoPlano {
   titulo?: string; descricao?: string; origem?: string; setor?: string;
   responsavelId?: string; responsavelNome?: string; responsavelEmail?: string;
   seguidoresIds?: string[]; seguidoresEmails?: string[];
+  suporteIds?: string[]; suporteEmails?: string[];
   prazo?: string | null; prioridade?: string; status?: StatusAcao;
+  justificativa?: string;
   progresso?: number; vinculoTipo?: string; vinculoId?: string;
   anexos?: PlanoAcao["anexos"];
   checklist?: PlanoAcao["checklist"];
@@ -78,9 +82,18 @@ export async function atualizarPlano(plano: PlanoAcao, patch: AtualizacaoPlano, 
   if (patch.responsavelEmail !== undefined) u.responsavel_email = patch.responsavelEmail.toLowerCase();
   if (patch.seguidoresIds !== undefined) u.seguidores_ids = patch.seguidoresIds;
   if (patch.seguidoresEmails !== undefined) u.seguidores = patch.seguidoresEmails;
+  if (patch.suporteIds !== undefined) u.suporte_ids = patch.suporteIds;
+  if (patch.suporteEmails !== undefined) u.suporte = patch.suporteEmails;
   if (patch.prazo !== undefined) u.prazo = patch.prazo;
   if (patch.prioridade !== undefined) u.prioridade = patch.prioridade;
   if (patch.status !== undefined) {
+    // Impedimento e desconsideração exigem justificativa em texto.
+    const mudouParaExigente =
+      patch.status !== plano.status && STATUS_ACAO_EXIGE_JUSTIFICATIVA.has(patch.status);
+    const justificativaFinal = (patch.justificativa ?? plano.justificativa).trim();
+    if (mudouParaExigente && !justificativaFinal) {
+      throw new Error("Informe a justificativa para este status.");
+    }
     u.status = patch.status;
     if (patch.status === "concluida") {
       u.progresso = 100;
@@ -88,7 +101,12 @@ export async function atualizarPlano(plano: PlanoAcao, patch: AtualizacaoPlano, 
     } else if (plano.status === "concluida") {
       u.concluida_em = null;
     }
+    // Ao sair de um status com justificativa, o texto antigo é descartado.
+    if (!STATUS_ACAO_EXIGE_JUSTIFICATIVA.has(patch.status) && patch.justificativa === undefined) {
+      u.justificativa = "";
+    }
   }
+  if (patch.justificativa !== undefined) u.justificativa = patch.justificativa.trim();
   if (patch.progresso !== undefined) u.progresso = Math.max(0, Math.min(100, Math.round(patch.progresso)));
   if (patch.vinculoTipo !== undefined) u.vinculo_tipo = patch.vinculoTipo;
   if (patch.vinculoId !== undefined) u.vinculo_id = patch.vinculoId;
@@ -114,6 +132,7 @@ export async function atualizarPlano(plano: PlanoAcao, patch: AtualizacaoPlano, 
   if (patch.responsavelId !== undefined) {
     registrar("Responsável", plano.responsavelNome, patch.responsavelNome ?? patch.responsavelEmail ?? "");
   }
+  if (patch.justificativa !== undefined) registrar("Justificativa", plano.justificativa, patch.justificativa);
   if (patch.progresso !== undefined) registrar("Progresso", plano.progresso, patch.progresso);
   if (patch.prioridade !== undefined) registrar("Prioridade", plano.prioridade, patch.prioridade);
   if (patch.setor !== undefined) registrar("Setor", plano.setor, patch.setor);

@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   LayoutGrid,
   ClipboardList,
+  FileDown,
   List,
   Pencil,
   Plus,
@@ -46,6 +47,7 @@ import { FormatadorSla } from "@/components/ocorrencias/formatador-sla";
 import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { DetalheOcorrenciaDialog } from "@/components/ocorrencias/detalhe-ocorrencia-dialog";
 import { DashboardOcorrencias } from "@/components/ocorrencias/dashboard-ocorrencias";
+import { montarRelatorioOcorrenciasHtml } from "@/lib/ocorrencias-pdf";
 import {
   FILTROS_VAZIOS,
   FiltrosOcorrencias,
@@ -120,6 +122,7 @@ import {
 } from "@/lib/permissoes";
 import {
   podeConfigurarOcorrencias,
+  podeExportarOcorrencias,
   podeVerDashboardOcorrencias,
   veTodasAsOcorrencias,
 } from "@/lib/ocorrencias-permissoes";
@@ -285,6 +288,75 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
       filtros,
     );
 
+  // Exportar PDF: só administradores, setor da Qualidade e Desenvolvedor do Sistema.
+  const podeExportar = podeExportarOcorrencias(session);
+  // Relatório em PDF: a lista da aba atual, com os filtros aplicados (o mesmo que a tela mostra).
+  const listaExportavel =
+    abaAtiva === "dashboard" ? aplicarFiltrosOcorrencias(lista, filtros) : porAba(abaAtiva);
+  const [exportando, setExportando] = useState(false);
+  const [exportarAberto, setExportarAberto] = useState(false);
+  const [selecionadasPdf, setSelecionadasPdf] = useState<Set<string>>(new Set());
+
+  const descricaoVisao = (): string => {
+    const rotuloAba = ABAS.find((a) => a.valor === abaAtiva)?.rotulo ?? "Ocorrências";
+    const partesFiltro: string[] = [];
+    if (filtros.tipoId) {
+      partesFiltro.push(
+        `Tipo: ${tipos.data?.find((t) => t.id === filtros.tipoId)?.nome ?? filtros.tipoId}`,
+      );
+    }
+    if (filtros.pessoa) partesFiltro.push(`Pessoa: ${filtros.pessoa}`);
+    if (filtros.setor) partesFiltro.push(`Setor: ${filtros.setor}`);
+    return `${rotuloAba}${partesFiltro.length ? ` · ${partesFiltro.join(" · ")}` : ""}`;
+  };
+
+  // Abre a janela de impressão com o relatório das ocorrências dadas (uma ou várias).
+  const imprimirRelatorio = async (ocorrenciasParaImprimir: Ocorrencia[], visao: string) => {
+    // A janela abre já no clique (senão o navegador bloqueia o pop-up depois do carregamento).
+    const janela = window.open("", "_blank", "width=1000,height=800");
+    if (!janela) {
+      toast.error("O navegador bloqueou a janela do relatório. Permita pop-ups para este site.");
+      return;
+    }
+    janela.document.write("<p style='font-family:Arial;padding:24px'>Gerando relatório…</p>");
+    setExportando(true);
+    try {
+      const html = await montarRelatorioOcorrenciasHtml({
+        ocorrencias: ocorrenciasParaImprimir,
+        tipos: tipos.data ?? [],
+        sessao: session,
+        visao,
+      });
+      janela.document.open();
+      janela.document.write(html);
+      janela.document.close();
+    } catch (e) {
+      janela.close();
+      toast.error(traduzErro(e).message || "Não foi possível gerar o PDF.");
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const abrirExportacao = () => {
+    setSelecionadasPdf(new Set(listaExportavel.map((o) => o.id)));
+    setExportarAberto(true);
+  };
+
+  const alternarSelecionada = (id: string) =>
+    setSelecionadasPdf((atual) => {
+      const proxima = new Set(atual);
+      if (proxima.has(id)) proxima.delete(id);
+      else proxima.add(id);
+      return proxima;
+    });
+
+  const confirmarExportacao = () => {
+    const escolhidas = listaExportavel.filter((o) => selecionadasPdf.has(o.id));
+    setExportarAberto(false);
+    void imprimirRelatorio(escolhidas, descricaoVisao());
+  };
+
   return (
     <PanelShell wide>
       <div className="flex min-h-[calc(100vh-6rem)] flex-col">
@@ -304,6 +376,19 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {podeExportar && modo === "lista" && abaAtiva !== "abertura" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exportando || listaExportavel.length === 0}
+                onClick={abrirExportacao}
+                className="gap-1.5"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                {exportando ? "Gerando…" : "Exportar PDF"}
+              </Button>
+            )}
             <div className="flex items-center gap-1 rounded-lg border border-[#D9E0EA] bg-white p-1">
               <button
                 type="button"
@@ -473,7 +558,75 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
         onClose={() => setOcorrenciaSelecionada(null)}
         ocorrencia={ocorrenciaSelecionada}
         onAlterada={() => recarregar()}
+        aoImprimir={
+          podeExportar ? (o) => void imprimirRelatorio([o], `Ocorrência ${o.numero}`) : undefined
+        }
       />
+
+      <Dialog open={exportarAberto} onOpenChange={setExportarAberto}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Exportar PDF</DialogTitle>
+            <DialogDescription>
+              Escolha as ocorrências que entram no relatório. Os filtros da tela já estão aplicados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-between text-[12px] text-[#64748B]">
+            <span>
+              {selecionadasPdf.size} de {listaExportavel.length} selecionada(s)
+            </span>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="font-semibold text-[#1E3A8A] hover:underline"
+                onClick={() => setSelecionadasPdf(new Set(listaExportavel.map((o) => o.id)))}
+              >
+                Selecionar todas
+              </button>
+              <button
+                type="button"
+                className="font-semibold text-[#1E3A8A] hover:underline"
+                onClick={() => setSelecionadasPdf(new Set())}
+              >
+                Limpar
+              </button>
+            </div>
+          </div>
+          <ul className="max-h-[50vh] space-y-1.5 overflow-y-auto pr-1">
+            {listaExportavel.map((o) => (
+              <li key={o.id}>
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#D9E0EA] px-3 py-2 hover:bg-[#F8FAFC]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[#1E3A8A]"
+                    checked={selecionadasPdf.has(o.id)}
+                    onChange={() => alternarSelecionada(o.id)}
+                  />
+                  <span className="font-mono text-[12px] font-bold text-[#1E3A8A]">{o.numero}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-[#1F2937]">
+                    {o.titulo || "Sem título"}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-[#64748B]">{o.tipoNome}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setExportarAberto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={selecionadasPdf.size === 0}
+              className="bg-[#1E3A8A] text-white hover:bg-[#1E40AF]"
+              onClick={confirmarExportacao}
+            >
+              <FileDown className="h-4 w-4" />
+              Gerar PDF ({selecionadasPdf.size})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PanelShell>
   );
 }

@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import {
   Archive,
-  BarChart3,
   Building2,
   CalendarClock,
   CalendarDays,
@@ -15,7 +14,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { PanelShell, usePanelSession } from "@/components/panel-shell";
+import { PanelShell } from "@/components/panel-shell";
+import { AgendaAtas } from "@/components/agenda-atas";
 import { AtaDialog } from "@/components/ata-dialog";
 import { AtaLeituraDialog } from "@/components/ata-leitura-dialog";
 import { TipoReuniaoDialog } from "@/components/tipo-reuniao-dialog";
@@ -40,7 +40,14 @@ import {
   STATUS_ATA,
   STATUS_ATA_LABELS,
 } from "@/lib/atas";
-import { listarAtas, listarTiposReuniao, usuarioIdPorEmail } from "@/lib/atas-base";
+import {
+  listarAtas,
+  listarTiposReuniao,
+  listarUsuariosDasAtas,
+  usuarioIdPorEmail,
+  type UsuarioAtaRow,
+} from "@/lib/atas-base";
+import { listarAgendaEventos, type AgendaEvento } from "@/lib/agenda-eventos";
 import {
   montarReunioesPrevistas,
   quantidadeProximasDias,
@@ -58,7 +65,9 @@ export const Route = createFileRoute("/atas-de-reuniao")({
 });
 
 function AtasDeReuniao() {
-  const sessao = usePanelSession();
+  // O PanelShell (que fornece a sessão por contexto) é renderizado por esta própria
+  // rota, então o contexto não chega aqui: a sessão é lida do armazenamento local.
+  const [sessao] = useState(() => getSession());
   const catalogo = useCatalogoOrganizacional();
   const podeGerenciar = podeGerenciarConteudo(sessao) || ehAdministrador(sessao);
 
@@ -71,25 +80,47 @@ function AtasDeReuniao() {
   const [desativando, setDesativando] = useState(false);
   const [dialogAtaAberto, setDialogAtaAberto] = useState(false);
   const [ataEmEdicao, setAtaEmEdicao] = useState<Ata | null>(null);
+  const [ataAgendaVisualizada, setAtaAgendaVisualizada] = useState<Ata | null>(null);
+  const [agendados, setAgendados] = useState<AgendaEvento[]>([]);
+  const [pessoas, setPessoas] = useState<UsuarioAtaRow[]>([]);
   const [usuarioId, setUsuarioId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (sessao?.email) void usuarioIdPorEmail(sessao.email).then(setUsuarioId);
+    if (!sessao?.email) return;
+    usuarioIdPorEmail(sessao.email)
+      .then(setUsuarioId)
+      .catch((e) =>
+        toast.error(e instanceof Error ? e.message : "Não foi possível identificar seu cadastro."),
+      );
   }, [sessao]);
 
   async function recarregar() {
     setCarregando(true);
     try {
-      const [tiposCarregados, atasCarregadas] = await Promise.all([
-        listarTiposReuniao(),
-        listarAtas(),
-      ]);
+      const [tiposCarregados, atasCarregadas, eventosCarregados, pessoasCarregadas] =
+        await Promise.all([
+          listarTiposReuniao(),
+          listarAtas(),
+          listarAgendaEventos(sessao),
+          listarUsuariosDasAtas(),
+        ]);
       setTipos(tiposCarregados);
       setAtas(atasCarregadas);
+      setAgendados(eventosCarregados);
+      setPessoas(pessoasCarregadas);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível carregar as atas de reunião.");
     } finally {
       setCarregando(false);
+    }
+  }
+
+  /** Recarrega só os eventos da agenda (após criar ou excluir), sem repaginar tudo. */
+  async function recarregarAgenda() {
+    try {
+      setAgendados(await listarAgendaEventos(sessao));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar a agenda.");
     }
   }
 
@@ -184,8 +215,6 @@ function AtasDeReuniao() {
     }
   }
 
-  const vazio = !carregando && tipos.length === 0 && atas.length === 0;
-
   return (
     <PanelShell wide>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -239,95 +268,78 @@ function AtasDeReuniao() {
         })}
       </section>
 
-      {vazio ? (
-        <section className="mt-5 overflow-hidden rounded-2xl border border-[#D9E0EA] bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-[#E9EEF5] px-5 py-4">
-            <BarChart3 className="h-4 w-4 text-[#64748B]" />
-            <h3 className="text-[14px] font-semibold text-[#1F2937]">Reuniões</h3>
-          </div>
-          <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF2F7]">
-              <BarChart3 className="h-7 w-7 text-[#94A3B8]" />
-            </div>
-            <h3 className="mt-4 text-base font-semibold text-[#1F2937]">
-              Nenhum tipo de reunião cadastrado
-            </h3>
-            <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
-              Para abrir uma nova ata é preciso antes cadastrar os tipos de reunião (nome,
-              periodicidade, participantes e quem assina) nas configurações / agenda.
-            </p>
-            <div className="mt-5 flex flex-col items-center gap-3 sm:flex-row">
-              <Button
-                variant="link"
-                className="h-auto p-0 text-[13px] font-medium text-[#1E3A8A] hover:text-[#1E40AF]"
-              >
-                Ir para as atas do sistema
-              </Button>
-              {podeGerenciar ? (
-                <Button type="button" onClick={abrirNovo}>
-                  <Plus className="h-4 w-4" />
-                  Cadastrar tipo de reunião
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : (
-        <Tabs defaultValue="reunioes" className="mt-6">
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="reunioes" className="gap-1.5">
-              Reuniões
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
-                {atas.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="tipos" className="gap-1.5">
-              Tipos de reunião
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
-                {tipos.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="calendario" className="gap-1.5">
-              Calendário
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
-                {previstas.length}
-              </span>
-            </TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="agenda" className="mt-6">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="agenda" className="gap-1.5">
+            Agenda
+          </TabsTrigger>
+          <TabsTrigger value="reunioes" className="gap-1.5">
+            Reuniões
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
+              {atas.length}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="tipos" className="gap-1.5">
+            Tipos de reunião
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
+              {tipos.length}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="proximas" className="gap-1.5">
+            Próximas
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-none text-muted-foreground">
+              {previstas.length}
+            </span>
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="reunioes">
-            <PainelReunioes
-              atas={atas}
-              tipos={tipos}
-              sessao={sessao}
-              usuarioId={usuarioId}
-              carregando={carregando}
-              onNova={abrirNovaAta}
-              onEditar={abrirEdicaoAta}
-            />
-          </TabsContent>
+        <TabsContent value="agenda">
+          <AgendaAtas
+            tipos={tipos}
+            atas={atas}
+            agendados={agendados}
+            pessoas={pessoas}
+            sessao={sessao}
+            usuarioId={usuarioId}
+            podeGerenciar={podeGerenciar}
+            carregando={carregando}
+            onVerAta={setAtaAgendaVisualizada}
+            onAlterado={() => void recarregarAgenda()}
+          />
+        </TabsContent>
 
-          <TabsContent value="tipos">
-            <ListaTipos
-              tipos={tipos}
-              carregando={carregando}
-              podeGerenciar={podeGerenciar}
-              {...(podeGerenciar
-                ? {
-                    onNovo: abrirNovo,
-                    onEditar: abrirEdicao,
-                    onDesativar: setTipoParaDesativar,
-                    onReativar: reativar,
-                  }
-                : {})}
-            />
-          </TabsContent>
+        <TabsContent value="reunioes">
+          <PainelReunioes
+            atas={atas}
+            tipos={tipos}
+            sessao={sessao}
+            usuarioId={usuarioId}
+            carregando={carregando}
+            onNova={abrirNovaAta}
+            onEditar={abrirEdicaoAta}
+          />
+        </TabsContent>
 
-          <TabsContent value="calendario">
-            <ListaCalendario previstas={previstas} carregando={carregando} />
-          </TabsContent>
-        </Tabs>
-      )}
+        <TabsContent value="tipos">
+          <ListaTipos
+            tipos={tipos}
+            carregando={carregando}
+            podeGerenciar={podeGerenciar}
+            {...(podeGerenciar
+              ? {
+                  onNovo: abrirNovo,
+                  onEditar: abrirEdicao,
+                  onDesativar: setTipoParaDesativar,
+                  onReativar: reativar,
+                }
+              : {})}
+          />
+        </TabsContent>
+
+        <TabsContent value="proximas">
+          <ListaCalendario previstas={previstas} carregando={carregando} />
+        </TabsContent>
+      </Tabs>
 
       <TipoReuniaoDialog
         aberto={dialogAberto}
@@ -364,6 +376,19 @@ function AtasDeReuniao() {
         podeCriarSimples={podeGerenciar}
         onFechar={() => setDialogAtaAberto(false)}
         onSalvo={aplicarAtaSalva}
+      />
+
+      <AtaLeituraDialog
+        aberto={ataAgendaVisualizada !== null}
+        ata={ataAgendaVisualizada}
+        tipo={
+          ataAgendaVisualizada?.tipoReuniaoId
+            ? (tipos.find((tipo) => tipo.id === ataAgendaVisualizada.tipoReuniaoId) ?? null)
+            : null
+        }
+        usuarioId={usuarioId}
+        sessao={sessao}
+        onFechar={() => setAtaAgendaVisualizada(null)}
       />
     </PanelShell>
   );

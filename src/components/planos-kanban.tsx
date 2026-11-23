@@ -14,12 +14,13 @@ interface ColunaKanban {
   cor: string;
 }
 
-/** Colunas do quadro. "Atrasada" (status legado) segue na coluna Em andamento e aparece vermelha. */
+/**
+ * Colunas do quadro. Concluídas e impedidas/desconsideradas não aparecem na página
+ * de Planos de Ação. Ação atrasada segue na coluna da sua situação e aparece vermelha no cartão.
+ */
 const COLUNAS: ColunaKanban[] = [
-  { titulo: "Não iniciadas", status: ["nao_iniciado", "aberta"], cor: "#94A3B8" },
-  { titulo: "Em andamento", status: ["em_andamento", "atrasada"], cor: "#3B82F6" },
-  { titulo: "Impedidas", status: ["impedida"], cor: "#F97316" },
-  { titulo: "Concluídas", status: ["concluida"], cor: "#22C55E" },
+  { titulo: "Abertas", status: ["nao_iniciado", "aberta"], cor: "#94A3B8" },
+  { titulo: "Em andamento", status: ["em_andamento"], cor: "#3B82F6" },
 ];
 
 /** Agrupa a origem do plano nos quatro tipos do quadro (o resto fica em "Outras"). */

@@ -76,7 +76,7 @@ export interface KanbanColuna {
 
 export const KANBAN_COLUNAS_DEFAULT: KanbanColuna[] = [
   { id: "afazer", nome: "A fazer", status: ["nao_iniciado", "aberta"] },
-  { id: "andamento", nome: "Em andamento", status: ["em_andamento", "atrasada"] },
+  { id: "andamento", nome: "Em andamento", status: ["em_andamento"] },
   { id: "concluido", nome: "Concluído", status: ["concluida", "cancelado"] },
 ];
 

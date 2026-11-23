@@ -15,10 +15,12 @@ import {
   addMonths,
   addYears,
   differenceInCalendarDays,
+  format,
   parseISO,
   startOfDay,
 } from "date-fns";
 import type { Ata, PeriodicidadeReuniao, TipoReuniao } from "@/lib/atas";
+import type { AgendaEvento } from "@/lib/agenda-eventos";
 
 /** Tolerância em dias após a data prevista antes de marcar como atrasada. */
 export const TOLERANCIA_DIAS_ATRASO = 3;
@@ -26,27 +28,40 @@ export const TOLERANCIA_DIAS_ATRASO = 3;
 /** Janela do card "Próximas reuniões": dias à frente a contar de hoje. */
 export const JANELA_PROXIMAS_DIAS = 30;
 
-/** Soma um período de uma periodicidade sobre a data base. `null` p/ "avulsa". */
-export function somarPeriodicidade(data: Date, periodicidade: PeriodicidadeReuniao): Date | null {
+/**
+ * Soma `n` períodos de uma periodicidade à data base. Multiplica sobre a base
+ * (em vez de encadear) para não acumular arredondamento de meses (ex.: 31/jan).
+ * `null` para "avulsa".
+ */
+export function somarPeriodicidadeN(
+  data: Date,
+  periodicidade: PeriodicidadeReuniao,
+  n: number,
+): Date | null {
   switch (periodicidade) {
     case "semanal":
-      return addDays(data, 7);
+      return addDays(data, 7 * n);
     case "quinzenal":
-      return addDays(data, 14);
+      return addDays(data, 14 * n);
     case "mensal":
-      return addMonths(data, 1);
+      return addMonths(data, n);
     case "bimestral":
-      return addMonths(data, 2);
+      return addMonths(data, 2 * n);
     case "trimestral":
-      return addMonths(data, 3);
+      return addMonths(data, 3 * n);
     case "semestral":
-      return addMonths(data, 6);
+      return addMonths(data, 6 * n);
     case "anual":
-      return addYears(data, 1);
+      return addYears(data, n);
     case "avulsa":
       return null;
   }
   return null;
+}
+
+/** Soma um período de uma periodicidade sobre a data base. `null` p/ "avulsa". */
+export function somarPeriodicidade(data: Date, periodicidade: PeriodicidadeReuniao): Date | null {
+  return somarPeriodicidadeN(data, periodicidade, 1);
 }
 
 function dataInicial(data: string): Date | null {
@@ -100,6 +115,174 @@ export function montarReunioesPrevistas(
     previstas.push({ tipo, dataPrevista: inicioDoDia, atrasada });
   }
   return previstas.sort((a, b) => a.dataPrevista.getTime() - b.dataPrevista.getTime());
+}
+
+/* -------------------------------------------------------------------------- */
+/* Agenda — reuniões de um período (visão de calendário)                      */
+/* -------------------------------------------------------------------------- */
+
+export type SituacaoEvento = "prevista" | "atrasada" | "realizada" | "agendada";
+
+export interface EventoAgenda {
+  chave: string;
+  /** Nome exibido: nome do tipo de reunião ou título do evento avulso. */
+  titulo: string;
+  /** Dia do evento (início do dia, horário local). */
+  data: Date;
+  /** Horário de início `HH:mm` (somente eventos avulsos com horário). */
+  horario: string | null;
+  situacao: SituacaoEvento;
+  /** Tipo de reunião (somente reuniões recorrentes). */
+  tipo: TipoReuniao | null;
+  /** Ata registrada para esta reunião (somente quando "realizada"). */
+  ata: Ata | null;
+  /** Evento avulso da agenda (somente quando "agendada"). */
+  agendado: AgendaEvento | null;
+}
+
+/** Limite de ocorrências projetadas por tipo, para evitar laços longos. */
+const LIMITE_OCORRENCIAS = 1000;
+
+/** O usuário (`id` de `public.usuarios`) é participante ou signatário do tipo. */
+export function envolvidoNoTipo(tipo: TipoReuniao, usuarioId: string | null): boolean {
+  if (!usuarioId) return false;
+  return (
+    tipo.participantes.some((pessoa) => pessoa.id === usuarioId) ||
+    tipo.signatarios.some((pessoa) => pessoa.id === usuarioId)
+  );
+}
+
+/**
+ * Eventos da agenda entre `inicio` e `fim` (inclusive), apenas dos tipos em que
+ * o usuário está envolvido.
+ *
+ *   * realizada: ata cuja data cai no intervalo (vale também para tipo desativado);
+ *   * prevista / atrasada: ocorrências do ciclo a partir da base (última ata ou
+ *     criação do tipo). A primeira ocorrência é a pendência atual (atrasada se
+ *     vencida além da tolerância). As seguintes só aparecem se ainda não passaram,
+ *     pois o passado sem ata seria a mesma pendência repetida.
+ */
+export function montarEventosAgenda(
+  tipos: TipoReuniao[],
+  atas: Ata[],
+  inicio: Date,
+  fim: Date,
+  usuarioId: string | null,
+  hoje: Date = startOfDay(new Date()),
+): EventoAgenda[] {
+  const inicioDia = startOfDay(inicio);
+  const fimDia = startOfDay(fim);
+  const tiposDoUsuario = tipos.filter((tipo) => envolvidoNoTipo(tipo, usuarioId));
+  const tipoPorId = new Map(tiposDoUsuario.map((tipo) => [tipo.id, tipo]));
+  const eventos: EventoAgenda[] = [];
+
+  for (const ata of atas) {
+    const tipo = ata.tipoReuniaoId ? tipoPorId.get(ata.tipoReuniaoId) : undefined;
+    if (!tipo) continue;
+    const data = dataInicial(ata.dataReuniao);
+    if (!data || data < inicioDia || data > fimDia) continue;
+    eventos.push({
+      chave: `ata-${ata.id}`,
+      titulo: tipo.nome,
+      data,
+      horario: null,
+      situacao: "realizada",
+      tipo,
+      ata,
+      agendado: null,
+    });
+  }
+
+  for (const tipo of tiposDoUsuario) {
+    if (!tipo.ativo) continue;
+    const base = dataBaseDoTipo(tipo, atas);
+    if (!base) continue;
+
+    for (let n = 1; n <= LIMITE_OCORRENCIAS; n++) {
+      const previsto = somarPeriodicidadeN(base, tipo.periodicidade, n);
+      if (!previsto) break; // avulsa: sem ciclo fixo
+      const dia = startOfDay(previsto);
+      if (dia > fimDia) break;
+
+      if (n > 1 && dia < hoje) continue; // passado sem ata = mesma pendência da primeira
+      if (dia < inicioDia) continue;
+
+      const vencida = n === 1 && differenceInCalendarDays(hoje, dia) > TOLERANCIA_DIAS_ATRASO;
+
+      eventos.push({
+        chave: `${tipo.id}-${format(dia, "yyyy-MM-dd")}`,
+        titulo: tipo.nome,
+        data: dia,
+        horario: null,
+        situacao: vencida ? "atrasada" : "prevista",
+        tipo,
+        ata: null,
+        agendado: null,
+      });
+    }
+  }
+
+  return eventos.sort(compararEventos);
+}
+
+/** Ordem da agenda: dia, depois horário (dia inteiro primeiro), depois título. */
+export function compararEventos(a: EventoAgenda, b: EventoAgenda): number {
+  return (
+    a.data.getTime() - b.data.getTime() ||
+    (a.horario ?? "").localeCompare(b.horario ?? "") ||
+    a.titulo.localeCompare(b.titulo, "pt-BR")
+  );
+}
+
+/**
+ * Eventos avulsos da agenda entre `inicio` e `fim` (inclusive) em que o usuário
+ * é criador ou convidado. O banco já filtra; a checagem aqui garante a regra no front.
+ */
+export function montarEventosAvulsos(
+  eventos: AgendaEvento[],
+  inicio: Date,
+  fim: Date,
+  usuarioId: string | null,
+): EventoAgenda[] {
+  if (!usuarioId) return [];
+  const inicioDia = startOfDay(inicio);
+  const fimDia = startOfDay(fim);
+  const resultado: EventoAgenda[] = [];
+  for (const agendado of eventos) {
+    const visivel =
+      agendado.criadoPor === usuarioId ||
+      agendado.convidados.some((pessoa) => pessoa.id === usuarioId);
+    if (!visivel) continue;
+    const data = dataInicial(agendado.dataEvento);
+    if (!data || data < inicioDia || data > fimDia) continue;
+    resultado.push({
+      chave: `evento-${agendado.id}`,
+      titulo: agendado.titulo,
+      data,
+      horario: agendado.horaInicio,
+      situacao: agendado.realizada ? "realizada" : "agendada",
+      tipo: null,
+      ata: null,
+      agendado,
+    });
+  }
+  return resultado;
+}
+
+/** Agenda completa do usuário: reuniões de tipos + eventos avulsos, em ordem. */
+export function montarAgenda(
+  tipos: TipoReuniao[],
+  atas: Ata[],
+  agendados: AgendaEvento[],
+  inicio: Date,
+  fim: Date,
+  usuarioId: string | null,
+  hoje: Date = startOfDay(new Date()),
+): EventoAgenda[] {
+  return [
+    ...montarEventosAgenda(tipos, atas, inicio, fim, usuarioId, hoje),
+    ...montarEventosAvulsos(agendados, inicio, fim, usuarioId),
+  ].sort(compararEventos);
 }
 
 /** Quantidade de reuniões previstas nos próximos `dias` (padrão 30). */

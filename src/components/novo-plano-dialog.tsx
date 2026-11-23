@@ -10,8 +10,10 @@ import { getSession } from "@/lib/auth";
 import type { Colaborador } from "@/lib/dados";
 import { DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PRIORIDADES_ACAO, prazoBrParaISO } from "@/lib/planos";
+import { PRIORIDADES_ACAO, prazoBrParaISO, type ItemChecklist } from "@/lib/planos";
+import { Plus, Trash2 } from "lucide-react";
 import { criarPlano } from "@/lib/planos-crud";
+import { podeSerResponsavelAcao } from "@/lib/planos-responsaveis";
 import { mascaraDataBr } from "@/lib/utils";
 
 export function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
@@ -49,6 +51,9 @@ export function NovoPlanoDialog(p: Props) {
   const [prioridade, setPrioridade] = useState("Média");
   const [vinculo, setVinculo] = useState("");
   const [mencionados, setMencionados] = useState<Colaborador[]>([]);
+  const [apoios, setApoios] = useState<Colaborador[]>([]);
+  const [itens, setItens] = useState<ItemChecklist[]>([]);
+  const [novoItem, setNovoItem] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   // Controla o pré-preenchimento vindo de outro módulo (uma vez por abertura).
@@ -58,7 +63,8 @@ export function NovoPlanoDialog(p: Props) {
     if (!aberto) {
       setTitulo(""); setDetalhamento(""); setOrigem(""); setOrigemOutros("");
       setSetor(""); setResponsavelId(""); setPrazo(""); setPrioridade("Média");
-      setVinculo(""); setMencionados([]); setErro(""); setSalvando(false);
+      setVinculo(""); setMencionados([]); setApoios([]); setItens([]); setNovoItem("");
+      setErro(""); setSalvando(false);
       preenchido.current = false;
       return;
     }
@@ -80,6 +86,16 @@ export function NovoPlanoDialog(p: Props) {
     && (prazo.trim() === "" || prazoIso !== null)
     && (origem !== "Outros" || origemOutros.trim() !== "");
 
+  function adicionarItem() {
+    const texto = novoItem.trim();
+    if (!texto) return;
+    setItens((atual) => [
+      ...atual,
+      { id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, texto, feito: false },
+    ]);
+    setNovoItem("");
+  }
+
   async function enviar() {
     if (!valido || !responsavel) return;
     setSalvando(true);
@@ -96,10 +112,13 @@ export function NovoPlanoDialog(p: Props) {
         responsavelEmail: (responsavel.email ?? "").toLowerCase(),
         seguidoresIds: mencionados.map((m) => m.id),
         seguidoresEmails: mencionados.map((m) => (m.email ?? "").toLowerCase()).filter((e) => e.includes("@")),
+        suporteIds: apoios.map((m) => m.id),
+        suporteEmails: apoios.map((m) => (m.email ?? "").toLowerCase()).filter((e) => e.includes("@")),
         prazo: prazoIso,
         prioridade,
         vinculoTipo: vinculo.trim() ? "registro" : "",
         vinculoId: vinculo.trim(),
+        checklist: itens,
       }, getSession());
       onCriado();
     } catch (e) {
@@ -153,7 +172,7 @@ export function NovoPlanoDialog(p: Props) {
               <Select value={responsavelId} onValueChange={setResponsavelId}>
                 <SelectTrigger><SelectValue placeholder="Selecionar colaborador…" /></SelectTrigger>
                 <SelectContent>
-                  {colaboradores.map((c) => (
+                  {colaboradores.filter(podeSerResponsavelAcao).map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.nome} — {c.setor || c.cargo}</SelectItem>
                   ))}
                 </SelectContent>
@@ -176,8 +195,39 @@ export function NovoPlanoDialog(p: Props) {
                 placeholder="Ex.: NC-2026-003" maxLength={80} />
             </Campo>
           </div>
+          <Campo rotulo="Checklist (opcional)">
+            {itens.length > 0 ? (
+              <ul className="divide-y divide-[#E2E8F0] rounded-md border border-[#E2E8F0]">
+                {itens.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-2 px-3 py-2 text-[13px] text-[#1F2937]">
+                    <span className="min-w-0 flex-1 truncate">{item.texto}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remover ${item.texto}`}
+                      onClick={() => setItens((atual) => atual.filter((i) => i.id !== item.id))}
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[#94A3B8] transition hover:bg-[#F1F5F9] hover:text-[#E11D48]"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="flex gap-2">
+              <Input value={novoItem}
+                onChange={(e) => setNovoItem(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarItem(); } }}
+                placeholder="Novo item do checklist (ex.: revisar procedimento)" maxLength={200} />
+              <Button type="button" variant="outline" onClick={adicionarItem} disabled={!novoItem.trim()}>
+                <Plus className="h-4 w-4" /> Adicionar
+              </Button>
+            </div>
+          </Campo>
           <Campo rotulo="Seguidores">
             <CampoMencao colaboradores={colaboradores} selecionados={mencionados} onChange={setMencionados} />
+          </Campo>
+          <Campo rotulo="Suporte (uma ou mais pessoas)">
+            <CampoMencao colaboradores={colaboradores} selecionados={apoios} onChange={setApoios} />
           </Campo>
           {erro ? <p className="text-[13px] text-rose-600">{erro}</p> : null}
         </div>
