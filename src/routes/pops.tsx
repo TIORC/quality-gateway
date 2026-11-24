@@ -41,6 +41,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PanelShell } from "@/components/panel-shell";
 import { GerenciarSetoresPopDialog } from "@/components/gerenciar-setores-pop-dialog";
+import { DocumentosParaDownload } from "@/components/documentos-para-download";
+import { podeGerenciarDocumentos } from "@/lib/documentos-download";
+import { servicoDocumentosPop } from "@/lib/pops-documentos";
 import { HistoricoAprovacao, type EtapaHistorico } from "@/components/historico-aprovacao";
 import {
   AlertDialog,
@@ -1878,6 +1881,11 @@ function PopDetalhe({ pop, setores, onFechar, onAtualizado }: PopDetalheProps) {
         </div>
 
         <PopAnexoVisualizador anexo={pop.anexo} />
+        <DocumentosParaDownload
+          entidadeId={popExibido.id}
+          podeGerenciar={podeGerenciarDocumentos(sessao)}
+          servico={servicoDocumentosPop}
+        />
 
         <SecaoLeituraSugestao
           leitura={leitura}

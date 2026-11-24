@@ -275,6 +275,7 @@ async function aplicarGruposNaSessao(
       permExcluirDocumentos: sessao.permExcluirDocumentos || acesso.permissoes.perm_excluir_documentos,
       permExcluirPlanos: sessao.permExcluirPlanos || acesso.permissoes.perm_excluir_planos,
       permAprovarDocumentos: sessao.permAprovarDocumentos || acesso.permissoes.perm_aprovar_documentos,
+      permissaoConfiguracoes: comConfiguracoes.permissaoConfiguracoes || acesso.permissoes.adm_configuracoes,
       rotasDeGrupos: acesso.rotas,
     };
   } catch {

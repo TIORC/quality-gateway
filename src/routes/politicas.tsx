@@ -65,6 +65,9 @@ import { PdfProtegido } from "@/components/pdf-protegido";
 import { DocxProtegido } from "@/components/docx-protegido";
 import { HistoricoAprovacao, type EtapaHistorico } from "@/components/historico-aprovacao";
 import { useBloquearAtalhosDocumento } from "@/hooks/use-bloquear-documento";
+import { DocumentosParaDownload } from "@/components/documentos-para-download";
+import { podeGerenciarDocumentos } from "@/lib/documentos-download";
+import { servicoDocumentosPolitica } from "@/lib/politicas-documentos";
 import {
   atualizarPolitica,
   carregarPoliticasAcessiveis,
@@ -1556,6 +1559,11 @@ function PoliticaDetalhe({
             Esta política não possui documento anexado.
           </p>
         )}
+        <DocumentosParaDownload
+          entidadeId={item.id}
+          podeGerenciar={podeGerenciarDocumentos(sessao)}
+          servico={servicoDocumentosPolitica}
+        />
 
         <div className="mt-6 rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] p-3">
           <p className="text-[13px] font-semibold text-[#1F2937]">Ciência / Leituras</p>

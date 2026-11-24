@@ -417,8 +417,32 @@ const EMAILS_VEEM_TODOS_INDICADORES = new Set([
 ]);
 
 /**
+ * Veem todos os setores em Indicadores (somente leitura), mas não pertencem a
+ * eles: nos indicadores só contam no setor principal, e os setores adicionais
+ * são ignorados.
+ */
+const EMAILS_VEEM_TODOS_SO_SETOR_PRINCIPAL = new Set([
+  "cleo@orcoma.com.br",
+  "carmen.couto@orcoma.com.br",
+  "danusa.moura@orcoma.com.br",
+]);
+
+/** Setores em que o colaborador conta nos indicadores (principal e adicionais, salvo exceções). */
+export function setoresDeMembroIndicadores(colaborador: {
+  email?: string;
+  setor?: string;
+  setoresAdicionais?: string[];
+}): string[] {
+  const principal = colaborador.setor ? [colaborador.setor] : [];
+  const email = (colaborador.email ?? "").trim().toLowerCase();
+  if (EMAILS_VEEM_TODOS_SO_SETOR_PRINCIPAL.has(email)) return principal;
+  return [...principal, ...(colaborador.setoresAdicionais ?? [])];
+}
+
+/**
  * O que a pessoa enxerga em Indicadores:
- *  - `todos`: Desenvolvedor do Sistema, Gestor da Qualidade, setor da Qualidade, Jacson e Celso;
+ *  - `todos`: Desenvolvedor do Sistema, Gestor da Qualidade, setor da Qualidade, Jacson, Celso,
+ *    Cleo, Carmen e Danusa (estas três só no setor principal);
  *  - `unidade`: Diretoria, só os setores da própria unidade;
  *  - `setor`: Líder de setor, só os indicadores dos setores que lidera;
  *  - `proprio`: demais, só os indicadores em que é o responsável.
@@ -439,7 +463,10 @@ export function setorEhDaUnidade(nomeSetor: string | null | undefined, unidade: 
 export function escopoDosIndicadores(session: UserSession | null | undefined): EscopoIndicadores {
   if (!session) return "proprio";
   if (ehUsuarioDaQualidade(session)) return "todos";
-  if (EMAILS_VEEM_TODOS_INDICADORES.has((session.email ?? "").trim().toLowerCase())) return "todos";
+  const email = (session.email ?? "").trim().toLowerCase();
+  if (EMAILS_VEEM_TODOS_INDICADORES.has(email) || EMAILS_VEEM_TODOS_SO_SETOR_PRINCIPAL.has(email)) {
+    return "todos";
+  }
   if (session.nivelAcesso === NIVEL_DIRETORIA && session.unidade.trim()) return "unidade";
   if (setoresLiderados(session).length > 0) return "setor";
   return "proprio";

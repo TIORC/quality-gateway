@@ -13,8 +13,12 @@ import type {
   Ata,
   AtaAcao,
   AtaSetorCitado,
+  DocumentoAta,
   OrigemAta,
+  ParticipanteDocumento,
+  PautaDocumento,
   PeriodicidadeReuniao,
+  PlanoDocumento,
   StatusAta,
   StatusSugestaoAcao,
   TipoReuniao,
@@ -74,6 +78,65 @@ export function tipoReuniaoDoRow(row: Rec): TipoReuniao {
   };
 }
 
+/** Documento de uma ata nova, ou de uma ata antiga que não tem documento salvo. */
+export function documentoVazio(): DocumentoAta {
+  return {
+    areas: "",
+    horario: "",
+    pauta: [],
+    plano: [],
+    participantes: [],
+    elaboradoPor: "",
+    aprovadoPor: "",
+    revisao: "1",
+    dataRevisao: "",
+  };
+}
+
+function textoDe(valor: unknown): string {
+  return typeof valor === "string" ? valor : "";
+}
+
+function listaDe(valor: unknown): Rec[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.filter((item): item is Rec => !!item && typeof item === "object");
+}
+
+/** Lê o jsonb `documento`, tolerando campos ausentes (atas antigas e migrations recentes). */
+export function documentoDoJson(valor: unknown): DocumentoAta {
+  const base = documentoVazio();
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return base;
+  const o = valor as Rec;
+  const pauta: PautaDocumento[] = listaDe(o["pauta"]).map((item) => ({
+    area: textoDe(item["area"]),
+    pauta: textoDe(item["pauta"]),
+    descricao: textoDe(item["descricao"]),
+  }));
+  const plano: PlanoDocumento[] = listaDe(o["plano"]).map((item) => ({
+    numero: textoDe(item["numero"]),
+    oQue: textoDe(item["oQue"]),
+    como: textoDe(item["como"]),
+    quem: textoDe(item["quem"]),
+    quando: textoDe(item["quando"]),
+    status: textoDe(item["status"]),
+  }));
+  const participantes: ParticipanteDocumento[] = listaDe(o["participantes"]).map((item) => ({
+    nome: textoDe(item["nome"]),
+    cargo: textoDe(item["cargo"]),
+  }));
+  return {
+    areas: textoDe(o["areas"]),
+    horario: textoDe(o["horario"]),
+    pauta,
+    plano,
+    participantes,
+    elaboradoPor: textoDe(o["elaboradoPor"]),
+    aprovadoPor: textoDe(o["aprovadoPor"]),
+    revisao: textoDe(o["revisao"]) || base.revisao,
+    dataRevisao: textoDe(o["dataRevisao"]),
+  };
+}
+
 /** Mapeia uma linha de `atas` para o modelo `Ata`. */
 export function ataDoRow(row: Rec): Ata {
   const origem = str(row["origem"], "simples");
@@ -86,6 +149,7 @@ export function ataDoRow(row: Rec): Ata {
     titulo: str(row["titulo"]),
     dataReuniao: str(row["data_reuniao"]),
     texto: str(row["texto"]),
+    documento: documentoDoJson(row["documento"]),
     status: (STATUS_OK.has(status) ? status : "rascunho") as StatusAta,
     criadoPor: str(row["criado_por"]),
     createdAt: str(row["created_at"]),
@@ -120,7 +184,7 @@ export async function listarAtas(): Promise<Ata[]> {
     const { data, error } = await client
       .from("atas")
       .select(
-        "id,tipo_reuniao,origem,titulo,data_reuniao,texto,status,criado_por,created_at,updated_at",
+        "id,tipo_reuniao,origem,titulo,data_reuniao,texto,documento,status,criado_por,created_at,updated_at",
       )
       .order("data_reuniao", { ascending: false });
     if (error) {

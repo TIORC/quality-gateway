@@ -19,6 +19,7 @@ import { traduzErro } from "@/lib/organizacao";
 import { clienteLivre } from "@/lib/supabase-livro";
 import type {
   Ata,
+  DocumentoAta,
   OrigemAta,
   PeriodicidadeReuniao,
   StatusSugestaoAcao,
@@ -116,6 +117,8 @@ export interface EntradaAta {
   /** Data da reunião no formato `AAAA-MM-DD`. */
   dataReuniao: string;
   texto: string;
+  /** Documento completo (pauta, plano, participantes, responsáveis e revisão). */
+  documento: DocumentoAta;
 }
 
 /**
@@ -135,6 +138,7 @@ export async function criarAta(entrada: EntradaAta, sessao: UserSession | null):
     titulo,
     data_reuniao: entrada.dataReuniao,
     texto: entrada.texto ?? "",
+    documento: entrada.documento,
   });
   if (error) throw traduzErro(error);
   return ataDoRow(resultadoRow(data));
@@ -159,6 +163,7 @@ export async function atualizarAta(
     titulo,
     data_reuniao: entrada.dataReuniao,
     texto: entrada.texto ?? "",
+    documento: entrada.documento,
   });
   if (error) throw traduzErro(error);
   return ataDoRow(resultadoRow(data));

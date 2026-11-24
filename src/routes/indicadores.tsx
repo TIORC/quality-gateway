@@ -55,6 +55,7 @@ import {
   mesReferenciaDe,
   MODOS_PERIODO,
   escopoDosIndicadores,
+  setoresDeMembroIndicadores,
   normalizarIntervalo,
   setorEhDaUnidade,
   podeGerenciarIndicadores,
@@ -451,14 +452,26 @@ function setorDoCadastroCorresponde(setorCadastro: string | undefined, setorGest
   return cadastro !== "" && (gestta === cadastro || gestta.startsWith(`${cadastro} `));
 }
 
-/** Pessoa conta nos indicadores do setor principal e de todos os setores adicionais. */
+/** Pessoa conta nos indicadores do setor principal e de todos os setores adicionais (salvo exceções). */
 function colaboradorEstaNoSetor(
-  colaborador: { setor?: string; setoresAdicionais?: string[] },
+  colaborador: { email?: string; setor?: string; setoresAdicionais?: string[] },
   setorGestta: string,
 ): boolean {
-  return [colaborador.setor, ...(colaborador.setoresAdicionais ?? [])].some((setor) =>
+  return setoresDeMembroIndicadores(colaborador).some((setor) =>
     setorDoCadastroCorresponde(setor, setorGestta),
   );
+}
+
+/**
+ * Timeout do banco (consulta longa demais): não mostra o aviso técnico na tela.
+ * Os demais erros continuam aparecendo como antes.
+ */
+function avisarErro(erro: unknown, mensagemPadrao: string) {
+  if (erro instanceof Error && /statement timeout|canceling statement/i.test(erro.message)) {
+    console.warn("[Indicadores] consulta demorou demais:", erro.message);
+    return;
+  }
+  toast.error(erro instanceof Error ? erro.message : mensagemPadrao);
 }
 
 function SummaryCard({ label, value, valueClass, accent, footer, style }: SummaryCardProps) {
@@ -546,7 +559,7 @@ function Indicadores() {
         setCelulas(lista);
         setSetoresCelula(setores);
       })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as células."));
+      .catch((e) => avisarErro(e, "Não foi possível carregar as células."));
   }, []);
   /** Período de exibição (cards, gráficos, resumo e histórico). */
   const [periodo, setPeriodo] = useState<FiltroPeriodo>({ modo: "ultimos12" });
@@ -685,7 +698,7 @@ function Indicadores() {
       );
       setZerarAlvo(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível apagar as tarefas.");
+      avisarErro(e, "Não foi possível apagar as tarefas.");
     } finally {
       setZerando(false);
     }
@@ -703,7 +716,7 @@ function Indicadores() {
         setAtendimentos(departamentos);
         setAtendimentosColaborador(colaboradores);
       })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar os atendimentos."));
+      .catch((e) => avisarErro(e, "Não foi possível carregar os atendimentos."));
   }, []);
 
   const setoresDoFiltro = useMemo(() => {
@@ -711,8 +724,7 @@ function Indicadores() {
     for (const setor of setoresCelula) nomes.add(unificarSetor(setor.nome));
     // Setor principal e adicionais de cada colaborador também contam como setores existentes.
     for (const colaborador of catalogo.colaboradores) {
-      if (colaborador.setor) nomes.add(unificarSetor(colaborador.setor));
-      for (const extra of colaborador.setoresAdicionais ?? []) nomes.add(unificarSetor(extra));
+      for (const setor of setoresDeMembroIndicadores(colaborador)) nomes.add(unificarSetor(setor));
     }
     for (const indicador of ativos) if (indicador.setor) nomes.add(unificarSetor(indicador.setor));
     for (const t of tarefas) if (t.departamento) nomes.add(t.departamento);
@@ -755,7 +767,7 @@ function Indicadores() {
     else void tarefasDoCacheLocal().then((local) => local && setTarefas((atual) => (atual.length ? atual : local)));
     carregarTarefas()
       .then(setTarefas)
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Não foi possível carregar as tarefas."));
+      .catch((e) => avisarErro(e, "Não foi possível carregar as tarefas."));
   }, []);
 
   const controleImport = useMemo(
@@ -797,7 +809,7 @@ function Indicadores() {
       setCelulas(celulasAtuais);
       toast.success("Dados atualizados.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível atualizar os dados.");
+      avisarErro(e, "Não foi possível atualizar os dados.");
     } finally {
       setAtualizando(false);
     }
@@ -1050,7 +1062,7 @@ function Indicadores() {
       toast.success(`Mês de ${rotuloMes(apuracao.mesReferencia)} fechado.`);
       await recarregar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível fechar o mês.");
+      avisarErro(e, "Não foi possível fechar o mês.");
     }
   }
 
@@ -1064,7 +1076,7 @@ function Indicadores() {
       );
       await recarregar();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Não foi possível alterar o indicador.");
+      avisarErro(e, "Não foi possível alterar o indicador.");
     }
   }
 
@@ -1936,7 +1948,7 @@ function ImportadorAtendimentos({
       setArquivo(null);
       toast.success("Atendimentos importados.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao importar a planilha.");
+      avisarErro(e, "Falha ao importar a planilha.");
     } finally {
       setImportando(false);
     }
@@ -2056,7 +2068,7 @@ function ImportadorTarefas({
       setArquivo(null);
       toast.success("Importação concluída.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao importar a planilha.");
+      avisarErro(e, "Falha ao importar a planilha.");
     } finally {
       setImportando(false);
       setProgresso(null);

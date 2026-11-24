@@ -97,6 +97,43 @@ export interface TipoReuniao {
   updatedAt: string;
 }
 
+/** Linha da pauta da reunião. */
+export interface PautaDocumento {
+  area: string;
+  pauta: string;
+  descricao: string;
+}
+
+/** Linha do plano de ação da ata. */
+export interface PlanoDocumento {
+  numero: string;
+  oQue: string;
+  como: string;
+  quem: string;
+  quando: string;
+  status: string;
+}
+
+/** Participante da reunião (a assinatura é feita no papel). */
+export interface ParticipanteDocumento {
+  nome: string;
+  cargo: string;
+}
+
+/** Documento completo da ata, guardado em `atas.documento` (jsonb). */
+export interface DocumentoAta {
+  areas: string;
+  horario: string;
+  pauta: PautaDocumento[];
+  plano: PlanoDocumento[];
+  participantes: ParticipanteDocumento[];
+  elaboradoPor: string;
+  aprovadoPor: string;
+  revisao: string;
+  /** Data da revisão no formato `AAAA-MM-DD`. */
+  dataRevisao: string;
+}
+
 export interface Ata {
   id: string;
   /** Tipo de reunião vinculado; `null` para ata avulsa sem tipo. */
@@ -106,6 +143,8 @@ export interface Ata {
   /** Data da reunião no formato `AAAA-MM-DD`. */
   dataReuniao: string;
   texto: string;
+  /** Documento completo (pauta, plano, participantes, responsáveis e revisão). */
+  documento: DocumentoAta;
   status: StatusAta;
   /** Usuário que criou a ata (`id` de `public.usuarios`). */
   criadoPor: string;

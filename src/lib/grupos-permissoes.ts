@@ -38,16 +38,22 @@ export const PERMISSOES_DE_GRUPO = [
     rotulo: "Excluir planos de ação",
     descricao: "Remover planos de ação.",
   },
+  {
+    chave: "adm_configuracoes",
+    rotulo: "Acessar e editar Configurações",
+    descricao: "Libera o menu Configurações (cadastros, células e colaboradores).",
+  },
 ] as const;
 
 export type ChavePermissaoGrupo = (typeof PERMISSOES_DE_GRUPO)[number]["chave"];
 
-/** Caminhos do menu que podem ser liberados por grupo. Configurações fica de fora: é gestão. */
+/**
+ * Caminhos do menu que podem ser liberados por grupo (inclui o menu Gestão:
+ * Configurações e Logs de atividade).
+ */
 export const ROTAS_DE_GRUPO: { path: AppRoutePath; label: string }[] = NAV_GROUPS.flatMap(
   (grupo) => grupo.items,
-)
-  .filter((item) => item.path !== "/configuracoes")
-  .map((item) => ({ path: item.path, label: item.label }));
+).map((item) => ({ path: item.path, label: item.label }));
 
 export interface ModulosPermGrupo {
   rotas?: string[];
