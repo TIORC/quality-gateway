@@ -226,6 +226,19 @@ export async function salvarLeituraAssistida(
 }
 
 /**
+ * Volta a ata de "aguardando assinatura" para rascunho (volta a ser editável).
+ * Os planos de ação já criados pela efetivação não são alterados. Regra no banco.
+ */
+export async function voltarAtaParaRascunho(id: string, sessao: UserSession | null): Promise<void> {
+  const client = clienteLivre();
+  const { error } = await client.rpc("voltar_ata_rascunho", {
+    email_caller: emailDaSessao(sessao),
+    ata_id: id,
+  });
+  if (error) throw traduzErro(error);
+}
+
+/**
  * Efetiva a ata: trava o documento (aguardando assinatura) e cria um plano de ação
  * para cada item do plano da ata. Permissão e regras no banco (`efetivar_ata`).
  * Retorna a quantidade de planos criados.

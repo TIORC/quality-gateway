@@ -308,7 +308,7 @@ function SubetapaEditor({ s, onPatch, colaboradores, setores, cargos }: Subetapa
         </div>
       </div>
 
-      <div className="grid grid-cols-8 gap-2 items-end">
+      <div className="grid grid-cols-2 gap-2 items-end sm:grid-cols-4 xl:grid-cols-8">
         <div className="col-span-3 space-y-1.5">
           <Label className="text-[12px]">Responsável</Label>
           <Select

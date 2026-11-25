@@ -138,7 +138,8 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
       <p className="mb-4 text-right text-[11px] text-[#94A3B8]">{progresso}% do trajeto</p>
 
       {/* Estações da linha */}
-      <div className="flex items-center">
+      {/* Em telas pequenas as estações viram uma lista vertical; a partir de sm, a linha horizontal. */}
+      <div className="flex flex-col sm:flex-row sm:items-center">
         {etapas.map((etapa, i) => {
           const macro = etapa.macro;
           const est = estadoDa(macro);
@@ -161,7 +162,7 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                   if (ocultarDetalhe(macro)) return;
                   setExpandida(expandidaAqui ? null : macro);
                 }}
-                className="group flex w-14 shrink-0 flex-col items-center gap-1.5"
+                className="group flex w-full flex-row items-center gap-3 text-left sm:w-14 sm:shrink-0 sm:flex-col sm:gap-1.5 sm:text-center"
                 title={etapa.nome}
               >
                 <span
@@ -186,18 +187,19 @@ export function MetroLinha({ ocorrencia: o, etapas, eventos, visao }: MetroLinha
                   )}
                 </span>
                 <span
-                  className={`w-max text-[9px] leading-tight ${
+                  className={`text-[12px] leading-tight sm:w-max sm:text-[9px] ${
                     emAndamento || atrasada || concluida
                       ? "font-semibold text-[#475569]"
                       : "text-[#94A3B8]"
                   }`}
                 >
-                  {ROTULOS_CURTOS[macro] ?? etapa.nome}
+                  <span className="sm:hidden">{etapa.nome}</span>
+                  <span className="hidden sm:inline">{ROTULOS_CURTOS[macro] ?? etapa.nome}</span>
                 </span>
               </button>
               {i < ids.length - 1 && (
                 <span
-                  className="h-0.5 flex-1 rounded-full transition-colors"
+                  className="ml-[15px] h-5 w-0.5 rounded-full transition-colors sm:ml-0 sm:h-0.5 sm:w-auto sm:flex-1"
                   style={{
                     backgroundColor:
                       i < idxAtual || o.status === "encerrada"

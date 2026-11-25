@@ -19,6 +19,7 @@ import type {
   MacroEtapa,
   MacroFluxo,
   Ocorrencia,
+  ParecerQualidadeJulgamento,
   ResponsavelEtapa,
   ResponsavelTipo,
   Respostas,
@@ -437,6 +438,32 @@ export function ocorrenciaDoRow(row: Linha): Ocorrencia {
   };
 }
 
+/** Pareceres da Qualidade de todas as ocorrências, agrupados por ocorrência (ordem de publicação). */
+async function listarPareceresQualidade(): Promise<Map<string, ParecerQualidadeJulgamento[]>> {
+  const porOcorrencia = new Map<string, ParecerQualidadeJulgamento[]>();
+  const { data, error } = await cloud()
+    .from("ocorrencia_pareceres_qualidade")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (tabelaAusente(error)) return porOcorrencia;
+    throw traduzErro(error);
+  }
+  for (const r of (data ?? []) as Linha[]) {
+    const ocorrenciaId = str(r["ocorrencia_id"]);
+    const lista = porOcorrencia.get(ocorrenciaId) ?? [];
+    lista.push({
+      id: str(r["id"]),
+      texto: str(r["texto"]),
+      salvoPorNome: str(r["autor_nome"]),
+      autorEmail: str(r["autor_email"]),
+      salvoEm: str(r["created_at"]),
+    });
+    porOcorrencia.set(ocorrenciaId, lista);
+  }
+  return porOcorrencia;
+}
+
 export async function listarOcorrencias(): Promise<Ocorrencia[]> {
   try {
     const { data, error } = await cloud()
@@ -447,7 +474,12 @@ export async function listarOcorrencias(): Promise<Ocorrencia[]> {
       if (tabelaAusente(error)) return [];
       throw traduzErro(error);
     }
-    return (data ?? []).map((r: unknown) => ocorrenciaDoRow(r as Linha));
+    const ocorrencias = (data ?? []).map((r: unknown) => ocorrenciaDoRow(r as Linha));
+    const pareceres = await listarPareceresQualidade();
+    return ocorrencias.map((o: Ocorrencia) => ({
+      ...o,
+      pareceresQualidade: pareceres.get(o.id) ?? [],
+    }));
   } catch (e) {
     if (tabelaAusente(e)) return [];
     throw e instanceof Error ? e : traduzErro(e);

@@ -22,7 +22,12 @@ import {
   carregarFormularioAtivo,
   participantesJulgamentoDe,
 } from "@/lib/ocorrencias-crud";
-import { podeExportarOcorrencias, podeVerInternos } from "@/lib/ocorrencias-permissoes";
+import {
+  podeExportarOcorrencias,
+  podeVerInternos,
+  pareceresVisiveis,
+  veTodosPareceresJulgamento,
+} from "@/lib/ocorrencias-permissoes";
 import {
   ACAO_MENSAGEM_COMUNICACAO,
   FERRAMENTA_APURACAO_LABELS,
@@ -43,6 +48,8 @@ import {
   nomeEtapaDoFluxo,
   ocorrenciaAtrasada,
   parecerApuracaoDe,
+  pareceresQualidadeJulgamentoDe,
+  type ParecerQualidadeJulgamento,
   relatorioJulgamentoDe,
   setoresEnvolvidosDe,
   setoresSemCiencia,
@@ -103,6 +110,8 @@ interface OcorrenciaRelatorio {
   eventos: EventoOcorrencia[];
   planos: PlanoAcao[];
   internos: boolean;
+  /** Pareceres de julgamento que quem imprime pode ver; null = seção oculta para essa pessoa. */
+  pareceresJulgamento: ParecerQualidadeJulgamento[] | null;
   desconsiderada: boolean;
   pendencias: string[];
 }
@@ -378,6 +387,18 @@ function apuracaoHtml(r: OcorrenciaRelatorio): string {
   return html;
 }
 
+/**
+ * Pareceres de julgamento que a pessoa pode ver no documento. Null quando ela não tem
+ * acesso à seção (não é da Qualidade e não escreveu nenhum parecer).
+ */
+function pareceresDoViewer(
+  sessao: UserSession | null,
+  o: Ocorrencia,
+): ParecerQualidadeJulgamento[] | null {
+  const visiveis = pareceresVisiveis(sessao, pareceresQualidadeJulgamentoDe(o));
+  return visiveis.length > 0 || veTodosPareceresJulgamento(sessao) ? visiveis : null;
+}
+
 function julgamentoHtml(r: OcorrenciaRelatorio): string {
   const { o } = r;
   const relatorio = relatorioJulgamentoDe(o);
@@ -396,6 +417,19 @@ function julgamentoHtml(r: OcorrenciaRelatorio): string {
         relatorio.anexos.length ? `<p class="meta">Anexos:</p>${anexosHtml(relatorio.anexos)}` : ""
       }<p class="meta">Salvo por ${txt(relatorio.salvoPorNome || "—")} · ${dataHora(relatorio.salvoEm)}</p>`
     : `<p class="pendencia">Relatório não registrado.</p>`;
+  // Só os pareceres que quem imprime pode ver (null: a seção não aparece para essa pessoa).
+  if (r.pareceresJulgamento) {
+    const pareceres = r.pareceresJulgamento;
+    html += `<h4>Parecer de Julgamento</h4>`;
+    html += pareceres.length
+      ? pareceres
+          .map(
+            (p) =>
+              `<p class="meta"><b>Nome do Profissional da qualidade:</b> ${txt(p.salvoPorNome || "—")} · ${dataHora(p.salvoEm)}</p><p class="texto">${txt(p.texto)}</p>`,
+          )
+          .join("")
+      : `<p class="vazio">Não registrado.</p>`;
+  }
   html += `<h4>Partes julgadas (${itens.length})</h4>`;
   html += itens.length
     ? `<table><thead><tr><th>Parte</th><th>Resultado</th><th>Justificativa</th></tr></thead><tbody>${itens
@@ -830,6 +864,7 @@ export async function montarRelatorioOcorrenciasHtml(
       eventos: historicoPorOcorrencia.get(o.id) ?? [],
       planos: planosDaOcorrencia,
       internos: podeVerInternos(sessao, o),
+      pareceresJulgamento: pareceresDoViewer(sessao, o),
       desconsiderada: o.respostas[DESCONSIDERADA_CHAVE] !== undefined,
       pendencias: pendenciasDe(o, tipo, fluxo, campos, planosDaOcorrencia),
     });

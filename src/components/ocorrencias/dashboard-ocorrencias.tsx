@@ -22,6 +22,7 @@ import {
   acoesExecutadasDe,
   apuracaoFerramentasDe,
   causaRaizDaApuracao,
+  setoresEnvolvidosDe,
   type Ocorrencia,
   type TipoOcorrencia,
 } from "@/lib/ocorrencias";
@@ -89,18 +90,19 @@ export function DashboardOcorrencias({
     [inicio, meses],
   );
 
+  // Setores envolvidos (os que são julgados), não o setor de quem administra.
   const setores = useMemo(
-    () => Array.from(new Set(ocorrencias.map((o) => o.abertaPorSetor).filter(Boolean))).sort(),
+    () => Array.from(new Set(ocorrencias.flatMap((o) => setoresEnvolvidosDe(o)))).filter(Boolean).sort(),
     [ocorrencias],
   );
 
-  // Base filtrada por tipo e setor (sem o período).
+  // Base filtrada por tipo e setor envolvido (sem o período).
   const base = useMemo(
     () =>
       ocorrencias.filter(
         (o) =>
           (tipoId === "todos" || o.tipoId === tipoId) &&
-          (setor === "todos" || o.abertaPorSetor === setor),
+          (setor === "todos" || setoresEnvolvidosDe(o).includes(setor)),
       ),
     [ocorrencias, tipoId, setor],
   );
@@ -139,12 +141,14 @@ export function DashboardOcorrencias({
     noPeriodo.length,
   );
 
-  // Ocorrências por setor.
+  // Ocorrências por setor envolvido: uma ocorrência conta em cada setor que está sendo julgado.
   const porSetor = useMemo(() => {
     const cont = new Map<string, number>();
     for (const o of noPeriodo) {
-      const s = o.abertaPorSetor || "Sem setor";
-      cont.set(s, (cont.get(s) ?? 0) + 1);
+      const envolvidos = setoresEnvolvidosDe(o);
+      for (const s of envolvidos.length > 0 ? envolvidos : ["Sem setor envolvido"]) {
+        cont.set(s, (cont.get(s) ?? 0) + 1);
+      }
     }
     return [...cont.entries()].sort((a, b) => b[1] - a[1]);
   }, [noPeriodo]);
@@ -226,7 +230,7 @@ export function DashboardOcorrencias({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="w-[170px]">
+        <div className="w-full sm:w-[170px]">
           <Label className="text-[12px]">Período</Label>
           <Select value={String(meses)} onValueChange={(v) => setMeses(Number(v))}>
             <SelectTrigger className="mt-1">
@@ -239,7 +243,7 @@ export function DashboardOcorrencias({
             </SelectContent>
           </Select>
         </div>
-        <div className="w-[200px]">
+        <div className="w-full sm:w-[200px]">
           <Label className="text-[12px]">Tipo</Label>
           <Select value={tipoId} onValueChange={setTipoId}>
             <SelectTrigger className="mt-1">
@@ -255,7 +259,7 @@ export function DashboardOcorrencias({
             </SelectContent>
           </Select>
         </div>
-        <div className="w-[200px]">
+        <div className="w-full sm:w-[200px]">
           <Label className="text-[12px]">Setor</Label>
           <Select value={setor} onValueChange={setSetor}>
             <SelectTrigger className="mt-1">
@@ -307,7 +311,7 @@ export function DashboardOcorrencias({
             {porSetor.length === 0 && <p className="text-[13px] text-muted-foreground">Sem ocorrências no período.</p>}
             {porSetor.map(([nome, n]) => (
               <div key={nome} className="grid grid-cols-[110px_1fr_28px] items-center gap-3 text-[13px] text-foreground/80">
-                <span className="truncate">{nome}</span>
+                <span className="min-w-0 break-words">{nome}</span>
                 <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                   <div className="h-full rounded-full bg-[#3B82F6]" style={{ width: `${(n / maxSetor) * 100}%` }} />
                 </div>
@@ -366,8 +370,8 @@ export function DashboardOcorrencias({
               <p className="py-3 text-[13px] text-muted-foreground">Nenhuma causa raiz registrada ainda.</p>
             )}
             {causas.map((c) => (
-              <div key={c.texto} className="flex items-center justify-between gap-3 py-2.5 text-[13px] text-foreground/80">
-                <span className="min-w-0 flex-1 truncate">{c.texto}</span>
+              <div key={c.texto} className="flex items-start justify-between gap-3 py-2.5 text-[13px] text-foreground/80">
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words leading-snug">{c.texto}</span>
                 <span className="w-10 shrink-0 font-semibold">{c.total}×</span>
                 <span
                   className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"

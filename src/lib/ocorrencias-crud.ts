@@ -57,8 +57,11 @@ import {
   type EvidenciaApuracao,
   CHAVE_RELATORIO_JULGAMENTO,
   CHAVE_ITENS_JULGAMENTO,
+  LIMITE_PARECER_QUALIDADE_JULGAMENTO,
+  pareceresQualidadeJulgamentoDe,
   LIMITE_RELATORIO_JULGAMENTO,
   type ItemJulgamento,
+  type ParecerQualidadeJulgamento,
   type RelatorioJulgamento,
   itensJulgamentoDe,
   procedenciaDosItens,
@@ -82,6 +85,11 @@ import {
   type EventoLinha,
 } from "@/lib/ocorrencias-base";
 import { lojaSupabase, type LojaOcorrencias } from "@/lib/ocorrencias-loja";
+import {
+  podeAlterarSetoresEnvolvidos,
+  podeConfigurarOcorrencias,
+  podeEscreverParecerJulgamento,
+} from "@/lib/ocorrencias-permissoes";
 
 type Rec = Record<string, unknown>;
 
@@ -938,6 +946,67 @@ export async function enviarMensagemComunicacao(
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Exclui uma mensagem do parecer da Qualidade. Restrito ao Gestor da Qualidade e ao
+ * Desenvolvedor do Sistema (a regra também é conferida aqui, além da tela).
+ */
+export async function excluirParecerQualidadeJulgamento(
+  o: Ocorrencia,
+  idParecer: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  if (!podeConfigurarOcorrencias(sessao)) {
+    throw new Error("Só o Gestor da Qualidade e o Desenvolvedor do Sistema podem excluir o parecer.");
+  }
+  if (!pareceresQualidadeJulgamentoDe(o).some((p) => p.id === idParecer)) {
+    throw new Error("Parecer não encontrado.");
+  }
+  // A função do banco confere o perfil de novo e grava o histórico da exclusão.
+  const { autor_email } = autorDe(sessao);
+  await loja.excluirParecerQualidade(idParecer, autor_email);
+}
+
+/** Registra o parecer da Qualidade no julgamento (texto de até 20.000 caracteres). */
+export async function salvarParecerQualidadeJulgamento(
+  o: Ocorrencia,
+  texto: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  const limpo = texto.trim();
+  if (!limpo) throw new Error("Escreva o parecer de julgamento antes de salvar.");
+  if (limpo.length > LIMITE_PARECER_QUALIDADE_JULGAMENTO) {
+    throw new Error(
+      `O parecer pode ter no máximo ${LIMITE_PARECER_QUALIDADE_JULGAMENTO} caracteres.`,
+    );
+  }
+  if (!podeEscreverParecerJulgamento(sessao, o, participantesJulgamentoDe(o))) {
+    throw new Error("Você não pode escrever o parecer de julgamento desta ocorrência.");
+  }
+  const autor = autorDe(sessao);
+  await loja.inserirParecerQualidade({
+    ocorrencia_id: o.id,
+    texto: limpo,
+    autor_nome: autor.autor_nome,
+    autor_email: autor.autor_email,
+  });
+  await registrarHistorico(
+    o.id,
+    autor,
+    {
+      acao: "Parecer de julgamento salvo",
+      macro: "julgamento",
+      subetapa: o.subetapaAtualNome,
+      de: "",
+      para: "",
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/**
  * Salva o relatório do julgamento (texto de até 50.000 caracteres + anexos).
  * Os anexos já enviados são mantidos; `novosAnexos` são somados a eles.
  */
@@ -1046,6 +1115,46 @@ export async function salvarItensJulgamento(
 }
 
 /**
+ * Remove um setor envolvido da ocorrência, junto com a ciência que ele tiver marcado.
+ * Só o setor da Qualidade e o Desenvolvedor do Sistema.
+ */
+export async function removerSetorEnvolvido(
+  o: Ocorrencia,
+  setor: string,
+  sessao: UserSession | null,
+  loja: LojaOcorrencias = lojaSupabase,
+): Promise<void> {
+  if (!podeAlterarSetoresEnvolvidos(sessao)) {
+    throw new Error("Só o setor da Qualidade e o Desenvolvedor do Sistema podem alterar os setores envolvidos.");
+  }
+  const atuais = setoresEnvolvidosDe(o);
+  if (!atuais.includes(setor)) throw new Error("Setor não está na lista de envolvidos.");
+  const ciencias = { ...cienciasDe(o) };
+  delete ciencias[setor];
+  await loja.atualizarOcorrencia(o.id, {
+    respostas: {
+      ...o.respostas,
+      [CHAVE_SETORES_ENVOLVIDOS]: atuais.filter((s) => s !== setor),
+      [CHAVE_CIENCIAS]: ciencias,
+    },
+  });
+  await registrarHistorico(
+    o.id,
+    autorDe(sessao),
+    {
+      acao: "Setor envolvido removido",
+      macro: o.macroAtual,
+      subetapa: o.subetapaAtualNome,
+      de: setor,
+      para: "",
+      comentario: "",
+      anexos: [],
+    },
+    loja,
+  );
+}
+
+/**
  * Acrescenta setores envolvidos à ocorrência (além dos marcados na abertura).
  * Setores já listados são ignorados. Cada setor novo passa a pedir ciência.
  */
@@ -1055,6 +1164,9 @@ export async function adicionarSetoresEnvolvidos(
   sessao: UserSession | null,
   loja: LojaOcorrencias = lojaSupabase,
 ): Promise<void> {
+  if (!podeAlterarSetoresEnvolvidos(sessao)) {
+    throw new Error("Só o setor da Qualidade e o Desenvolvedor do Sistema podem alterar os setores envolvidos.");
+  }
   const atuais = setoresEnvolvidosDe(o);
   const incluir = [...new Set(novos.map((s) => s.trim()).filter(Boolean))].filter(
     (s) => !atuais.includes(s),

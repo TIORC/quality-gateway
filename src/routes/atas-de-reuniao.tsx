@@ -326,6 +326,7 @@ function AtasDeReuniao() {
             podeCriar={podeGerenciar}
             onNova={abrirNovaAta}
             onEditar={abrirEdicaoAta}
+            onAlterada={() => void recarregar()}
           />
         </TabsContent>
 
@@ -397,6 +398,7 @@ function AtasDeReuniao() {
         }
         usuarioId={usuarioId}
         sessao={sessao}
+        onAlterada={() => void recarregar()}
         onFechar={() => setAtaAgendaVisualizada(null)}
       />
     </PanelShell>
@@ -689,6 +691,7 @@ function PainelReunioes({
   podeCriar,
   onNova,
   onEditar,
+  onAlterada,
 }: {
   atas: Ata[];
   tipos: TipoReuniao[];
@@ -698,6 +701,7 @@ function PainelReunioes({
   podeCriar: boolean;
   onNova: () => void;
   onEditar: (ata: Ata) => void;
+  onAlterada: () => void;
 }) {
   const [busca, setBusca] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
@@ -899,6 +903,7 @@ function PainelReunioes({
         }
         usuarioId={usuarioId}
         sessao={sessao}
+        onAlterada={onAlterada}
         onFechar={() => setAtaVisualizada(null)}
       />
     </>

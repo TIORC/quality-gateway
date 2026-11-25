@@ -18,6 +18,7 @@ import {
   Plus,
   Printer,
   Send,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ConfirmarDialog } from "@/components/confirmar-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +49,7 @@ import { formatarDataHoraBrasilia } from "@/lib/utils";
 import { AnexosVisualizador, anexosDe } from "@/components/ocorrencias/anexos-visualizador";
 import { MetroLinha } from "@/components/ocorrencias/metro-linha";
 import { RelatorioJulgamento } from "@/components/ocorrencias/relatorio-julgamento";
+import { ParecerQualidadeJulgamento } from "@/components/ocorrencias/parecer-qualidade-julgamento";
 import { JulgamentoPartes } from "@/components/ocorrencias/julgamento-partes";
 import { ChecklistMulta } from "@/components/ocorrencias/checklist-multa";
 import { ChatComunicacao } from "@/components/ocorrencias/chat-comunicacao";
@@ -78,6 +81,7 @@ import {
   RETORNO_PARCIAL_ACAO,
   salvarParecerApuracao,
   adicionarSetoresEnvolvidos,
+  removerSetorEnvolvido,
 } from "@/lib/ocorrencias-crud";
 import {
   definirParecerApuracaoTipo,
@@ -98,6 +102,7 @@ import {
   podeGerenciar,
   podeVerInternos,
   papelNaOcorrencia,
+  podeAlterarSetoresEnvolvidos,
   veVisaoCompleta,
 } from "@/lib/ocorrencias-permissoes";
 import { traduzErro } from "@/lib/organizacao";
@@ -108,6 +113,7 @@ import {
   ACAO_MENSAGEM_COMUNICACAO,
   apuracaoFerramentasDe,
   parecerApuracaoDe,
+  pareceresQualidadeJulgamentoDe,
   setoresEnvolvidosDe,
   type TipoOcorrencia,
   tipoEhErroOperacional,
@@ -358,6 +364,25 @@ function DetalheCorpo({
   const pode = podeAgir(session, o);
   const gerencia = podeGerenciar(session, o);
   const podeMover = podeMoverEtapa(session, o);
+  // Setores envolvidos: só o setor da Qualidade e o Desenvolvedor do Sistema alteram.
+  const podeAlterarSetores = podeAlterarSetoresEnvolvidos(session) && o.status !== "encerrada";
+  const [setorParaRemover, setSetorParaRemover] = useState<string | null>(null);
+  const [removendoSetor, setRemovendoSetor] = useState(false);
+
+  async function removerSetor() {
+    if (!setorParaRemover) return;
+    setRemovendoSetor(true);
+    try {
+      await removerSetorEnvolvido(o, setorParaRemover, session);
+      setSetorParaRemover(null);
+      toast.success("Setor removido dos envolvidos.");
+      await recarregar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setRemovendoSetor(false);
+    }
+  }
   const podeAssumir = podeAssumirOcorrencia(session, o);
   const podeLiberar = podeLiberarOcorrencia(session, o);
   const macrosFluxo = etapas.map((e) => e.macro);
@@ -714,7 +739,7 @@ function DetalheCorpo({
       {carregando ? (
         <div className="py-12 text-center text-sm text-[#64748B]">Carregando a viagem…</div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_440px]">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="min-w-0 space-y-4">
             {(o.donoQualidadeNome || podeOperarOcorrencias(session)) && (
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#D9E0EA] bg-white px-4 py-3">
@@ -782,7 +807,7 @@ function DetalheCorpo({
                   value={o.prioridade}
                   onValueChange={(v) => void mudarPrioridade(v as PrioridadeOcorrencia)}
                 >
-                  <SelectTrigger className="w-[160px]">
+                  <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1012,7 +1037,7 @@ function DetalheCorpo({
               </section>
             )}
 
-            {!tipoEhErroOperacional({ nome: o.tipoNome }) && (setoresEnvolvidos.length > 0 || (podeMover && o.status !== "encerrada")) &&
+            {!tipoEhErroOperacional({ nome: o.tipoNome }) && (setoresEnvolvidos.length > 0 || podeAlterarSetores) &&
               (verInternos || setoresEnvolvidos.some((x) => normalizarSetor(x) === meuSetor)) && (
                 <section className="rounded-xl border border-[#D9E0EA] bg-white p-4">
                   <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
@@ -1031,28 +1056,55 @@ function DetalheCorpo({
                           className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[13px]"
                         >
                           <span className="font-medium text-[#1F2937]">{setor}</span>
-                          {c ? (
-                            <span className="text-[12px] text-[#065F46]">
-                              Ciente · {c.por || "—"} · {formatarDataHoraBrasilia(c.em)}
-                            </span>
-                          ) : podeMarcar ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void darCiencia(setor)}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Marcar ciência
-                            </Button>
-                          ) : (
-                            <span className="text-[12px] text-[#92400E]">Aguardando ciência</span>
-                          )}
+                          <div className="ml-auto flex items-center gap-2">
+                            {c ? (
+                              <span className="text-[12px] text-[#065F46]">
+                                Ciente · {c.por || "—"} · {formatarDataHoraBrasilia(c.em)}
+                              </span>
+                            ) : podeMarcar ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void darCiencia(setor)}
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Marcar ciência
+                              </Button>
+                            ) : (
+                              <span className="text-[12px] text-[#92400E]">Aguardando ciência</span>
+                            )}
+                            {podeAlterarSetores && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                aria-label={`Remover ${setor}`}
+                                title="Remover setor"
+                                className="h-8 w-8 text-[#B91C1C] hover:bg-[#FEF2F2] hover:text-[#991B1B]"
+                                onClick={() => setSetorParaRemover(setor)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </li>
                       );
                     })}
                   </ul>
-                  {podeMover && o.status !== "encerrada" && (
+                  <ConfirmarDialog
+                    open={setorParaRemover !== null}
+                    onOpenChange={(aberto) => {
+                      if (!aberto) setSetorParaRemover(null);
+                    }}
+                    tom="danger"
+                    titulo={`Remover ${setorParaRemover ?? "setor"} dos envolvidos?`}
+                    descricao="O setor deixa de ser um envolvido desta ocorrência e a ciência dele é apagada. Essa ação fica registrada no histórico."
+                    textoConfirmar="Remover setor"
+                    carregando={removendoSetor}
+                    onConfirmar={() => void removerSetor()}
+                  />
+                  {podeAlterarSetores && (
                     <div className="mt-4 space-y-2 border-t border-[#E9EEF5] pt-3">
                       <p className="text-[12px] font-semibold text-[#475569]">Adicionar setores envolvidos</p>
                       <CampoSetores valor={novosSetores} onChange={(v) => setNovosSetores(Array.isArray(v) ? (v as string[]) : [])} />
@@ -1331,6 +1383,15 @@ function DetalheCorpo({
                 ) : null}
               </section>
             )}
+            {(o.macroAtual === "julgamento" || pareceresQualidadeJulgamentoDe(o).length > 0) && (
+                <ParecerQualidadeJulgamento
+                  key={`parecer-qualidade-${o.id}`}
+                  ocorrencia={o}
+                  session={session}
+                  editavel={o.macroAtual === "julgamento" && o.status !== "encerrada"}
+                  onSalvo={recarregar}
+                />
+              )}
             <section className="rounded-2xl border border-[#D9E0EA] bg-white p-4 shadow-sm">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94A3B8]">
                 Comentários &amp; histórico

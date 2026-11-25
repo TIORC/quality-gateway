@@ -122,6 +122,56 @@ export function podeComentar(sessao: UserSession | null | undefined, o: Ocorrenc
   return papel !== "leitor";
 }
 
+/** Esta pessoa é o e-mail ou o colaborador informado (quando preenchidos). */
+function ehMesmaPessoa(sessao: UserSession | null | undefined, email?: string | null, id?: string | null): boolean {
+  const eu = (sessao?.email ?? "").trim().toLowerCase();
+  const colaborador = (sessao?.colaboradorId ?? "").trim();
+  return (
+    (!!eu && (email ?? "").trim().toLowerCase() === eu) ||
+    (!!colaborador && (id ?? "") === colaborador)
+  );
+}
+
+/**
+ * Altera os setores envolvidos (adicionar ou remover): só o setor da Qualidade e o
+ * Desenvolvedor do Sistema.
+ */
+export function podeAlterarSetoresEnvolvidos(sessao: UserSession | null | undefined): boolean {
+  if (!sessao) return false;
+  return ehAdministrador(sessao) || normalizarSetor(sessao.setor) === "qualidade";
+}
+
+/** Vê os pareceres de julgamento de todos: a Qualidade e a administração. */
+export function veTodosPareceresJulgamento(sessao: UserSession | null | undefined): boolean {
+  return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
+}
+
+/**
+ * Pode escrever o parecer de julgamento: a Qualidade, o líder de um setor envolvido
+ * e os participantes do julgamento. Encerrada ou fora do julgamento: quem decide é a tela.
+ */
+export function podeEscreverParecerJulgamento(
+  sessao: UserSession | null | undefined,
+  o: Ocorrencia,
+  participantes: { id: string; email?: string }[],
+): boolean {
+  if (!sessao) return false;
+  if (veTodosPareceresJulgamento(sessao)) return true;
+  if (setoresEnvolvidosDe(o).some((setor) => liderDoSetor(sessao, setor))) return true;
+  return participantes.some((p) => ehMesmaPessoa(sessao, p.email, p.id));
+}
+
+/** Pareceres que o usuário vê: a Qualidade vê todos; os demais, só os próprios. */
+export function pareceresVisiveis<T extends { autorEmail: string }>(
+  sessao: UserSession | null | undefined,
+  pareceres: T[],
+): T[] {
+  if (veTodosPareceresJulgamento(sessao)) return pareceres;
+  const eu = (sessao?.email ?? "").trim().toLowerCase();
+  if (!eu) return [];
+  return pareceres.filter((p) => (p.autorEmail ?? "").trim().toLowerCase() === eu);
+}
+
 /** Movimentação manual e avaliação de eficácia: só a Qualidade, na ocorrência que assumiu. */
 export function podeGerenciar(sessao: UserSession | null | undefined, o: Ocorrencia): boolean {
   return podeOperarOcorrencias(sessao) && operaComoDono(sessao, o);

@@ -19,6 +19,10 @@ export interface LojaOcorrencias {
   atualizarOcorrencia(id: string, patch: Linha): Promise<void>;
   listarOcorrencias(): Promise<Ocorrencia[]>;
   registrarHistorico(linha: Linha): Promise<void>;
+  /** Publica uma mensagem do parecer da Qualidade no julgamento. */
+  inserirParecerQualidade(linha: Linha): Promise<void>;
+  /** Exclui uma mensagem do parecer (função no banco; confere o perfil e grava o histórico). */
+  excluirParecerQualidade(parecerId: string, emailCaller: string): Promise<void>;
   /** Falha silenciosa: notificação nunca bloqueia a tratativa. */
   notificar(linhas: Linha[]): Promise<void>;
   carregarFluxo(tipoId: string, versao: number): Promise<MacroFluxo[]>;
@@ -40,6 +44,19 @@ export const lojaSupabase: LojaOcorrencias = {
 
   async registrarHistorico(linha) {
     const { error } = await cloud().from("ocorrencia_historico").insert(linha);
+    if (error) throw traduzErro(error);
+  },
+
+  async inserirParecerQualidade(linha) {
+    const { error } = await cloud().from("ocorrencia_pareceres_qualidade").insert(linha);
+    if (error) throw traduzErro(error);
+  },
+
+  async excluirParecerQualidade(parecerId, emailCaller) {
+    const { error } = await cloud().rpc("excluir_parecer_qualidade", {
+      email_caller: emailCaller,
+      parecer_id: parecerId,
+    });
     if (error) throw traduzErro(error);
   },
 

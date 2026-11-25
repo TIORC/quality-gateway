@@ -145,7 +145,7 @@ export function AcoesExecutadas({ ocorrencia, editavel, onAlterada }: AcoesExecu
                 {editavel ? (
                   <Select value={a.status} onValueChange={(v) => void mudarStatus(a, v as StatusAcao)}>
                     <SelectTrigger
-                      className="h-8 w-[160px] font-semibold"
+                      className="h-8 w-full font-semibold sm:w-[160px]"
                       style={ESTILO_STATUS[a.status]}
                     >
                       <SelectValue />

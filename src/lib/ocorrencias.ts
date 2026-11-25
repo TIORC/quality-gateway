@@ -566,6 +566,8 @@ export interface Ocorrencia {
   /** Parecer final registrado no fechamento. */
   parecerFinal: string;
   parecerEm: string | null;
+  /** Pareceres da Qualidade no julgamento (tabela própria), em ordem de publicação. */
+  pareceresQualidade?: ParecerQualidadeJulgamento[];
   /** Data prevista da avaliação de eficácia (fechamento + eficaciaDias). */
   eficaciaPrevistaEm: string | null;
   reaberturas: number;
@@ -1070,6 +1072,26 @@ export interface RelatorioJulgamento {
 export function relatorioJulgamentoDe(o: Pick<Ocorrencia, "respostas">): RelatorioJulgamento | null {
   const v = o.respostas[CHAVE_RELATORIO_JULGAMENTO] as RelatorioJulgamento | undefined;
   return v && typeof v.texto === "string" ? v : null;
+}
+
+/** Limite do parecer da Qualidade escrito no julgamento. */
+export const LIMITE_PARECER_QUALIDADE_JULGAMENTO = 20000;
+
+/** Uma mensagem do parecer da Qualidade. Cada publicação vira uma mensagem da conversa. */
+export interface ParecerQualidadeJulgamento {
+  id: string;
+  texto: string;
+  salvoPorNome: string;
+  /** E-mail de quem publicou (em minúsculas); define quem pode ver o parecer. */
+  autorEmail: string;
+  salvoEm: string;
+}
+
+/** Pareceres da Qualidade no julgamento, em ordem de publicação (vêm da tabela própria). */
+export function pareceresQualidadeJulgamentoDe(
+  o: Pick<Ocorrencia, "pareceresQualidade">,
+): ParecerQualidadeJulgamento[] {
+  return o.pareceresQualidade ?? [];
 }
 
 /** Chave em `respostas` das partes do julgamento (cada uma procedente ou não). */

@@ -40,14 +40,15 @@ import { ORIGEM_ATA_LABELS, STATUS_ATA_LABELS, STATUS_SUGESTAO_ACAO_LABELS } fro
 import { listarAcoesDaAta, listarUsuariosDasAtas, type UsuarioAtaRow } from "@/lib/atas-base";
 import type { PlanoAcao } from "@/lib/planos";
 import { listarPlanos } from "@/lib/planos-base";
-import { mudarStatusAcaoAta, salvarLeituraAssistida } from "@/lib/atas-crud";
+import { mudarStatusAcaoAta, salvarLeituraAssistida, voltarAtaParaRascunho } from "@/lib/atas-crud";
 import {
   gerarLeituraAssistida,
   type AcaoSugeridaAta,
   type SetorCitadoSugerido,
 } from "@/lib/atas-ia";
 import { carregarSetoresECargos, traduzErro, type SetorConfig } from "@/lib/organizacao";
-import { podeEditarAta } from "@/lib/permissoes";
+import { ehAdministrador, podeEditarAta, podeGerenciarConteudo } from "@/lib/permissoes";
+import { ConfirmarDialog } from "@/components/confirmar-dialog";
 
 interface Props {
   aberto: boolean;
@@ -56,6 +57,8 @@ interface Props {
   usuarioId: string | null;
   sessao: ReturnType<typeof getSession>;
   onFechar: () => void;
+  /** Chamado depois de alterar a ata (ex.: voltar para rascunho), para recarregar a lista. */
+  onAlterada?: () => void;
 }
 
 const CORES_SUGESTAO: Record<StatusSugestaoAcao, string> = {
@@ -73,7 +76,15 @@ function dataBonita(valor: string | null): string {
   }
 }
 
-export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFechar }: Props) {
+export function AtaLeituraDialog({
+  aberto,
+  ata,
+  tipo,
+  usuarioId,
+  sessao,
+  onFechar,
+  onAlterada,
+}: Props) {
   const catalogo = useCatalogoOrganizacional();
   const podeEditar = podeEditarAta(sessao, ata, tipo, usuarioId);
 
@@ -88,6 +99,29 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
   const [acoesPropostas, setAcoesPropostas] = useState<AcaoSugeridaAta[]>([]);
   const [incluidas, setIncluidas] = useState<Set<number>>(new Set());
   const [salvando, setSalvando] = useState(false);
+  const [confirmarRascunho, setConfirmarRascunho] = useState(false);
+  const [voltando, setVoltando] = useState(false);
+
+  // Só a Qualidade (e quem gerencia o portal) volta a ata para rascunho.
+  const podeVoltarRascunho =
+    ata?.status === "aguardando_assinatura" &&
+    (podeGerenciarConteudo(sessao) || ehAdministrador(sessao));
+
+  async function voltarRascunho() {
+    if (!ata || voltando) return;
+    setVoltando(true);
+    try {
+      await voltarAtaParaRascunho(ata.id, sessao);
+      toast.success("Ata voltou para rascunho e pode ser editada.");
+      setConfirmarRascunho(false);
+      onAlterada?.();
+      onFechar();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setVoltando(false);
+    }
+  }
 
   const nomePorId = useMemo(() => {
     const mapa = new Map<string, string>();
@@ -272,6 +306,16 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
       <DialogContent className="max-w-4xl">
+        <ConfirmarDialog
+          open={confirmarRascunho}
+          onOpenChange={setConfirmarRascunho}
+          tom="warning"
+          titulo="Voltar a ata para rascunho?"
+          descricao="A ata volta a ser editável e deixa de estar aguardando assinatura. Os planos de ação que a efetivação criou continuam em Planos de Ação."
+          textoConfirmar="Voltar para rascunho"
+          carregando={voltando}
+          onConfirmar={() => void voltarRascunho()}
+        />
         {/* Na impressão, só o arquivo aparece: ele é levado para o fim do <body>. */}
         <style>{`.ata-impressao-area{display:none}@media print{html,html body,html body[data-scroll-locked],html[data-scroll-locked]{height:auto!important;overflow:visible!important;position:static!important}body>*:not(.ata-impressao-area){display:none!important}.ata-impressao-area{display:block!important;position:static!important;height:auto!important;overflow:visible!important}.ata-impressao-area article{box-shadow:none!important;padding:0 0 18mm!important}.ata-impressao-area .ata-rodape{position:fixed!important;left:0;right:0;bottom:0;background:#fff}@page{size:A4;margin:12mm}}`}</style>
         {arquivo && typeof document !== "undefined"
@@ -588,6 +632,16 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
         </div>
 
         <DialogFooter>
+          {podeVoltarRascunho ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setConfirmarRascunho(true)}
+            >
+              Voltar para rascunho
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"

@@ -376,7 +376,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {podeExportar && modo === "lista" && abaAtiva !== "abertura" && (
               <Button
                 type="button"
@@ -566,7 +566,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
       />
 
       <Dialog open={exportarAberto} onOpenChange={setExportarAberto}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden">
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Exportar PDF</DialogTitle>
             <DialogDescription>
@@ -605,7 +605,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                     onChange={() => alternarSelecionada(o.id)}
                   />
                   <span className="font-mono text-[12px] font-bold text-[#1E3A8A]">{o.numero}</span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-[#1F2937]">
+                  <span className="min-w-0 flex-1 break-words text-[13px] text-[#1F2937]">
                     {o.titulo || "Sem título"}
                   </span>
                   <span className="shrink-0 text-[11px] text-[#64748B]">{o.tipoNome}</span>
@@ -828,13 +828,13 @@ function KanbanOcorrencias({
     ocorrencias.filter((o) => colunaDe(o) === i),
   );
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div className="flex flex-col gap-4 pb-4 md:flex-row md:overflow-x-auto">
       {COLUNAS_KANBAN.map((coluna, i) => {
         const aberta = expandidas[i] === true;
         const total = porColuna[i]?.length ?? 0;
         const visiveis = aberta ? porColuna[i] ?? [] : (porColuna[i] ?? []).slice(0, LIMITE_CARDS_COLUNA);
         return (
-        <div key={coluna.rotulo} className="flex w-72 shrink-0 flex-col rounded-2xl border border-[#D9E0EA] bg-white p-3 dark:border-transparent dark:bg-[#1E3A8A]">
+        <div key={coluna.rotulo} className="flex w-full flex-col rounded-2xl md:w-72 md:shrink-0 border border-[#D9E0EA] bg-white p-3 dark:border-transparent dark:bg-[#1E3A8A]">
           <div className="mb-3 flex items-center justify-between px-1">
             <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#1F2937] dark:text-white">
               {coluna.rotulo}
@@ -892,8 +892,8 @@ function KanbanOcorrencias({
                       </span>
                     )}
                   </div>
-                  <p className="mt-2 line-clamp-2 text-[13px] font-semibold leading-snug">{o.titulo}</p>
-                  <p className="mt-1 truncate text-[11px] text-[#94A3B8]">
+                  <p className="mt-2 break-words text-[13px] font-semibold leading-snug">{o.titulo}</p>
+                  <p className="mt-1 break-words text-[11px] text-[#94A3B8]">
                     {o.tipoNome} · {o.abertaPorSetor || "—"}
                   </p>
                   <div className="mt-3 flex items-center justify-between gap-2">
@@ -929,6 +929,15 @@ function KanbanOcorrencias({
 
 /** Ocorrências por página na lista (a paginação reinicia quando aba ou filtros mudam). */
 const OCORRENCIAS_POR_PAGINA = 10;
+
+/** Rótulo de cada campo do cartão: aparece só em telas pequenas (na tabela, o cabeçalho já diz). */
+function RotuloCelula({ texto }: { texto: string }) {
+  return (
+    <span className="mb-0.5 block w-full text-[10px] font-semibold uppercase tracking-[0.14em] opacity-70 lg:hidden">
+      {texto}
+    </span>
+  );
+}
 
 function ListaOcorrencias({
   ocorrencias,
@@ -984,12 +993,15 @@ function ListaOcorrencias({
     );
   }
 
-  const COLUNAS = "grid grid-cols-[90px_minmax(200px,2fr)_100px_minmax(120px,1fr)_minmax(120px,1fr)_90px_minmax(220px,1.6fr)_minmax(130px,1fr)] items-center gap-4";
+  // Telas pequenas: cada ocorrência vira um cartão empilhado, com rótulo em cada campo.
+  // A partir de lg: a tabela de 8 colunas, que cabe na largura da tela (sem rolagem lateral).
+  const COLUNAS =
+    "grid-cols-1 lg:grid-cols-[84px_minmax(0,2fr)_96px_minmax(0,1fr)_minmax(0,1fr)_88px_minmax(0,1.4fr)_minmax(0,1fr)] lg:items-center lg:gap-3";
   return (
-    <div className="mt-4 overflow-x-auto">
-      <div className="min-w-[1180px]">
+    <div className="mt-4">
+      <div>
         <div
-          className={`${COLUNAS} px-4 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748B]`}
+          className={`hidden lg:grid ${COLUNAS} px-4 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748B]`}
         >
           <span>Código</span>
           <span>Assunto</span>
@@ -1024,16 +1036,19 @@ function ListaOcorrencias({
                 key={o.id}
                 type="button"
                 onClick={() => onDetalhar(o)}
-                className={`${COLUNAS} ocorrencia-card-entrada group w-full rounded-xl border border-black/10 px-4 py-3 text-left text-white shadow-sm transition hover:brightness-110`}
+                className={`grid gap-2 ${COLUNAS} ocorrencia-card-entrada group w-full rounded-xl border border-black/10 px-4 py-3 text-left text-white shadow-sm transition hover:brightness-110`}
                 style={{
                   backgroundColor: `color-mix(in srgb, ${o.tipoCor} 88%, black)`,
                   animationDelay: `${Math.min(indice, 11) * 80}ms`,
                 }}
               >
-                <span className="font-mono text-[13px] font-bold">{o.numero}</span>
+                <span className="font-mono text-[13px] font-bold">
+                  <RotuloCelula texto="Código" />
+                  {o.numero}
+                </span>
 
                 <span className="min-w-0">
-                  <span className="line-clamp-2 text-[14px] font-semibold leading-snug">
+                  <span className="break-words text-[14px] font-semibold leading-snug">
                     {o.titulo || "—"}
                   </span>
                   <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -1042,7 +1057,7 @@ function ListaOcorrencias({
                       title={o.tipoNome}
                     >
                       <Icone className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{o.tipoNome}</span>
+                      <span className="break-words">{o.tipoNome}</span>
                     </span>
                     {origemAuditoria ? (
                       <span
@@ -1078,21 +1093,25 @@ function ListaOcorrencias({
                 </span>
 
                 <span className="text-[13px] text-white/90">
+                  <RotuloCelula texto="Aberta em" />
                   {FormatadorSla.formatarData(o.createdAt)}
                 </span>
 
-                <span className="truncate text-[13px] text-white/90" title={o.abertaPorNome}>
+                <span className="break-words text-[13px] text-white/90" title={o.abertaPorNome}>
+                  <RotuloCelula texto="Aberta por" />
                   {o.abertaPorNome || o.abertaPorSetor || "—"}
                 </span>
 
                 <span
-                  className={`truncate text-[13px] ${o.donoQualidadeNome ? "text-white/90" : "italic text-white/60"}`}
+                  className={`break-words text-[13px] ${o.donoQualidadeNome ? "text-white/90" : "italic text-white/60"}`}
                   title={o.donoQualidadeNome || "Ninguém assumiu ainda"}
                 >
+                  <RotuloCelula texto="Tratada por" />
                   {o.donoQualidadeNome || "Ninguém ainda"}
                 </span>
 
                 <span>
+                  <RotuloCelula texto="Prioridade" />
                   <span
                     className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white ring-2 ring-white/70"
                     style={{
@@ -1111,6 +1130,7 @@ function ListaOcorrencias({
                 </span>
 
                 <span className="min-w-0">
+                  <RotuloCelula texto="Andamento" />
                   <span className="flex gap-1.5">
                     {etapas.map((e, i) => {
                       const feita = encerrada || i < idxAtual;
@@ -1145,14 +1165,15 @@ function ListaOcorrencias({
                     initial={{ opacity: 0, x: -6 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.4, delay: 0.3 + Math.min(indice, 11) * 0.08 }}
-                    className="mt-1.5 block truncate text-[12px] font-semibold"
+                    className="mt-1.5 block break-words text-[12px] font-semibold"
                   >
                     {encerrada ? etapas.length : idxAtual + 1} ·{" "}
                     {encerrada ? "Concluído" : nomeEtapaDoTipo(tipo, o.macroAtual)}
                   </motion.span>
                 </span>
 
-                <span className="flex items-center gap-2">
+                <span className="flex flex-wrap items-center gap-2">
+                  <RotuloCelula texto="Prazo" />
                   <span className="rounded-full bg-white p-1">
                     <FormatadorSla.Icone sla={sla} />
                   </span>
