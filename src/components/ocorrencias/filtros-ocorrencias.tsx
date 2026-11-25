@@ -1,7 +1,11 @@
 /**
- * Filtros das telas de ocorrências (Todas, Que eu abri, Minha equipe e Dashboard):
- * tipo de ocorrência, pessoa (quem abriu, a tratativa ou o responsável) e setor
- * (quem abriu ou setor envolvido).
+ * Filtros das telas de ocorrências (Todas, Que eu abri, Que me mencionaram, Minha
+ * equipe e Dashboard): tipo de ocorrência, pessoa e setor.
+ *
+ * Quem pode ver os filtros de pessoa e setor depende do escopo:
+ * - completo (Qualidade e Desenvolvedor do Sistema): todas as pessoas e setores;
+ * - líder de setor: só os setores que ele comanda e as pessoas desses setores;
+ * - colaborador: pessoa e setor aparecem sempre com os dados dele, sem poder trocar.
  */
 import { useMemo } from "react";
 
@@ -26,6 +30,12 @@ export interface FiltrosOcorrenciasValor {
 }
 
 export const FILTROS_VAZIOS: FiltrosOcorrenciasValor = { tipoId: "", pessoa: "", setor: "" };
+
+/** Quais pessoas e setores o usuário pode escolher nos filtros. */
+export type EscopoFiltros =
+  | { modo: "completo" }
+  | { modo: "lider"; setores: string[]; pessoas: string[] }
+  | { modo: "colaborador"; pessoa: string; setor: string };
 
 const TODOS = "__todos__";
 
@@ -58,18 +68,31 @@ interface FiltrosOcorrenciasProps {
   tipos: TipoOcorrencia[];
   valor: FiltrosOcorrenciasValor;
   onChange: (valor: FiltrosOcorrenciasValor) => void;
+  escopo?: EscopoFiltros;
 }
 
-export function FiltrosOcorrencias({ ocorrencias, tipos, valor, onChange }: FiltrosOcorrenciasProps) {
-  // Opções vêm das próprias ocorrências, para só oferecer o que existe de fato.
-  const pessoas = useMemo(
-    () => [...new Set(ocorrencias.flatMap(pessoasDe))].sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [ocorrencias],
-  );
-  const setores = useMemo(
-    () => [...new Set(ocorrencias.flatMap(setoresDe))].sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [ocorrencias],
-  );
+const rotulo = "text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B]";
+
+export function FiltrosOcorrencias({
+  ocorrencias,
+  tipos,
+  valor,
+  onChange,
+  escopo = { modo: "completo" },
+}: FiltrosOcorrenciasProps) {
+  const colaborador = escopo.modo === "colaborador";
+  // Opções: do escopo para líder (setores e pessoas que comanda); das próprias ocorrências
+  // para quem vê tudo, para só oferecer o que existe de fato.
+  const pessoas = useMemo(() => {
+    if (escopo.modo === "lider") return [...new Set(escopo.pessoas)].sort((a, b) => a.localeCompare(b, "pt-BR"));
+    if (escopo.modo === "colaborador") return [escopo.pessoa];
+    return [...new Set(ocorrencias.flatMap(pessoasDe))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [escopo, ocorrencias]);
+  const setores = useMemo(() => {
+    if (escopo.modo === "lider") return [...new Set(escopo.setores)].sort((a, b) => a.localeCompare(b, "pt-BR"));
+    if (escopo.modo === "colaborador") return [escopo.setor];
+    return [...new Set(ocorrencias.flatMap(setoresDe))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [escopo, ocorrencias]);
   const tiposOpcoes = useMemo(
     () => tipos.map((t) => ({ id: t.id, nome: t.nome })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
     [tipos],
@@ -79,7 +102,7 @@ export function FiltrosOcorrencias({ ocorrencias, tipos, valor, onChange }: Filt
   return (
     <div className="mb-4 grid gap-3 sm:grid-cols-3">
       <div className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">Tipo de ocorrência</p>
+        <p className={rotulo}>Tipo de ocorrência</p>
         <Select
           value={valor.tipoId || TODOS}
           onValueChange={(v) => onChange({ ...valor, tipoId: v === TODOS ? "" : v })}
@@ -99,43 +122,65 @@ export function FiltrosOcorrencias({ ocorrencias, tipos, valor, onChange }: Filt
       </div>
 
       <div className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">Pessoa</p>
-        <Select
-          value={valor.pessoa || TODOS}
-          onValueChange={(v) => onChange({ ...valor, pessoa: v === TODOS ? "" : v })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Todas as pessoas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={TODOS}>Todas as pessoas</SelectItem>
-            {pessoas.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <p className={rotulo}>Pessoa</p>
+        {colaborador ? (
+          <Select value={escopo.pessoa} disabled>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={escopo.pessoa}>{escopo.pessoa}</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Select
+            value={valor.pessoa || TODOS}
+            onValueChange={(v) => onChange({ ...valor, pessoa: v === TODOS ? "" : v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Todas as pessoas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todas as pessoas</SelectItem>
+              {pessoas.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {p}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="space-y-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B]">Setor</p>
-        <Select
-          value={valor.setor || TODOS}
-          onValueChange={(v) => onChange({ ...valor, setor: v === TODOS ? "" : v })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Todos os setores" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={TODOS}>Todos os setores</SelectItem>
-            {setores.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <p className={rotulo}>Setor</p>
+        {colaborador ? (
+          <Select value={escopo.setor} disabled>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={escopo.setor}>{escopo.setor}</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Select
+            value={valor.setor || TODOS}
+            onValueChange={(v) => onChange({ ...valor, setor: v === TODOS ? "" : v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Todos os setores" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos os setores</SelectItem>
+              {setores.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {algumFiltro && (

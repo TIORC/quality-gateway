@@ -52,6 +52,7 @@ import {
   FILTROS_VAZIOS,
   FiltrosOcorrencias,
   aplicarFiltrosOcorrencias,
+  type EscopoFiltros,
   type FiltrosOcorrenciasValor,
 } from "@/components/ocorrencias/filtros-ocorrencias";
 import { FormularioDinamico, validarCampos } from "@/components/ocorrencias/campo-renderer";
@@ -77,6 +78,7 @@ import {
   anexarArquivosDosCampos,
   carregarUltimasVersoes,
   detectarAtrasos,
+  participantesJulgamentoDe,
   type VersoesPublicadas,
 } from "@/lib/ocorrencias-crud";
 import {
@@ -126,8 +128,9 @@ import {
   podeExportarOcorrencias,
   podeVerDashboardOcorrencias,
   veTodasAsOcorrencias,
+  mencionaAPessoaOuSetor,
 } from "@/lib/ocorrencias-permissoes";
-import { traduzErro } from "@/lib/organizacao";
+import { carregarColaboradores, traduzErro } from "@/lib/organizacao";
 
 export const Route = createFileRoute("/ocorrencias")({
   head: () => ({
@@ -144,6 +147,7 @@ const ABAS = [
   { valor: "abertura", rotulo: "Abertura de Ocorrência" },
   { valor: "todas", rotulo: "Todas as Ocorrências" },
   { valor: "abri", rotulo: "Que eu abri" },
+  { valor: "mencionaram", rotulo: "Que me mencionaram" },
   { valor: "equipe", rotulo: "Minha equipe" },
   { valor: "dashboard", rotulo: "Dashboard" },
 ] as const;
@@ -190,6 +194,24 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
 
   const podeConfigurar = podeConfigurarOcorrencias(session);
   const vêTudo = veTodasAsOcorrencias(session);
+  // Líder de setor: pessoas dos setores que ele comanda (para o filtro de pessoa).
+  const setoresDoLider = setoresLiderados(session);
+  const colaboradoresDaEquipe = useAsync(
+    () => (setoresDoLider.length > 0 ? carregarColaboradores() : Promise.resolve([])),
+    [refreshToken, setoresDoLider.join("|")],
+  );
+  // Escopo dos filtros de pessoa e setor (ver filtros-ocorrencias.tsx).
+  const escopoFiltros: EscopoFiltros = vêTudo
+    ? { modo: "completo" }
+    : setoresDoLider.length > 0
+      ? {
+          modo: "lider",
+          setores: [session?.setor ?? "", ...(session?.setoresLiderados ?? [])].filter(Boolean),
+          pessoas: (colaboradoresDaEquipe.data ?? [])
+            .filter((c) => setoresDoLider.includes(normalizarSetor(c.setor)))
+            .map((c) => c.nome),
+        }
+      : { modo: "colaborador", pessoa: session?.nome ?? "", setor: session?.setor ?? "" };
   const carregando = ocorrencias.loading;
   const lista = listaAoVivo ?? ocorrencias.data ?? [];
 
@@ -233,6 +255,8 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
   const abasVisiveis = ABAS.filter((aba) => {
     if (equipe) return aba.valor === "equipe";
     if (aba.valor === "equipe") return ehLiderDeSetor;
+    // Líderes e colaboradores: quem não vê todas as ocorrências vê as que os mencionaram.
+    if (aba.valor === "mencionaram") return !veTodasAsOcorrencias(session);
     // Dashboard e lista "Todas" mostram tudo: só para quem opera as ocorrências.
     if (aba.valor === "dashboard") return podeVerDashboardOcorrencias(session);
     return aba.valor !== "todas" || veTodasAsOcorrencias(session);
@@ -258,6 +282,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
     if (aba === "abertura") return false;
     if (aba === "todas") return true;
     if (aba === "equipe") return setorDaEquipe(o);
+    if (aba === "mencionaram") return mencionaAPessoaOuSetor(session, o, participantesJulgamentoDe(o));
     // Setor envolvido (marcado no formulário) acompanha para dar ciência.
     const meuSetor = normalizarSetor(session?.setor);
     const setorEnvolvido =
@@ -486,6 +511,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                   tipos={tipos.data ?? []}
                   valor={filtros}
                   onChange={setFiltros}
+                  escopo={escopoFiltros}
                 />
               </div>
             )}

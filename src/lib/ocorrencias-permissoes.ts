@@ -141,6 +141,24 @@ export function podeAlterarSetoresEnvolvidos(sessao: UserSession | null | undefi
   return ehAdministrador(sessao) || normalizarSetor(sessao.setor) === "qualidade";
 }
 
+/**
+ * "Que me mencionaram": a ocorrência envolve a pessoa ou o setor dela, seja por setor
+ * envolvido (o próprio ou um que lidera) ou por participação no julgamento. Vale para
+ * ocorrências encerradas também.
+ */
+export function mencionaAPessoaOuSetor(
+  sessao: UserSession | null | undefined,
+  o: Ocorrencia,
+  participantes: { id: string; email?: string }[],
+): boolean {
+  if (!sessao) return false;
+  const setores = setoresEnvolvidosDe(o);
+  const meuSetor = normalizarSetor(sessao.setor);
+  if (meuSetor && setores.some((s) => normalizarSetor(s) === meuSetor)) return true;
+  if (setores.some((s) => liderDoSetor(sessao, s))) return true;
+  return participantes.some((p) => ehMesmaPessoa(sessao, p.email, p.id));
+}
+
 /** Vê os pareceres de julgamento de todos: a Qualidade e a administração. */
 export function veTodosPareceresJulgamento(sessao: UserSession | null | undefined): boolean {
   return podeOperarOcorrencias(sessao) || ehAdministrador(sessao);
