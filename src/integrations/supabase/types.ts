@@ -44,6 +44,48 @@ export type Database = {
         }
         Relationships: []
       }
+      agenda_eventos: {
+        Row: {
+          convidados: Json
+          created_at: string
+          criado_por: string
+          data_evento: string
+          descricao: string
+          hora_fim: string | null
+          hora_inicio: string | null
+          id: string
+          realizada: boolean
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          convidados?: Json
+          created_at?: string
+          criado_por: string
+          data_evento: string
+          descricao?: string
+          hora_fim?: string | null
+          hora_inicio?: string | null
+          id?: string
+          realizada?: boolean
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          convidados?: Json
+          created_at?: string
+          criado_por?: string
+          data_evento?: string
+          descricao?: string
+          hora_fim?: string | null
+          hora_inicio?: string | null
+          id?: string
+          realizada?: boolean
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       apuracoes: {
         Row: {
           created_at: string
@@ -294,6 +336,7 @@ export type Database = {
           created_at: string
           criado_por: string
           data_reuniao: string
+          documento: Json
           id: string
           origem: string
           status: string
@@ -306,6 +349,7 @@ export type Database = {
           created_at?: string
           criado_por: string
           data_reuniao: string
+          documento?: Json
           id?: string
           origem?: string
           status?: string
@@ -318,6 +362,7 @@ export type Database = {
           created_at?: string
           criado_por?: string
           data_reuniao?: string
+          documento?: Json
           id?: string
           origem?: string
           status?: string
@@ -1236,6 +1281,41 @@ export type Database = {
           },
         ]
       }
+      ocorrencia_pareceres_qualidade: {
+        Row: {
+          autor_email: string
+          autor_nome: string
+          created_at: string
+          id: string
+          ocorrencia_id: string
+          texto: string
+        }
+        Insert: {
+          autor_email?: string
+          autor_nome?: string
+          created_at?: string
+          id?: string
+          ocorrencia_id: string
+          texto: string
+        }
+        Update: {
+          autor_email?: string
+          autor_nome?: string
+          created_at?: string
+          id?: string
+          ocorrencia_id?: string
+          texto?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocorrencia_pareceres_qualidade_ocorrencia_id_fkey"
+            columns: ["ocorrencia_id"]
+            isOneToOne: false
+            referencedRelation: "ocorrencias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ocorrencia_tipos: {
         Row: {
           ativo: boolean
@@ -1668,10 +1748,10 @@ export type Database = {
           responsavel_nome: string
           seguidores: string[]
           seguidores_ids: string[]
-          suporte: string[]
-          suporte_ids: string[]
           setor: string
           status: string
+          suporte: string[]
+          suporte_ids: string[]
           tempo_segundos: number
           timer_inicio: string | null
           titulo: string
@@ -1699,10 +1779,10 @@ export type Database = {
           responsavel_nome?: string
           seguidores?: string[]
           seguidores_ids?: string[]
-          suporte?: string[]
-          suporte_ids?: string[]
           setor?: string
           status?: string
+          suporte?: string[]
+          suporte_ids?: string[]
           tempo_segundos?: number
           timer_inicio?: string | null
           titulo: string
@@ -1730,10 +1810,10 @@ export type Database = {
           responsavel_nome?: string
           seguidores?: string[]
           seguidores_ids?: string[]
-          suporte?: string[]
-          suporte_ids?: string[]
           setor?: string
           status?: string
+          suporte?: string[]
+          suporte_ids?: string[]
           tempo_segundos?: number
           timer_inicio?: string | null
           titulo?: string
@@ -1742,6 +1822,50 @@ export type Database = {
           vinculo_tipo?: string
         }
         Relationships: []
+      }
+      politica_documentos: {
+        Row: {
+          caminho: string
+          created_at: string
+          enviado_por_email: string
+          enviado_por_nome: string
+          id: string
+          nome: string
+          politica_id: string
+          tamanho: number | null
+          tipo: string | null
+        }
+        Insert: {
+          caminho: string
+          created_at?: string
+          enviado_por_email?: string
+          enviado_por_nome?: string
+          id?: string
+          nome: string
+          politica_id: string
+          tamanho?: number | null
+          tipo?: string | null
+        }
+        Update: {
+          caminho?: string
+          created_at?: string
+          enviado_por_email?: string
+          enviado_por_nome?: string
+          id?: string
+          nome?: string
+          politica_id?: string
+          tamanho?: number | null
+          tipo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "politica_documentos_politica_id_fkey"
+            columns: ["politica_id"]
+            isOneToOne: false
+            referencedRelation: "politicas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       politica_leituras: {
         Row: {
@@ -1940,6 +2064,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "pop_anotacoes_pop_id_fkey"
+            columns: ["pop_id"]
+            isOneToOne: false
+            referencedRelation: "pops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pop_documentos: {
+        Row: {
+          caminho: string
+          created_at: string
+          enviado_por_email: string
+          enviado_por_nome: string
+          id: string
+          nome: string
+          pop_id: string
+          tamanho: number | null
+          tipo: string | null
+        }
+        Insert: {
+          caminho: string
+          created_at?: string
+          enviado_por_email?: string
+          enviado_por_nome?: string
+          id?: string
+          nome: string
+          pop_id: string
+          tamanho?: number | null
+          tipo?: string | null
+        }
+        Update: {
+          caminho?: string
+          created_at?: string
+          enviado_por_email?: string
+          enviado_por_nome?: string
+          id?: string
+          nome?: string
+          pop_id?: string
+          tamanho?: number | null
+          tipo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pop_documentos_pop_id_fkey"
             columns: ["pop_id"]
             isOneToOne: false
             referencedRelation: "pops"
@@ -2745,11 +2913,83 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      adicionar_documento_politica: {
+        Args: { email_caller: string; p_documento: Json; p_politica_id: string }
+        Returns: {
+          caminho: string
+          created_at: string
+          enviado_por_email: string
+          enviado_por_nome: string
+          id: string
+          nome: string
+          politica_id: string
+          tamanho: number | null
+          tipo: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "politica_documentos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      adicionar_documento_pop: {
+        Args: { email_caller: string; p_documento: Json; p_pop_id: string }
+        Returns: {
+          caminho: string
+          created_at: string
+          enviado_por_email: string
+          enviado_por_nome: string
+          id: string
+          nome: string
+          pop_id: string
+          tamanho: number | null
+          tipo: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "pop_documentos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       arquivar_almoxarifado: { Args: never; Returns: Json }
+      atualizar_agenda_evento: {
+        Args: {
+          email_caller: string
+          evento_id: string
+          p_convidados?: Json
+          p_data_evento: string
+          p_descricao?: string
+          p_hora_fim?: string
+          p_hora_inicio?: string
+          p_titulo: string
+        }
+        Returns: {
+          convidados: Json
+          created_at: string
+          criado_por: string
+          data_evento: string
+          descricao: string
+          hora_fim: string | null
+          hora_inicio: string | null
+          id: string
+          realizada: boolean
+          titulo: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agenda_eventos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       atualizar_ata: {
         Args: {
           ata_id: string
           data_reuniao: string
+          documento?: Json
           email_caller: string
           texto?: string
           titulo: string
@@ -2758,6 +2998,7 @@ export type Database = {
           created_at: string
           criado_por: string
           data_reuniao: string
+          documento: Json
           id: string
           origem: string
           status: string
@@ -2821,9 +3062,40 @@ export type Database = {
           nome: string
         }[]
       }
+      criar_agenda_evento: {
+        Args: {
+          convidados?: Json
+          data_evento: string
+          descricao?: string
+          email_caller: string
+          hora_fim?: string
+          hora_inicio?: string
+          titulo: string
+        }
+        Returns: {
+          convidados: Json
+          created_at: string
+          criado_por: string
+          data_evento: string
+          descricao: string
+          hora_fim: string | null
+          hora_inicio: string | null
+          id: string
+          realizada: boolean
+          titulo: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agenda_eventos"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       criar_ata: {
         Args: {
           data_reuniao: string
+          documento?: Json
           email_caller: string
           origem: string
           texto?: string
@@ -2834,6 +3106,7 @@ export type Database = {
           created_at: string
           criado_por: string
           data_reuniao: string
+          documento: Json
           id: string
           origem: string
           status: string
@@ -2876,9 +3149,21 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      efetivar_ata: {
+        Args: { ata_id: string; email_caller: string }
+        Returns: number
+      }
       eh_participante_do_tipo: {
         Args: { tipo_id: string; usuario_id: string }
         Returns: boolean
+      }
+      excluir_agenda_evento: {
+        Args: { email_caller: string; evento_id: string }
+        Returns: undefined
+      }
+      excluir_parecer_qualidade: {
+        Args: { email_caller: string; parecer_id: string }
+        Returns: undefined
       }
       grupo_acesso_ajustar_membros: {
         Args: { p_antigo: string; p_novo: string }
@@ -2964,6 +3249,32 @@ export type Database = {
         Returns: undefined
       }
       is_super_deleter: { Args: never; Returns: boolean }
+      listar_agenda_eventos: {
+        Args: { email_caller: string }
+        Returns: {
+          convidados: Json
+          created_at: string
+          criado_por: string
+          data_evento: string
+          descricao: string
+          hora_fim: string | null
+          hora_inicio: string | null
+          id: string
+          realizada: boolean
+          titulo: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "agenda_eventos"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      marcar_agenda_evento_realizada: {
+        Args: { email_caller: string; evento_id: string; marcar: boolean }
+        Returns: undefined
+      }
       mudar_ativo_tipo_reuniao: {
         Args: { ativo?: boolean; email_caller: string; id: string }
         Returns: {
@@ -2988,12 +3299,20 @@ export type Database = {
         Args: { acao_id: string; email_caller: string; novo_status: string }
         Returns: undefined
       }
+      pode_configurar_ocorrencias: {
+        Args: { email_caller: string }
+        Returns: boolean
+      }
       pode_criar_ata: {
         Args: { email_caller: string; origem: string; tipo_id: string }
         Returns: boolean
       }
       pode_editar_ata: {
         Args: { ata_id: string; email_caller: string }
+        Returns: boolean
+      }
+      pode_gerenciar_documentos_pop: {
+        Args: { email_caller: string }
         Returns: boolean
       }
       pode_gerenciar_tipos_reuniao: {
@@ -3007,6 +3326,14 @@ export type Database = {
       }
       redefinir_senha_solicitar: {
         Args: { p_email: string; p_token_hash: string }
+        Returns: string
+      }
+      remover_documento_politica: {
+        Args: { email_caller: string; p_documento_id: string }
+        Returns: string
+      }
+      remover_documento_pop: {
+        Args: { email_caller: string; p_documento_id: string }
         Returns: string
       }
       salvar_leitura_assistida: {
@@ -3037,6 +3364,10 @@ export type Database = {
         }[]
       }
       usuario_id_por_email: { Args: { email: string }; Returns: string }
+      voltar_ata_rascunho: {
+        Args: { ata_id: string; email_caller: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
