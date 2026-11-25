@@ -113,6 +113,7 @@ import {
 } from "@/lib/ocorrencias";
 import { getSession } from "@/lib/auth";
 import { NIVEL_LIDER_SETOR, normalizarSetor } from "@/lib/niveis-acesso";
+import { Paginacao, usePaginacao } from "@/components/paginacao";
 import {
   acompanhaTodosOsSetores,
   ehAdministrador,
@@ -528,6 +529,7 @@ function Ocorrencias({ equipe = false }: { equipe?: boolean } = {}) {
                     ocorrencias={porAba(aba.valor)}
                     tipos={tipos.data ?? []}
                     carregando={carregando}
+                    chaveFiltro={`${aba.valor}|${JSON.stringify(filtros)}`}
                     onAbrir={() => abrirNovaOcorrencia()}
                     onDetalhar={(o) => setOcorrenciaSelecionada(o)}
                   />
@@ -925,19 +927,27 @@ function KanbanOcorrencias({
   );
 }
 
+/** Ocorrências por página na lista (a paginação reinicia quando aba ou filtros mudam). */
+const OCORRENCIAS_POR_PAGINA = 10;
+
 function ListaOcorrencias({
   ocorrencias,
   tipos,
   carregando,
+  chaveFiltro,
   onAbrir,
   onDetalhar,
 }: {
   ocorrencias: Ocorrencia[];
   tipos: TipoOcorrencia[];
   carregando: boolean;
+  /** Muda quando aba ou filtros mudam; volta para a página 1. */
+  chaveFiltro: string;
   onAbrir: () => void;
   onDetalhar: (o: Ocorrencia) => void;
 }) {
+  const paginacao = usePaginacao(ocorrencias, [chaveFiltro], OCORRENCIAS_POR_PAGINA);
+
   if (carregando) {
     return (
       <div className="mt-4 space-y-2">
@@ -991,7 +1001,7 @@ function ListaOcorrencias({
           <span>Prazo</span>
         </div>
         <div className="space-y-2">
-          {ocorrencias.map((o, indice) => {
+          {paginacao.itensDaPagina.map((o, indice) => {
             const tipo = tipos.find((t) => t.id === o.tipoId);
             const Icone = iconeTipoOcorrencia(tipo?.icone);
             const sla = FormatadorSla.calcular(o.macroAtual, o.prazoEtapa);
@@ -1152,6 +1162,11 @@ function ListaOcorrencias({
             );
           })}
         </div>
+        <Paginacao
+          pagina={paginacao.pagina}
+          totalPaginas={paginacao.totalPaginas}
+          onMudar={paginacao.irParaPagina}
+        />
       </div>
     </div>
   );

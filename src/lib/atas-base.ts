@@ -81,6 +81,8 @@ export function tipoReuniaoDoRow(row: Rec): TipoReuniao {
 /** Documento de uma ata nova, ou de uma ata antiga que não tem documento salvo. */
 export function documentoVazio(): DocumentoAta {
   return {
+    nomeDocumento: "",
+    marcados: [],
     areas: "",
     horario: "",
     pauta: [],
@@ -125,6 +127,10 @@ export function documentoDoJson(valor: unknown): DocumentoAta {
     cargo: textoDe(item["cargo"]),
   }));
   return {
+    nomeDocumento: textoDe(o["nomeDocumento"]),
+    marcados: listaDe(o["marcados"])
+      .map((item) => ({ id: textoDe(item["id"]), nome: textoDe(item["nome"]) }))
+      .filter((pessoa) => pessoa.id !== ""),
     areas: textoDe(o["areas"]),
     horario: textoDe(o["horario"]),
     pauta,

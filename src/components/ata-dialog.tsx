@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
+import { ClipboardCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { AtaPrevia } from "@/components/ata-previa";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,14 +34,16 @@ import { getSession } from "@/lib/auth";
 import type {
   Ata,
   DocumentoAta,
+  UsuarioRef,
   OrigemAta,
   ParticipanteDocumento,
   PautaDocumento,
   PlanoDocumento,
   TipoReuniao,
 } from "@/lib/atas";
-import { documentoVazio } from "@/lib/atas-base";
-import { atualizarAta, criarAta } from "@/lib/atas-crud";
+import { NOME_DOCUMENTO_PADRAO } from "@/lib/atas";
+import { documentoVazio, listarUsuariosDasAtas, type UsuarioAtaRow } from "@/lib/atas-base";
+import { atualizarAta, criarAta, efetivarAta } from "@/lib/atas-crud";
 import { traduzErro } from "@/lib/organizacao";
 
 interface CampoProps {
@@ -64,7 +76,7 @@ interface AtaDialogProps {
   ata: Ata | null;
   /** Tipos de reunião (usados só para atas já vinculadas a um tipo). */
   tipos: TipoReuniao[];
-  /** Mantido por compatibilidade: a ata padronizada não tem mais escolha de origem. */
+  /** Quem pode efetivar atas (Qualidade e quem gerencia o portal). */
   podeCriarSimples: boolean;
   onFechar: () => void;
   onSalvo: () => void;
@@ -122,10 +134,20 @@ function origemDaAta(ata: Ata | null): OrigemAta {
   return "simples";
 }
 
-export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogProps) {
+export function AtaDialog({
+  aberto,
+  ata,
+  tipos,
+  podeCriarSimples,
+  onFechar,
+  onSalvo,
+}: AtaDialogProps) {
   const [tipoReuniaoId, setTipoReuniaoId] = useState("");
   const [titulo, setTitulo] = useState("");
   const [dataReuniao, setDataReuniao] = useState("");
+  const [nomeDocumento, setNomeDocumento] = useState("");
+  const [marcados, setMarcados] = useState<UsuarioRef[]>([]);
+  const [pessoas, setPessoas] = useState<UsuarioAtaRow[]>([]);
   const [areas, setAreas] = useState("");
   const [horario, setHorario] = useState("");
   const [pauta, setPauta] = useState<LinhaPauta[]>(pautaInicial);
@@ -137,17 +159,36 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
   const [revisao, setRevisao] = useState("1");
   const [dataRevisao, setDataRevisao] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [confirmarEfetivacao, setConfirmarEfetivacao] = useState(false);
 
   const editando = ata !== null;
   const origem = origemDaAta(ata);
   // Só atas já vinculadas a um tipo mostram o campo de tipo (somente leitura).
   const mostrarTipo = editando && origem === "sistema";
 
+  // Pessoas que podem ser marcadas na ata (aparecem na agenda delas).
+  useEffect(() => {
+    if (!aberto) return;
+    let ativo = true;
+    listarUsuariosDasAtas()
+      .then((lista) => {
+        if (ativo) setPessoas(lista);
+      })
+      .catch(() => {
+        if (ativo) setPessoas([]);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [aberto]);
+
   useEffect(() => {
     if (!aberto) return;
     // Edição: carrega o documento salvo. Nova ata: começa do documento em branco.
     const doc = ata ? ata.documento : documentoVazio();
     setSalvando(false);
+    setNomeDocumento(doc.nomeDocumento);
+    setMarcados(doc.marcados);
     setAreas(doc.areas);
     setHorario(doc.horario);
     setPauta(
@@ -195,6 +236,8 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
   /** Documento completo, sem os `id` do formulário, pronto para gravar. */
   function montarDocumento(): DocumentoAta {
     return {
+      nomeDocumento: nomeDocumento.trim(),
+      marcados: marcados.map(({ id, nome }) => ({ id, nome })),
       areas: areas.trim(),
       horario: horario.trim(),
       pauta: pauta.map(({ area, pauta: assunto, descricao }) => ({
@@ -218,6 +261,52 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
       revisao: revisao.trim() || "1",
       dataRevisao: dataRevisao.trim(),
     };
+  }
+
+  /**
+   * Efetiva a ata: salva o documento, trava a edição (aguardando assinatura) e cria
+   * um plano de ação para cada item do plano da ata, com origem "Ata de Reunião".
+   */
+  /** Valida e abre a confirmação; a efetivação só roda ao confirmar. */
+  function pedirEfetivacao() {
+    if (salvando || !ata) return;
+    if (!titulo.trim() || !dataReuniao.trim()) {
+      toast.error("Informe o título e a data da reunião antes de efetivar.");
+      return;
+    }
+    const itens = plano.filter((linha) => linha.oQue.trim() !== "").length;
+    if (itens === 0) {
+      toast.error('Inclua ao menos um item em "Plano de ação" (O que?) para efetivar.');
+      return;
+    }
+    setConfirmarEfetivacao(true);
+  }
+
+  async function efetivar() {
+    if (salvando || !ata) return;
+    setConfirmarEfetivacao(false);
+    setSalvando(true);
+    try {
+      await atualizarAta(
+        ata.id,
+        {
+          origem,
+          tipoReuniaoId: origem === "sistema" ? tipoReuniaoId || null : null,
+          titulo: titulo.trim(),
+          dataReuniao: dataReuniao.trim(),
+          texto,
+          documento: montarDocumento(),
+        },
+        getSession(),
+      );
+      const criados = await efetivarAta(ata.id, getSession());
+      toast.success(`Ata efetivada: ${criados} plano(s) de ação criados.`);
+      onSalvo();
+    } catch (e) {
+      toast.error(traduzErro(e).message);
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function salvar() {
@@ -258,6 +347,43 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
       <DialogContent className="w-[calc(100vw-24px)] max-w-[calc(100vw-24px)] sm:max-w-[min(calc(100vw-24px),1600px)] max-h-[94vh] overflow-y-auto">
+        <AlertDialog open={confirmarEfetivacao} onOpenChange={setConfirmarEfetivacao}>
+          <AlertDialogContent className="max-w-md overflow-hidden rounded-2xl border-[#DBEAFE] p-0 shadow-2xl sm:rounded-2xl">
+            <span className="block h-1.5 w-full bg-gradient-to-r from-[#1E3A8A] to-[#2563EB]" />
+            <div className="p-6 pt-5">
+              <AlertDialogHeader className="items-center space-y-3 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EFF6FF] text-[#1E3A8A] ring-8 ring-[#DBEAFE]">
+                  <ClipboardCheck className="h-6 w-6" />
+                </span>
+                <AlertDialogTitle className="text-[17px] font-semibold text-[#1E3A8A]">
+                  Efetivar a ata?
+                </AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div className="text-[13.5px] leading-relaxed text-[#475569]">
+                    O documento será travado e{" "}
+                    <strong className="text-[#1E3A8A]">
+                      {plano.filter((linha) => linha.oQue.trim() !== "").length} plano(s) de ação
+                    </strong>{" "}
+                    serão criados com origem <strong>“Ata de Reunião”</strong>.
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="mt-5 gap-2 sm:flex-row sm:justify-center">
+                <AlertDialogCancel className="rounded-xl border-[#D9E0EA] px-4 py-2 text-[13px] font-medium text-[#475569] hover:bg-[#F1F5F9]">
+                  Cancelar
+                </AlertDialogCancel>
+                <button
+                  type="button"
+                  onClick={() => void efetivar()}
+                  disabled={salvando}
+                  className="inline-flex items-center justify-center rounded-xl bg-[#1E3A8A] px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:bg-[#1E40AF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#93C5FD] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Efetivar ata
+                </button>
+              </AlertDialogFooter>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>
         <DialogHeader>
           <DialogTitle>{editando ? "Editar ata" : "Nova Ata de Reunião"}</DialogTitle>
           <DialogDescription>
@@ -298,6 +424,66 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
                     placeholder="Ex.: 14:00 às 15:30"
                   />
                 </Campo>
+                <div className="sm:col-span-2">
+                  <Campo rotulo="Nome do documento (cabeçalho)">
+                    <Input
+                      value={nomeDocumento}
+                      onChange={(evento) => setNomeDocumento(evento.target.value)}
+                      placeholder={NOME_DOCUMENTO_PADRAO}
+                    />
+                    <p className="text-[11.5px] text-[#94A3B8]">
+                      Deixe em branco para usar o nome padrão acima do título.
+                    </p>
+                  </Campo>
+                </div>
+                <div className="sm:col-span-2">
+                  <Campo rotulo="Pessoas marcadas (aparecem na agenda delas na data da reunião)">
+                    <Select
+                      value=""
+                      onValueChange={(id) => {
+                        const pessoa = pessoas.find((p) => p.id === id);
+                        if (pessoa) {
+                          setMarcados((lista) => [...lista, { id: pessoa.id, nome: pessoa.nome }]);
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Marcar uma pessoa…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pessoas
+                          .filter((p) => !marcados.some((m) => m.id === p.id))
+                          .map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.nome}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    {marcados.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {marcados.map((pessoa) => (
+                          <span
+                            key={pessoa.id}
+                            className="inline-flex items-center gap-1 rounded-full bg-[#EFF6FF] py-0.5 pl-2.5 pr-1 text-[12px] font-semibold text-[#1E3A8A]"
+                          >
+                            @{pessoa.nome}
+                            <button
+                              type="button"
+                              aria-label={`Remover ${pessoa.nome}`}
+                              onClick={() =>
+                                setMarcados((lista) => lista.filter((m) => m.id !== pessoa.id))
+                              }
+                              className="rounded-full p-0.5 hover:bg-[#DBEAFE]"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </Campo>
+                </div>
                 <div className="sm:col-span-2">
                   <Campo rotulo="Áreas">
                     <Input
@@ -560,6 +746,7 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
               Prévia do documento
             </p>
             <AtaPrevia
+              nomeDocumento={nomeDocumento}
               titulo={titulo}
               dataReuniao={dataReuniao}
               areas={areas}
@@ -580,6 +767,17 @@ export function AtaDialog({ aberto, ata, tipos, onFechar, onSalvo }: AtaDialogPr
           <Button type="button" variant="outline" onClick={onFechar} disabled={salvando}>
             Cancelar
           </Button>
+          {editando && podeCriarSimples && ata?.status === "rascunho" ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={pedirEfetivacao}
+              disabled={salvando}
+              className="border-[#1E3A8A] text-[#1E3A8A]"
+            >
+              Efetivar ata
+            </Button>
+          ) : null}
           <Button
             type="button"
             onClick={() => void salvar()}

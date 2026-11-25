@@ -30,7 +30,12 @@ import {
   temAcessoTotalPops,
   veSomenteLiberados,
 } from "@/lib/permissoes";
-import { popDoSetorDoUsuario, popEhGeral } from "@/lib/setor-documentos";
+import {
+  popDoSetorDoUsuario,
+  popEhGeral,
+  SETOR_GERAL_ID,
+  setoresEfetivosDoPop,
+} from "@/lib/setor-documentos";
 
 type PopRow = Tables<"pops">;
 type PopInsert = TablesInsert<"pops">;
@@ -598,8 +603,10 @@ export function dataIsoParaBr(valor: string | null | undefined): string {
 }
 
 function popParaInsercao(entrada: EntradaPop): PopInsert {
+  // Regra "Todos os setores": POP marcado assim vai para Processos Gerais (setor "geral").
+  const responsaveis = setoresEfetivosDoPop(entrada.setoresResponsaveis ?? []);
   return {
-    setor_id: entrada.setorId,
+    setor_id: responsaveis.includes(SETOR_GERAL_ID) ? SETOR_GERAL_ID : entrada.setorId,
     codigo: entrada.codigo,
     titulo: entrada.titulo,
     descricao: entrada.descricao,
@@ -621,7 +628,7 @@ function popParaInsercao(entrada: EntradaPop): PopInsert {
     links_relacionados: entrada.linksRelacionados ?? [],
     observacoes: entrada.observacoes ?? "",
     etapas: (entrada.etapas ?? []) as unknown as NonNullable<PopInsert["etapas"]>,
-    setores_responsaveis: entrada.setoresResponsaveis ?? [],
+    setores_responsaveis: responsaveis,
     visualizadores: entrada.visualizadores ?? [],
   };
 }
@@ -1560,7 +1567,8 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
     if (veSomenteLiberados(session)) {
       if (!session.colaboradorId) return { ...base, pops: [] };
       const ids = new Set(await listarDocumentosLiberados(session.colaboradorId, "pop"));
-      return { ...base, pops: pops.filter((pop) => ids.has(pop.id)) };
+      // POPs gerais ("Todos os setores") são liberados a todos, inclusive a este nível.
+      return { ...base, pops: pops.filter((pop) => popEhGeral(pop) || ids.has(pop.id)) };
     }
 
     // Colaboradores, líderes e desenvolvedores veem apenas o próprio setor (e gerais);

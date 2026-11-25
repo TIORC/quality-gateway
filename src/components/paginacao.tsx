@@ -7,23 +7,27 @@ export const ITENS_POR_PAGINA = 50;
  * Paginação em memória. `reiniciarEm` lista os valores (busca, filtros…) que
  * devem devolver a listagem para a página 1 quando mudarem.
  */
-export function usePaginacao<T>(itens: T[], reiniciarEm: unknown[] = []) {
+export function usePaginacao<T>(
+  itens: T[],
+  reiniciarEm: unknown[] = [],
+  porPagina: number = ITENS_POR_PAGINA,
+) {
   const [pagina, setPagina] = useState(1);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setPagina(1), reiniciarEm);
 
-  const totalPaginas = Math.max(1, Math.ceil(itens.length / ITENS_POR_PAGINA));
+  const totalPaginas = Math.max(1, Math.ceil(itens.length / porPagina));
   const atual = Math.min(pagina, totalPaginas);
-  const inicio = (atual - 1) * ITENS_POR_PAGINA;
+  const inicio = (atual - 1) * porPagina;
 
   return {
-    itensDaPagina: itens.slice(inicio, inicio + ITENS_POR_PAGINA),
+    itensDaPagina: itens.slice(inicio, inicio + porPagina),
     pagina: atual,
     totalPaginas,
     total: itens.length,
     inicio: itens.length === 0 ? 0 : inicio + 1,
-    fim: Math.min(inicio + ITENS_POR_PAGINA, itens.length),
+    fim: Math.min(inicio + porPagina, itens.length),
     irParaPagina: setPagina,
   };
 }

@@ -5,9 +5,29 @@
 import { normalizarSetor, politicaDoSetor, politicaEhGeral, prefixoDoSetor } from "@/lib/niveis-acesso";
 import type { Pop, SetorPop } from "@/lib/pops";
 
-/** POP geral (código GER-* ou setorId "geral"). */
-export function popEhGeral(pop: Pick<Pop, "codigo" | "setorId">): boolean {
-  return pop.codigo.startsWith("GER") || pop.setorId === "geral";
+/** Id do setor "Processos Gerais" (card geral dos POPs). */
+export const SETOR_GERAL_ID = "geral";
+
+/**
+ * Regra "Todos os setores": um POP marcado como todos os setores é um POP geral.
+ * Qualquer seleção que inclua Processos Gerais vira somente ele.
+ */
+export function setoresEfetivosDoPop(selecionados: string[]): string[] {
+  return selecionados.includes(SETOR_GERAL_ID) ? [SETOR_GERAL_ID] : selecionados;
+}
+
+/**
+ * POP geral: código GER-*, setorId "geral" ou marcado como "Todos os setores".
+ * POPs gerais aparecem em Processos Gerais e são visíveis a todos os níveis de acesso.
+ */
+export function popEhGeral(
+  pop: Pick<Pop, "codigo" | "setorId"> & { setoresResponsaveis?: string[] },
+): boolean {
+  return (
+    pop.codigo.startsWith("GER") ||
+    pop.setorId === SETOR_GERAL_ID ||
+    (pop.setoresResponsaveis ?? []).includes(SETOR_GERAL_ID)
+  );
 }
 
 /**

@@ -269,7 +269,40 @@ export function montarEventosAvulsos(
   return resultado;
 }
 
-/** Agenda completa do usuário: reuniões de tipos + eventos avulsos, em ordem. */
+/**
+ * Atas em que o usuário foi marcado no documento. Cada ata aparece na agenda dele
+ * na data da reunião (mesmo quando o tipo de reunião não é dele).
+ */
+export function montarEventosAtasMarcadas(
+  atas: Ata[],
+  inicio: Date,
+  fim: Date,
+  usuarioId: string | null,
+): EventoAgenda[] {
+  if (!usuarioId) return [];
+  const inicioDia = startOfDay(inicio);
+  const fimDia = startOfDay(fim);
+  const resultado: EventoAgenda[] = [];
+  for (const ata of atas) {
+    const marcado = (ata.documento?.marcados ?? []).some((pessoa) => pessoa.id === usuarioId);
+    if (!marcado) continue;
+    const data = dataInicial(ata.dataReuniao);
+    if (!data || data < inicioDia || data > fimDia) continue;
+    resultado.push({
+      chave: `ata-${ata.id}`,
+      titulo: ata.titulo,
+      data,
+      horario: null,
+      situacao: "realizada",
+      tipo: null,
+      ata,
+      agendado: null,
+    });
+  }
+  return resultado;
+}
+
+/** Agenda completa do usuário: reuniões de tipos, atas em que foi marcado e eventos avulsos. */
 export function montarAgenda(
   tipos: TipoReuniao[],
   atas: Ata[],
@@ -279,10 +312,17 @@ export function montarAgenda(
   usuarioId: string | null,
   hoje: Date = startOfDay(new Date()),
 ): EventoAgenda[] {
-  return [
+  const todos = [
     ...montarEventosAgenda(tipos, atas, inicio, fim, usuarioId, hoje),
+    ...montarEventosAtasMarcadas(atas, inicio, fim, usuarioId),
     ...montarEventosAvulsos(agendados, inicio, fim, usuarioId),
-  ].sort(compararEventos);
+  ];
+  // Uma ata pode chegar por dois caminhos (tipo do usuário e marcação): vale a primeira.
+  const porChave = new Map<string, EventoAgenda>();
+  for (const evento of todos) {
+    if (!porChave.has(evento.chave)) porChave.set(evento.chave, evento);
+  }
+  return [...porChave.values()].sort(compararEventos);
 }
 
 /** Quantidade de reuniões previstas nos próximos `dias` (padrão 30). */

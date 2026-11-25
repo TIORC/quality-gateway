@@ -77,6 +77,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { getSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor, prefixoDoSetor } from "@/lib/niveis-acesso";
+import { SETOR_GERAL_ID } from "@/lib/setor-documentos";
 import {
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
@@ -929,14 +930,23 @@ interface SeletorSetoresProps {
   selecionados: string[];
   aoAlternar: (id: string) => void;
   aoAlternarTodos: () => void;
+  /** Estado do atalho "Todos os setores", quando ele não equivale a marcar cada setor. */
+  todosMarcados?: boolean;
 }
 
 /** Seleção múltipla de setores/unidades (Setores responsáveis e ACESSO). */
-function SeletorSetores({ setores, selecionados, aoAlternar, aoAlternarTodos }: SeletorSetoresProps) {
+function SeletorSetores({
+  setores,
+  selecionados,
+  aoAlternar,
+  aoAlternarTodos,
+  todosMarcados: todosMarcadosForcado,
+}: SeletorSetoresProps) {
   if (setores.length === 0) {
     return <p className="text-[12px] text-[#94A3B8]">Nenhum setor cadastrado ainda.</p>;
   }
-  const todosMarcados = setores.every((setor) => selecionados.includes(setor.id));
+  const todosMarcados =
+    todosMarcadosForcado ?? setores.every((setor) => selecionados.includes(setor.id));
   return (
     <div className="flex flex-wrap gap-1.5 rounded-lg border border-[#D9E0EA] bg-[#F8FAFC] p-2.5">
       <button
@@ -1020,13 +1030,24 @@ function PopFormDialog({
 
   /** Liga/desliga um setor de uma lista (responsáveis ou autorizados a ver). */
   function alternarSetor(campo: "setoresResponsaveis" | "visualizadores", id: string) {
-    aplicarSetores(campo, (lista) =>
-      lista.includes(id) ? lista.filter((item) => item !== id) : [...lista, id],
-    );
+    aplicarSetores(campo, (lista) => {
+      if (campo === "setoresResponsaveis") {
+        // Processos Gerais equivale a "Todos os setores" e não convive com setores específicos.
+        if (id === SETOR_GERAL_ID) return lista.includes(id) ? [] : [id];
+        const semGeral = lista.filter((item) => item !== SETOR_GERAL_ID);
+        return semGeral.includes(id) ? semGeral.filter((item) => item !== id) : [...semGeral, id];
+      }
+      return lista.includes(id) ? lista.filter((item) => item !== id) : [...lista, id];
+    });
   }
 
-  /** Marca todos os setores de uma vez; se já estiverem todos marcados, desmarca. */
+  /** Marca "Todos os setores" de uma vez; se já estiverem marcados, desmarca. */
   function alternarTodosSetores(campo: "setoresResponsaveis" | "visualizadores") {
+    if (campo === "setoresResponsaveis") {
+      // Regra: POP de todos os setores é um POP geral (Processos Gerais).
+      aplicarSetores(campo, (lista) => (lista.includes(SETOR_GERAL_ID) ? [] : [SETOR_GERAL_ID]));
+      return;
+    }
     const ids = setores.map((setor) => setor.id);
     aplicarSetores(campo, (lista) =>
       ids.length > 0 && ids.every((id) => lista.includes(id)) ? [] : ids,
@@ -1182,9 +1203,11 @@ function PopFormDialog({
               selecionados={entrada.setoresResponsaveis ?? []}
               aoAlternar={(id) => alternarSetor("setoresResponsaveis", id)}
               aoAlternarTodos={() => alternarTodosSetores("setoresResponsaveis")}
+              todosMarcados={(entrada.setoresResponsaveis ?? []).includes(SETOR_GERAL_ID)}
             />
             <p className="mt-1 text-[11.5px] text-[#94A3B8]">
-              O primeiro setor selecionado é o vínculo do POP com a grade de setores.
+              “Todos os setores” torna o POP geral: ele aparece em Processos Gerais e fica disponível
+              para todos os níveis de acesso. Sem ele, o primeiro setor selecionado é o vínculo do POP.
             </p>
           </Campo>
 

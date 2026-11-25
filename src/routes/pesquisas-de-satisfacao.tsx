@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  FileSpreadsheet,
   FileText,
   Pencil,
   Plus,
@@ -38,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apurarNps } from "@/lib/nps";
+import { exportarRespostasExcel, exportarRespostasPdf } from "@/lib/pesquisas-respostas-export";
 import {
   escreverRelatorio,
   htmlRelatorioCompleto,
@@ -259,6 +261,30 @@ function PesquisasDeSatisfacao() {
     }
   }
 
+  /** Planilha das respostas (com os filtros da tela) em PDF, no visual azul e amarelo. */
+  function exportarRespostasEmPdf(modelo: ModeloPesquisa) {
+    const janela = prepararJanelaRelatorio();
+    if (!janela) {
+      toast.error("Libere pop-ups para exportar o PDF.");
+      return;
+    }
+    try {
+      exportarRespostasPdf(janela, modelo, respostasDaPesquisa(modelo));
+    } catch (erro) {
+      janela.close();
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível gerar o PDF.");
+    }
+  }
+
+  /** Planilha das respostas (com os filtros da tela) em Excel (.xlsx). */
+  async function exportarRespostasEmExcel(modelo: ModeloPesquisa) {
+    try {
+      await exportarRespostasExcel(modelo, respostasDaPesquisa(modelo));
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível gerar o Excel.");
+    }
+  }
+
   async function copiarLink(id: string) {
     try {
       await navigator.clipboard.writeText(linkDaPesquisa(id));
@@ -477,7 +503,29 @@ function PesquisasDeSatisfacao() {
                       )}
                       <GraficosPerguntas modelo={modelo} respostas={respostasDaPesquisa(modelo)} />
                       <div>
-                        <h3 className="mb-3 text-sm font-semibold text-[#0F172A]">Respostas</h3>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-[#0F172A]">Respostas</h3>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => void exportarRespostasEmExcel(modelo)}
+                            >
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                              Exportar Excel
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => exportarRespostasEmPdf(modelo)}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Exportar PDF
+                            </Button>
+                          </div>
+                        </div>
                         <RespostasPesquisa
                           modelo={modelo}
                           respostas={respostasDaPesquisa(modelo)}

@@ -175,6 +175,8 @@ function AtasDeReuniao() {
   }
 
   function abrirNovaAta() {
+    // Somente a Qualidade (e quem gerencia o portal) registra atas.
+    if (!podeGerenciar) return;
     setAtaEmEdicao(null);
     setDialogAtaAberto(true);
   }
@@ -237,10 +239,16 @@ function AtasDeReuniao() {
               Cadastrar tipo de reunião
             </Button>
           ) : null}
-          <Button type="button" className="h-10 shrink-0 rounded-full px-5" onClick={abrirNovaAta}>
-            <Plus className="h-4 w-4" />
-            Nova Ata de Reunião
-          </Button>
+          {podeGerenciar ? (
+            <Button
+              type="button"
+              className="h-10 shrink-0 rounded-full px-5"
+              onClick={abrirNovaAta}
+            >
+              <Plus className="h-4 w-4" />
+              Nova Ata de Reunião
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -315,6 +323,7 @@ function AtasDeReuniao() {
             sessao={sessao}
             usuarioId={usuarioId}
             carregando={carregando}
+            podeCriar={podeGerenciar}
             onNova={abrirNovaAta}
             onEditar={abrirEdicaoAta}
           />
@@ -677,6 +686,7 @@ function PainelReunioes({
   sessao,
   usuarioId,
   carregando,
+  podeCriar,
   onNova,
   onEditar,
 }: {
@@ -685,6 +695,7 @@ function PainelReunioes({
   sessao: ReturnType<typeof getSession>;
   usuarioId: string | null;
   carregando: boolean;
+  podeCriar: boolean;
   onNova: () => void;
   onEditar: (ata: Ata) => void;
 }) {
@@ -728,12 +739,16 @@ function PainelReunioes({
           </div>
           <h3 className="mt-4 text-base font-semibold text-[#1F2937]">Nenhuma ata registrada</h3>
           <p className="mt-1.5 max-w-md text-sm text-[#64748B]">
-            Clique em "Nova Ata de Reunião" para registrar uma ata simples ou gerada pelo sistema.
+            {podeCriar
+              ? 'Clique em "Nova Ata de Reunião" para registrar uma nova ata.'
+              : "Nenhuma ata foi registrada ainda. Apenas o setor da Qualidade registra atas."}
           </p>
-          <Button type="button" className="mt-5" onClick={onNova}>
-            <Plus className="h-4 w-4" />
-            Nova Ata de Reunião
-          </Button>
+          {podeCriar ? (
+            <Button type="button" className="mt-5" onClick={onNova}>
+              <Plus className="h-4 w-4" />
+              Nova Ata de Reunião
+            </Button>
+          ) : null}
         </div>
       </div>
     );

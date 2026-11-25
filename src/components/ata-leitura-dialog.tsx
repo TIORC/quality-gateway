@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { format, parseISO } from "date-fns";
-import { Building2, CalendarDays, Check, RotateCcw, Sparkles, Users, X } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  Check,
+  Printer,
+  RotateCcw,
+  Sparkles,
+  Users,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
+import { AtaPrevia } from "@/components/ata-previa";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -24,14 +35,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useCatalogoOrganizacional } from "@/hooks/use-catalogo";
 import { getSession } from "@/lib/auth";
-import type { Ata, AtaAcao, AtaSetorCitado, StatusSugestaoAcao, TipoReuniao } from "@/lib/atas";
+import type { Ata, AtaAcao, StatusSugestaoAcao, TipoReuniao } from "@/lib/atas";
 import { ORIGEM_ATA_LABELS, STATUS_ATA_LABELS, STATUS_SUGESTAO_ACAO_LABELS } from "@/lib/atas";
-import {
-  listarAcoesDaAta,
-  listarSetoresCitadosDaAta,
-  listarUsuariosDasAtas,
-  type UsuarioAtaRow,
-} from "@/lib/atas-base";
+import { listarAcoesDaAta, listarUsuariosDasAtas, type UsuarioAtaRow } from "@/lib/atas-base";
 import type { PlanoAcao } from "@/lib/planos";
 import { listarPlanos } from "@/lib/planos-base";
 import { mudarStatusAcaoAta, salvarLeituraAssistida } from "@/lib/atas-crud";
@@ -74,7 +80,6 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
   const [setoresCfg, setSetoresCfg] = useState<SetorConfig[]>([]);
   const [usuarios, setUsuarios] = useState<UsuarioAtaRow[]>([]);
   const [planos, setPlanos] = useState<PlanoAcao[]>([]);
-  const [citados, setCitados] = useState<AtaSetorCitado[]>([]);
   const [acoes, setAcoes] = useState<AtaAcao[]>([]);
   const [carregando, setCarregando] = useState(false);
 
@@ -106,11 +111,7 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
     if (!ata) return;
     setCarregando(true);
     try {
-      const [c, a] = await Promise.all([
-        listarSetoresCitadosDaAta(ata.id),
-        listarAcoesDaAta(ata.id),
-      ]);
-      setCitados(c);
+      const a = await listarAcoesDaAta(ata.id);
       setAcoes(a);
       // Planos de ação vinculados (badge do plano na ação confirmada).
       listarPlanos()
@@ -249,9 +250,33 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
 
   const temColaboradores = catalogo.colaboradores.some((c) => (c.email ?? "").trim());
 
+  // Arquivo da ata: o mesmo documento do cadastro (modelo da ORCOMA), sem o texto livre.
+  const arquivo = ata ? (
+    <AtaPrevia
+      nomeDocumento={ata.documento.nomeDocumento}
+      titulo={ata.titulo}
+      dataReuniao={ata.dataReuniao}
+      areas={ata.documento.areas}
+      horario={ata.documento.horario}
+      pauta={ata.documento.pauta}
+      plano={ata.documento.plano}
+      participantes={ata.documento.participantes}
+      texto=""
+      elaboradoPor={ata.documento.elaboradoPor}
+      aprovadoPor={ata.documento.aprovadoPor}
+      revisao={ata.documento.revisao}
+      dataRevisao={ata.documento.dataRevisao}
+    />
+  ) : null;
+
   return (
     <Dialog open={aberto} onOpenChange={(abre) => (!abre ? onFechar() : undefined)}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-4xl">
+        {/* Na impressão, só o arquivo aparece: ele é levado para o fim do <body>. */}
+        <style>{`.ata-impressao-area{display:none}@media print{html,html body,html body[data-scroll-locked],html[data-scroll-locked]{height:auto!important;overflow:visible!important;position:static!important}body>*:not(.ata-impressao-area){display:none!important}.ata-impressao-area{display:block!important;position:static!important;height:auto!important;overflow:visible!important}.ata-impressao-area article{box-shadow:none!important;padding:0 0 18mm!important}.ata-impressao-area .ata-rodape{position:fixed!important;left:0;right:0;bottom:0;background:#fff}@page{size:A4;margin:12mm}}`}</style>
+        {arquivo && typeof document !== "undefined"
+          ? createPortal(<div className="ata-impressao-area">{arquivo}</div>, document.body)
+          : null}
         <DialogHeader>
           <DialogTitle>{ata?.titulo ?? "Ata de reunião"}</DialogTitle>
           <DialogDescription>
@@ -264,56 +289,17 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
         </DialogHeader>
 
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
-          {/* Texto da ata -------------------------------------------------- */}
-          <section>
-            <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
-              <Building2 className="h-3.5 w-3.5" />
-              Texto da ata
-            </h3>
-            <div className="rounded-xl border border-[#E9EEF5] bg-[#FAFBFD] px-4 py-3">
-              <p className="whitespace-pre-line text-[13px] leading-relaxed text-[#334155]">
-                {ata?.texto.trim() ? ata.texto.trim() : "Nenhum texto registrado nesta ata."}
-              </p>
-            </div>
-          </section>
+          {/* Arquivo da ata (prévia pronta para impressão) ---------------------- */}
+          {arquivo ? (
+            <div className="overflow-x-auto rounded-xl bg-[#E2E8F0] p-3">{arquivo}</div>
+          ) : null}
 
-          {carregando && (citados.length === 0 || acoes.length === 0) ? (
+          {carregando && acoes.length === 0 ? (
             <p className="rounded-xl border border-[#E9EEF5] px-4 py-6 text-center text-sm text-[#64748B]">
               Carregando…
             </p>
           ) : (
             <>
-              {/* Setores citados (extrato por setor) -------------------------- */}
-              <section>
-                <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
-                  <Users className="h-3.5 w-3.5" />
-                  Setores citados
-                </h3>
-                {citados.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-[#D9E0EA] px-4 py-3 text-[13px] text-[#94A3B8]">
-                    Nenhum setor citado até o momento.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {citados.map((citado) => (
-                      <li
-                        key={citado.id}
-                        className="rounded-xl border border-[#E9EEF5] px-3 py-2.5"
-                      >
-                        <span className="inline-flex items-center rounded-full bg-[#EEF2F7] px-2.5 py-0.5 text-[12px] font-semibold text-[#475569]">
-                          {nomePorId.get(citado.setor) ?? citado.setor}
-                        </span>
-                        {citado.trecho ? (
-                          <p className="mt-1.5 text-[12px] italic leading-relaxed text-[#64748B]">
-                            “{citado.trecho}”
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
               {/* Ações da ata ------------------------------------------------- */}
               <section>
                 <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
@@ -602,6 +588,16 @@ export function AtaLeituraDialog({ aberto, ata, tipo, usuarioId, sessao, onFecha
         </div>
 
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => window.print()}
+            disabled={!ata}
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Imprimir / PDF
+          </Button>
           <Button type="button" onClick={onFechar}>
             Fechar
           </Button>

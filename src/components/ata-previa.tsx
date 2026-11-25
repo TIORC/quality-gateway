@@ -5,11 +5,18 @@
  * preto, independente do tema do sistema, como no Word.
  */
 import type { CSSProperties, ReactNode } from "react";
-import type { ParticipanteDocumento, PautaDocumento, PlanoDocumento } from "@/lib/atas";
+import {
+  NOME_DOCUMENTO_PADRAO,
+  type ParticipanteDocumento,
+  type PautaDocumento,
+  type PlanoDocumento,
+} from "@/lib/atas";
 
 export type { ParticipanteDocumento, PautaDocumento, PlanoDocumento } from "@/lib/atas";
 
 export interface AtaPreviaProps {
+  /** Nome do documento no cabeçalho; vazio usa o padrão da ORCOMA. */
+  nomeDocumento: string;
   titulo: string;
   /** Data da reunião no formato `AAAA-MM-DD`. */
   dataReuniao: string;
@@ -90,6 +97,7 @@ function Faixa({ colSpan, children }: { colSpan: number; children: ReactNode }) 
 }
 
 export function AtaPrevia({
+  nomeDocumento,
   titulo,
   dataReuniao,
   areas,
@@ -144,7 +152,7 @@ export function AtaPrevia({
                 fontWeight: 700,
               }}
             >
-              ATA DE REUNIÃO ESTRATÉGICA · POR DEPARTAMENTO
+              {nomeDocumento.trim() || NOME_DOCUMENTO_PADRAO}
             </td>
             <td style={{ ...celula, border: "none", textAlign: "right", fontSize: 11 }}>
               Página 1
@@ -270,22 +278,25 @@ export function AtaPrevia({
 
       <div style={{ height: 16 }} />
 
-      {/* Rodapé: responsáveis e revisão */}
-      <Tabela larguras={[3480, 3480, 3700]}>
-        <tbody>
-          <tr>
-            <td style={{ ...celula, border: "none" }}>
-              <b>Elaborado por:</b> {elaboradoPor.trim()}
-            </td>
-            <td style={{ ...celula, border: "none" }}>
-              <b>Aprovado por:</b> {aprovadoPor.trim()}
-            </td>
-            <td style={{ ...celula, border: "none" }}>
-              <b>Revisão:</b> {revisao.trim() || "1"} &nbsp; <b>Data:</b> {dataBrasil(dataRevisao)}
-            </td>
-          </tr>
-        </tbody>
-      </Tabela>
+      {/* Rodapé: responsáveis e revisão. Na impressão, fica fixo no pé de cada página. */}
+      <div className="ata-rodape">
+        <Tabela larguras={[3480, 3480, 3700]}>
+          <tbody>
+            <tr>
+              <td style={{ ...celula, border: "none" }}>
+                <b>Elaborado por:</b> {elaboradoPor.trim()}
+              </td>
+              <td style={{ ...celula, border: "none" }}>
+                <b>Aprovado por:</b> {aprovadoPor.trim()}
+              </td>
+              <td style={{ ...celula, border: "none" }}>
+                <b>Revisão:</b> {revisao.trim() || "1"} &nbsp; <b>Data:</b>{" "}
+                {dataBrasil(dataRevisao)}
+              </td>
+            </tr>
+          </tbody>
+        </Tabela>
+      </div>
     </article>
   );
 }

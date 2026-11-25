@@ -122,6 +122,10 @@ export interface ParticipanteDocumento {
 
 /** Documento completo da ata, guardado em `atas.documento` (jsonb). */
 export interface DocumentoAta {
+  /** Nome do documento no cabeçalho; vazio usa `NOME_DOCUMENTO_PADRAO`. */
+  nomeDocumento: string;
+  /** Pessoas marcadas na ata: a ata aparece na agenda delas, na data da reunião. */
+  marcados: UsuarioRef[];
   areas: string;
   horario: string;
   pauta: PautaDocumento[];
@@ -133,6 +137,9 @@ export interface DocumentoAta {
   /** Data da revisão no formato `AAAA-MM-DD`. */
   dataRevisao: string;
 }
+
+/** Nome do documento no cabeçalho quando a ata não define outro. */
+export const NOME_DOCUMENTO_PADRAO = "ATA DE REUNIÃO ESTRATÉGICA · POR DEPARTAMENTO";
 
 export interface Ata {
   id: string;

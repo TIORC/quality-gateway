@@ -226,6 +226,21 @@ export async function salvarLeituraAssistida(
 }
 
 /**
+ * Efetiva a ata: trava o documento (aguardando assinatura) e cria um plano de ação
+ * para cada item do plano da ata. Permissão e regras no banco (`efetivar_ata`).
+ * Retorna a quantidade de planos criados.
+ */
+export async function efetivarAta(id: string, sessao: UserSession | null): Promise<number> {
+  const client = clienteLivre();
+  const { data, error } = await client.rpc("efetivar_ata", {
+    email_caller: emailDaSessao(sessao),
+    ata_id: id,
+  });
+  if (error) throw traduzErro(error);
+  return Number(data ?? 0);
+}
+
+/**
  * Move uma ação entre sugerida / confirmada / descartada. Permissão validada
  * no banco (`mudar_status_acao`).
  */
