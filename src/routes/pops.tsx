@@ -77,7 +77,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { getSession } from "@/lib/auth";
 import { NIVEIS_FILTRAM_POR_SETOR, normalizarSetor, prefixoDoSetor } from "@/lib/niveis-acesso";
-import { SETOR_GERAL_ID } from "@/lib/setor-documentos";
+import { SETOR_GERAL_ID, popEhGeral } from "@/lib/setor-documentos";
 import {
   podeAdicionarDocumentos,
   podeExcluirDocumentos,
@@ -390,6 +390,12 @@ function PopDataDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** "Quem visualiza: Todos os setores" — o mesmo critério exibido no cartão do POP. */
+function visualizaTodosOsSetores(pop: Pop, setores: SetorPop[]): boolean {
+  const vis = pop.visualizadores ?? [];
+  return vis.length === 0 || (setores.length > 0 && setores.every((s) => vis.includes(s.id)));
 }
 
 function PopCard({
@@ -2652,7 +2658,14 @@ function Pops() {
   const mostraLista = setorEhTodos || Boolean(setorSelecionado);
   const nomeDoSetor = setorEhTodos ? "Todos os Setores" : (setorSelecionado?.nome ?? "POPs");
 
-  const contagens = useMemo(() => contarPopsPorSetor(pops), [pops]);
+  const contagens = useMemo(() => {
+    const porSetor = contarPopsPorSetor(pops);
+    // Processos Gerais: a mesma regra da listagem (POPs gerais e "Todos os setores" em Quem visualiza).
+    porSetor[SETOR_GERAL_ID] = pops.filter(
+      (p) => popEhGeral(p) || visualizaTodosOsSetores(p, setores),
+    ).length;
+    return porSetor;
+  }, [pops, setores]);
 
   // Colaborador, Líder de setor e Desenvolvedor (fora do setor da Qualidade) veem
   // apenas o card "Geral" e o card do próprio setor; os demais níveis veem todos.
@@ -2684,12 +2697,17 @@ function Pops() {
   const popsDoSetor = useMemo(() => {
     if (setorEhTodos || !setorSelecionado) return pops;
     const id = setorSelecionado.id;
+    // Processos Gerais: os POPs gerais e os que "Quem visualiza" são todos os setores
+    // (o mesmo critério que o cartão mostra como "Todos os setores").
+    if (id === SETOR_GERAL_ID) {
+      return pops.filter((p) => popEhGeral(p) || visualizaTodosOsSetores(p, setores));
+    }
     // POP com vários setores responsáveis aparece no card de cada um deles;
     // sem array preenchido (POPs antigos), vale o `setor_id`.
     return pops.filter((p) =>
       p.setoresResponsaveis.length > 0 ? p.setoresResponsaveis.includes(id) : p.setorId === id,
     );
-  }, [pops, setorEhTodos, setorSelecionado]);
+  }, [pops, setores, setorEhTodos, setorSelecionado]);
 
   const termo = busca.trim().toLowerCase();
   const popsVisiveis = useMemo(() => {

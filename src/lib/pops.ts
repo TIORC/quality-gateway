@@ -835,6 +835,17 @@ function setorDeId(id: string, setores: SetorPop[]): string {
   return normalizarSetor(nome);
 }
 
+/**
+ * POP liberado explicitamente a um dos setores/unidades informados em "Quem pode
+ * visualizar" (ou ao "geral"). Lista vazia não libera ninguém aqui.
+ */
+function liberadoAoSetorDoUsuario(pop: Pop, nomes: string[], setores: SetorPop[]): boolean {
+  const autorizados = pop.visualizadores ?? [];
+  if (autorizados.length === 0) return false;
+  const alvos = new Set(nomes.map((nome) => normalizarSetor(nome)).filter(Boolean));
+  return autorizados.some((id) => id === SETOR_GERAL_ID || alvos.has(setorDeId(id, setores)));
+}
+
 /** Nomes dos setores/unidades de uma lista de ids (para exibição). */
 export function nomesDosSetores(ids: string[], setores: SetorPop[]): string[] {
   return ids.map((id) => setores.find((setor) => setor.id === id)?.nome ?? id);
@@ -1579,8 +1590,12 @@ export async function carregarPopsAcessiveis(session: UserSession | null): Promi
         session.nivelAcesso === NIVEL_LIDER_SETOR
           ? [session.setor, ...(session.setoresLiderados ?? [])]
           : [session.setor ?? ""];
-      pops = pops.filter((pop) =>
-        setoresDoUsuario.some((setor) => popDoSetorDoUsuario(pop, setor, base.setores)),
+      // Também passam os POPs liberados ao setor (ou unidade) do usuário em "Quem pode visualizar".
+      const nomesLiberados = [...setoresDoUsuario, session.unidade ?? ""];
+      pops = pops.filter(
+        (pop) =>
+          setoresDoUsuario.some((setor) => popDoSetorDoUsuario(pop, setor, base.setores)) ||
+          liberadoAoSetorDoUsuario(pop, nomesLiberados, base.setores),
       );
     }
 
